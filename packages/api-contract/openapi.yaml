@@ -1,0 +1,37 @@
+openapi: 3.0.0
+info:
+  title: SIMS-AI API
+  version: 1.0.0
+  description: Smart Inventory Management System API
+servers:
+  - url: http://localhost:3001/api
+    description: Development server
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: SIMS-AI Backend API
+  # Add more endpoints as you develop
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+
