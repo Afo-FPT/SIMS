@@ -1,12 +1,137 @@
 import { Request, Response } from "express";
 import User from "../models/User";
+import {
+  getAllUsers,
+  getUserById,
+  activateUser,
+  deactivateUser,
+  updateUser,
+  deleteUser
+} from "../services/user.service";
 
+/**
+ * Lấy thông tin user hiện tại
+ */
 export const getMe = async (req: Request, res: Response) => {
-  if (!req.user) {
-    return res.status(401).json({ message: "Unauthorized" });
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const user = await User.findById(req.user.userId).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json(user);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
+};
 
-  const user = await User.findById(req.user.userId).select("-password");
+/**
+ * Lấy danh sách tất cả users (chỉ manager và staff) - Admin only
+ */
+export const getUsers = async (req: Request, res: Response) => {
+  try {
+    const users = await getAllUsers();
+    res.json({
+      data: users
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
-  res.json(user);
+/**
+ * Lấy thông tin user theo ID - Admin only
+ */
+export const getUser = async (req: Request, res: Response) => {
+  try {
+    const user = await getUserById(req.params.id);
+    res.json({
+      data: user
+    });
+  } catch (error: any) {
+    res.status(404).json({ message: error.message });
+  }
+};
+
+/**
+ * Kích hoạt tài khoản user - Admin only
+ */
+export const activateUserAccount = async (req: Request, res: Response) => {
+  try {
+    const user = await activateUser(req.params.id);
+    res.json({
+      message: "User activated successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive
+      }
+    });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/**
+ * Vô hiệu hóa tài khoản user - Admin only
+ */
+export const deactivateUserAccount = async (req: Request, res: Response) => {
+  try {
+    const user = await deactivateUser(req.params.id);
+    res.json({
+      message: "User deactivated successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive
+      }
+    });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/**
+ * Cập nhật thông tin user - Admin only
+ */
+export const updateUserAccount = async (req: Request, res: Response) => {
+  try {
+    const { name, role } = req.body;
+    const user = await updateUser(req.params.id, { name, role });
+    res.json({
+      message: "User updated successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive
+      }
+    });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+/**
+ * Xóa tài khoản user - Admin only
+ */
+export const deleteUserAccount = async (req: Request, res: Response) => {
+  try {
+    const result = await deleteUser(req.params.id);
+    res.json({
+      message: result.message
+    });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
 };

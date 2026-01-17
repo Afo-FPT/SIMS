@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 dotenv.config();
 interface JwtPayload {
   userId: string;
-  role: "admin" | "staff";
+  role: "admin" | "manager" | "staff" | "customer";
 }
 
 
@@ -33,7 +33,7 @@ export function authenticate(
     return res.status(401).json({ message: "Invalid token" });
   }
 }
-export function authorizeRoles(...roles: Array<"admin" | "staff">) {
+export function authorizeRoles(...roles: Array<"admin" | "manager" | "staff" | "customer">) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ message: "Unauthorized" });

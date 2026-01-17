@@ -2,7 +2,7 @@ import "express";
 
 export interface JwtPayload {
   userId: string;
-  role: "admin" | "staff" ;
+  role: "admin" | "manager" | "staff" | "customer";
 }
 
 declare global {

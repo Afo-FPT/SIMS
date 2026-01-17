@@ -1,5 +1,0 @@
-# Services
-# API client functions
-# Handles HTTP requests to backend
-# Uses packages/api-contract for DTOs
-
