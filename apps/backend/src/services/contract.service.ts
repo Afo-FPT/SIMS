@@ -126,13 +126,22 @@ async function validateShelf(
 /**
  * Check if shelf is already rented during the period
  * Customer rents the entire shelf (all tiers), so we check by shelfId only
+ * 
+ * Logic: Check for overlapping contracts (both draft and active)
+ * - Draft contracts also block the shelf during their period
+ * - This prevents double booking even if contract is not yet activated
+ * 
+ * Example:
+ * - Contract A (draft): 2027-01-01 to 2027-12-31
+ * - Contract B (new): 2026-06-01 to 2026-12-31 → ✅ Allowed (no overlap)
+ * - Contract C (new): 2026-12-01 to 2027-06-30 → ❌ Blocked (overlaps with Contract A)
  */
 async function checkShelfAvailability(
   shelfId: string,
   startDate: Date,
   endDate: Date,
   excludeContractId?: string
-): Promise<boolean> {
+): Promise<{ available: boolean; conflictingContract?: any }> {
   const query: any = {
     status: { $in: ["draft", "active"] },
     "rentedShelves.shelfId": new Types.ObjectId(shelfId),
@@ -159,8 +168,14 @@ async function checkShelfAvailability(
     query._id = { $ne: new Types.ObjectId(excludeContractId) };
   }
 
-  const overlappingContract = await Contract.findOne(query);
-  return !overlappingContract; // Return true if available (no overlap)
+  const overlappingContract = await Contract.findOne(query)
+    .populate("customerId", "name email")
+    .select("contractCode status customerId rentedShelves");
+
+  return {
+    available: !overlappingContract,
+    conflictingContract: overlappingContract || undefined
+  };
 }
 
 /**
@@ -205,16 +220,39 @@ async function validateRentedShelves(
     }
 
     // Check availability (entire shelf)
-    const isAvailable = await checkShelfAvailability(
+    // This checks for overlapping contracts (both draft and active)
+    // Even draft contracts block the shelf during their rental period
+    const availabilityCheck = await checkShelfAvailability(
       rentedShelf.shelfId,
       startDate,
       endDate
     );
 
-    if (!isAvailable) {
+    if (!availabilityCheck.available) {
       const shelf = await Shelf.findById(rentedShelf.shelfId);
+      const conflictingContract = availabilityCheck.conflictingContract;
+      
+      // Find the conflicting rented shelf details
+      const conflictingRentedShelf = conflictingContract?.rentedShelves.find(
+        (rs: any) => rs.shelfId.toString() === rentedShelf.shelfId
+      );
+
+      const contractStatus = conflictingContract?.status === "draft" 
+        ? "draft (chưa kích hoạt)" 
+        : "active";
+      
+      const conflictStartDate = conflictingRentedShelf?.startDate 
+        ? new Date(conflictingRentedShelf.startDate).toLocaleDateString("vi-VN")
+        : "N/A";
+      const conflictEndDate = conflictingRentedShelf?.endDate
+        ? new Date(conflictingRentedShelf.endDate).toLocaleDateString("vi-VN")
+        : "N/A";
+
       throw new Error(
-        `Shelf ${shelf?.shelfCode} is already rented during this period`
+        `Kệ ${shelf?.shelfCode} đã được thuê trong khoảng thời gian này. ` +
+        `Hợp đồng ${conflictingContract?.contractCode} (${contractStatus}) ` +
+        `đã đặt kệ này từ ${conflictStartDate} đến ${conflictEndDate}. ` +
+        `Vui lòng chọn khoảng thời gian khác hoặc kệ khác.`
       );
     }
   }
@@ -499,7 +537,7 @@ export async function updateContractStatus(
       warehouse_id: updatedContract!.warehouseId.toString(),
       rented_shelves: updatedContract!.rentedShelves.map((rs) => ({
         shelf_id: rs.shelfId.toString(),
-        level: rs.level,
+        
         area: rs.area,
         capacity: rs.capacity,
         start_date: rs.startDate,

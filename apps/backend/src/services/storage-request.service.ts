@@ -112,13 +112,15 @@ async function validateContractOwnership(
     throw new Error("Contract does not belong to the authenticated customer");
   }
 
-  if (contract.status !== "ACTIVE") {
+  // Contract status must be "active" (lowercase) to allow storage requests
+  if (contract.status !== "active") {
     throw new Error("Contract is not active");
   }
 }
 
 /**
  * Validate shelf belongs to contract
+ * Contract has rentedShelves array, so we check if shelfId exists in that array
  */
 async function validateShelfBelongsToContract(
   shelfId: string,
@@ -136,7 +138,12 @@ async function validateShelfBelongsToContract(
     throw new Error("Shelf not found");
   }
 
-  if (contract.shelfId.toString() !== shelfId) {
+  // Check if shelfId exists in contract's rentedShelves array
+  const shelfExistsInContract = contract.rentedShelves.some(
+    (rentedShelf) => rentedShelf.shelfId.toString() === shelfId
+  );
+
+  if (!shelfExistsInContract) {
     throw new Error("Shelf does not belong to the contract");
   }
 }
