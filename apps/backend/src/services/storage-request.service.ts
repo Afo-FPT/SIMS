@@ -47,6 +47,7 @@ export interface RequestDetailResponse {
   requestDetailId: string;
   shelfId: string;
   itemName: string;
+  unit: string;
   quantityRequested: number;
   quantityActual?: number;
 }
@@ -267,6 +268,7 @@ export async function createInboundRequest(
         requestId: request._id,
         shelfId: new Types.ObjectId(item.shelfId),
         itemName: item.itemName.trim(),
+        unit: item.unit?.trim() || "pcs",
         quantityRequested: item.quantity,
         quantityActual: undefined // Not set at creation time
       })
@@ -278,6 +280,7 @@ export async function createInboundRequest(
     requestDetailId: detail._id.toString(),
     shelfId: detail.shelfId.toString(),
     itemName: detail.itemName,
+    unit: (detail as any).unit || "pcs",
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));
@@ -331,6 +334,7 @@ export async function createOutboundRequest(
         requestId: request._id,
         shelfId: new Types.ObjectId(item.shelfId),
         itemName: item.itemName.trim(),
+        unit: item.unit?.trim() || "pcs",
         quantityRequested: item.quantity,
         quantityActual: undefined // Not set at creation time
       })
@@ -342,6 +346,7 @@ export async function createOutboundRequest(
     requestDetailId: detail._id.toString(),
     shelfId: detail.shelfId.toString(),
     itemName: detail.itemName,
+    unit: (detail as any).unit || "pcs",
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));

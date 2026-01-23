@@ -4,6 +4,7 @@ export interface IStorageRequestDetail extends Document {
   requestId: Types.ObjectId;
   shelfId: Types.ObjectId;
   itemName: string;
+  unit: string;
   quantityRequested: number;
   quantityActual?: number;
   createdAt: Date;
@@ -26,6 +27,12 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
       type: String,
       required: true,
       trim: true
+    },
+    unit: {
+      type: String,
+      required: true,
+      trim: true,
+      default: "pcs"
     },
     quantityRequested: {
       type: Number,

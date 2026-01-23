@@ -3,6 +3,7 @@ import {
   createInboundRequestController,
   createOutboundRequestController
 } from "../controllers/storage-request.controller";
+import { customerConfirmStorageRequestController } from "../controllers/storage-request-confirm.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -29,6 +30,18 @@ router.post(
   authenticate,
   authorizeRoles("customer"),
   createOutboundRequestController
+);
+
+/**
+ * PATCH /api/storage-requests/:id/confirm
+ * Customer confirms staff completion
+ * Authorization: Customer only
+ */
+router.patch(
+  "/:id/confirm",
+  authenticate,
+  authorizeRoles("customer"),
+  customerConfirmStorageRequestController
 );
 
 export default router;

@@ -8,6 +8,8 @@ import storageRequestRoutes from "./routes/storage-request.routes";
 import contractRoutes from "./routes/contract.routes";
 import inboundRequestRoutes from "./routes/inbound-requests.routes";
 import outboundRequestRoutes from "./routes/outbound-requests.routes";
+import staffStorageRequestRoutes from "./routes/staff-storage-requests.routes";
+import storedItemsRoutes from "./routes/stored-items.routes";
 
 
 const app = express();
@@ -22,6 +24,8 @@ app.use("/api/storage-requests", storageRequestRoutes);
 app.use("/api/contracts", contractRoutes);
 app.use("/api/inbound-requests", inboundRequestRoutes);
 app.use("/api/outbound-requests", outboundRequestRoutes);
+app.use("/api/staff", staffStorageRequestRoutes);
+app.use("/api/stored-items", storedItemsRoutes);
 
 
 
