@@ -7,6 +7,7 @@ import warehouseRoutes from "./routes/warehouse.routes";
 import storageRequestRoutes from "./routes/storage-request.routes";
 import contractRoutes from "./routes/contract.routes";
 import inboundRequestRoutes from "./routes/inbound-requests.routes";
+import outboundRequestRoutes from "./routes/outbound-requests.routes";
 
 
 const app = express();
@@ -20,6 +21,7 @@ app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/storage-requests", storageRequestRoutes);
 app.use("/api/contracts", contractRoutes);
 app.use("/api/inbound-requests", inboundRequestRoutes);
+app.use("/api/outbound-requests", outboundRequestRoutes);
 
 
 

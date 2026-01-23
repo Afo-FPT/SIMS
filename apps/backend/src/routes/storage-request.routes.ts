@@ -1,5 +1,8 @@
 import { Router } from "express";
-import { createInboundRequestController } from "../controllers/storage-request.controller";
+import {
+  createInboundRequestController,
+  createOutboundRequestController
+} from "../controllers/storage-request.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -14,6 +17,18 @@ router.post(
   authenticate,
   authorizeRoles("customer"),
   createInboundRequestController
+);
+
+/**
+ * POST /api/storage-requests/outbound
+ * Create a new outbound request
+ * Authorization: Customer only
+ */
+router.post(
+  "/outbound",
+  authenticate,
+  authorizeRoles("customer"),
+  createOutboundRequestController
 );
 
 export default router;
