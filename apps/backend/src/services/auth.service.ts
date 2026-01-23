@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import User from "../models/User";
 import { signToken } from "../utils/jwt";
+import { sendPasswordResetEmail } from "../utils/email";
 
 export async function registerUser(
   name: string,
@@ -56,4 +58,93 @@ export async function loginUser(email: string, password: string) {
   });
 
   return { user, token };
+}
+
+/**
+ * Yêu cầu reset password - tạo reset token
+ */
+export async function requestPasswordReset(email: string) {
+  const user = await User.findOne({ email });
+  
+  // Không tiết lộ nếu email không tồn tại (bảo mật)
+  if (!user) {
+    return { message: "If email exists, reset link will be sent" };
+  }
+
+  // Kiểm tra tài khoản đã được kích hoạt chưa
+  if (!user.isActive) {
+    throw new Error("Account is not activated. Please contact admin");
+  }
+
+  // Tạo reset token ngẫu nhiên
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  
+  // Hash token trước khi lưu vào database
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  // Lưu token và thời gian hết hạn (1 giờ)
+  user.resetPasswordToken = hashedToken;
+  user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 giờ
+  await user.save();
+
+  // Gửi email reset password
+  try {
+    await sendPasswordResetEmail(user.email, user.name, resetToken);
+  } catch (error) {
+    // Nếu gửi email thất bại, vẫn trả về success để không tiết lộ email có tồn tại
+    // Nhưng log lỗi để admin biết
+    console.error("Failed to send password reset email:", error);
+    // Trong development mode, có thể trả về resetLink để test
+    if (process.env.NODE_ENV === "development") {
+      return {
+        message: "Password reset token generated (email failed, see console)",
+        resetLink: `${process.env.FRONTEND_URL || "http://localhost:3000"}/reset-password?token=${resetToken}`
+      };
+    }
+  }
+
+  // Trong production, không trả về token/link
+  return {
+    message: "If email exists, reset link will be sent"
+  };
+}
+
+/**
+ * Reset password với token
+ */
+export async function resetPassword(token: string, newPassword: string) {
+  // Hash token để so sánh với token trong database
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+
+  // Tìm user với token hợp lệ và chưa hết hạn
+  const user = await User.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpires: { $gt: new Date() }
+  });
+
+  if (!user) {
+    throw new Error("Invalid or expired reset token");
+  }
+
+  // Kiểm tra tài khoản đã được kích hoạt chưa
+  if (!user.isActive) {
+    throw new Error("Account is not activated. Please contact admin");
+  }
+
+  // Hash password mới
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  // Cập nhật password và xóa reset token
+  user.password = hashedPassword;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpires = undefined;
+  await user.save();
+
+  return { message: "Password reset successfully" };
 }

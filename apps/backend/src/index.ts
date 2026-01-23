@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import app from "./app";
 import connectDB from "./config/db";
 import { initializeAdmin } from "./utils/initAdmin";
+import { verifyEmailConfig } from "./utils/email";
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -17,6 +18,9 @@ const startServer = async () => {
   
   // Tự động tạo Admin account nếu chưa có
   await initializeAdmin();
+
+  // Verify email configuration
+  await verifyEmailConfig();
 
   const PORT = process.env.PORT || 3001;
 
