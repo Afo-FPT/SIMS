@@ -12,61 +12,80 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user, onLogout }) => {
   const getSections = () => {
-    switch(persona) {
+    switch (persona) {
       case 'ADMIN':
         return [
-          { section: 'Intelligence', items: [
-            { id: 'DASHBOARD', label: 'System Overview', icon: 'dashboard' },
-            { id: 'AI_CHAT', label: 'AI Intelligence', icon: 'cognition' },
-            { id: 'AI_LAYOUT', label: 'Layout Optimization', icon: 'auto_awesome_motion' },
-          ]},
-          { section: 'Infrastructure', items: [
-            { id: 'WAREHOUSES', label: 'Global Facilities', icon: 'warehouse' },
-            { id: 'USERS', label: 'User Control', icon: 'manage_accounts' },
-            { id: 'LOGS', label: 'Security Logs', icon: 'security' },
-            { id: 'CONFIG', label: 'System Config', icon: 'settings_input_component' },
-          ]}
+          {
+            section: 'System', items: [
+              { id: 'DASHBOARD', label: 'Overview', icon: 'dashboard' },
+              { id: 'USERS', label: 'Users', icon: 'people' },
+              { id: 'LOGS', label: 'Logs', icon: 'description' },
+            ]
+          }
         ];
       case 'MANAGER':
         return [
-          { section: 'Operations', items: [
-            { id: 'DASHBOARD', label: 'Regional Hubs', icon: 'dashboard' },
-            { id: 'TASKS', label: 'Staff Tasking', icon: 'assignment_turned_in' },
-            { id: 'WAREHOUSES', label: 'Hub Management', icon: 'warehouse' },
-          ]},
-          { section: 'Analytics', items: [
-            { id: 'PERFORMANCE', label: 'Staff KPI', icon: 'query_stats' },
-            { id: 'REPORTS', label: 'AI Forecasting', icon: 'monitoring' },
-            { id: 'INVENTORY', label: 'Stock Health', icon: 'inventory_2' },
-            { id: 'AI_LAYOUT', label: 'Layout Strategy', icon: 'auto_awesome_motion' },
-            { id: 'AI_CHAT', label: 'Strategy AI', icon: 'smart_toy' },
-          ]}
+          {
+            section: 'Overview', items: [
+              { id: 'DASHBOARD', label: 'Dashboard', icon: 'dashboard' },
+            ]
+          },
+          {
+            section: 'Requests & Contracts', items: [
+              { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
+              { id: 'CONTRACTS', label: 'Contracts', icon: 'description' },
+              { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
+            ]
+          },
+          {
+            section: 'Operations', items: [
+              { id: 'TASKS', label: 'Tasks', icon: 'assignment_turned_in' },
+              { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
+              { id: 'WAREHOUSES', label: 'Warehouses', icon: 'warehouse' },
+            ]
+          },
+          {
+            section: 'Reports', items: [
+              { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
+            ]
+          }
         ];
       case 'STAFF':
         return [
-          { section: 'Daily Tasks', items: [
-            { id: 'DASHBOARD', label: 'My Status', icon: 'dashboard' },
-            { id: 'SCANNER', label: 'Quick Scanner', icon: 'barcode_scanner' },
-            { id: 'TASKS', label: 'Work Queue', icon: 'assignment' },
-          ]},
-          { section: 'Movement', items: [
-            { id: 'TRANSFERS', label: 'Internal Transfer', icon: 'move_down' },
-            { id: 'INVENTORY', label: 'SKU Explorer', icon: 'inventory_2' },
-            { id: 'AI_CHAT', label: 'Ops Assistant', icon: 'help_center' },
-          ]}
+          {
+            section: 'Work', items: [
+              { id: 'DASHBOARD', label: 'Dashboard', icon: 'dashboard' },
+              { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
+              { id: 'HISTORY', label: 'History', icon: 'history' },
+              { id: 'SCANNER', label: 'Scanner', icon: 'barcode_scanner' },
+            ]
+          }
         ];
       case 'CUSTOMER':
         return [
-          { section: 'My Assets', items: [
-            { id: 'DASHBOARD', label: 'Rental Overview', icon: 'dashboard' },
-            { id: 'INVENTORY', label: 'My Inventory', icon: 'inventory_2' },
-            { id: 'SHIPMENTS', label: 'Track Shipments', icon: 'local_shipping' },
-          ]},
-          { section: 'Account', items: [
-            { id: 'BILLING', label: 'Billing & Plans', icon: 'payments' },
-            { id: 'DOCUMENTS', label: 'Legal & Contracts', icon: 'description' },
-            { id: 'AI_CHAT', label: 'Customer AI', icon: 'support_agent' },
-          ]}
+          {
+            section: 'Overview', items: [
+              { id: 'DASHBOARD', label: 'Dashboard', icon: 'dashboard' },
+            ]
+          },
+          {
+            section: 'Rental', items: [
+              { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
+              { id: 'CONTRACTS', label: 'Contracts', icon: 'description' },
+              { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
+            ]
+          },
+          {
+            section: 'Inventory', items: [
+              { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
+              { id: 'INVENTORY_CHECKING', label: 'Inventory Checking', icon: 'fact_check' },
+            ]
+          },
+          {
+            section: 'Account', items: [
+              { id: 'SETTINGS', label: 'Settings', icon: 'settings' },
+            ]
+          }
         ];
       default:
         return [];
@@ -90,30 +109,28 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
       <nav className="flex-1 p-6 space-y-10 overflow-y-auto no-scrollbar">
         {sections.map((sec, i) => (
           <div key={i} className="space-y-3">
-             <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{sec.section}</h3>
-             <div className="space-y-1">
-                {sec.items.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate(item.id)}
-                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all group relative ${
-                      activeView === item.id 
-                        ? 'bg-primary/5 text-primary font-bold' 
-                        : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+            <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{sec.section}</h3>
+            <div className="space-y-1">
+              {sec.items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => onNavigate(item.id)}
+                  className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all group relative ${activeView === item.id
+                      ? 'bg-primary/5 text-primary font-bold'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                     }`}
-                  >
-                    {activeView === item.id && (
-                      <div className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full"></div>
-                    )}
-                    <span className={`material-symbols-outlined text-[24px] transition-colors ${
-                      activeView === item.id ? 'text-primary' : 'text-slate-400 group-hover:text-primary'
+                >
+                  {activeView === item.id && (
+                    <div className="absolute left-0 top-3 bottom-3 w-1 bg-primary rounded-r-full"></div>
+                  )}
+                  <span className={`material-symbols-outlined text-[24px] transition-colors ${activeView === item.id ? 'text-primary' : 'text-slate-400 group-hover:text-primary'
                     }`}>
-                      {item.icon}
-                    </span>
-                    <span className="text-sm tracking-tight">{item.label}</span>
-                  </button>
-                ))}
-             </div>
+                    {item.icon}
+                  </span>
+                  <span className="text-sm tracking-tight">{item.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         ))}
       </nav>
@@ -124,10 +141,10 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             <div className="relative z-10">
               <div className="flex items-center gap-4 mb-5">
                 <div className="relative">
-                  <img 
-                    alt={user.name} 
-                    className="size-11 rounded-2xl object-cover border-2 border-white/10 shadow-sm transition-transform group-hover:scale-105" 
-                    src={user.avatar} 
+                  <img
+                    alt={user.name}
+                    className="size-11 rounded-2xl object-cover border-2 border-white/10 shadow-sm transition-transform group-hover:scale-105"
+                    src={user.avatar}
                   />
                   <span className="absolute -bottom-1 -right-1 size-3 bg-emerald-500 rounded-full border-2 border-slate-950"></span>
                 </div>

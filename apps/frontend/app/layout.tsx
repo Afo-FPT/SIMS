@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import { ToastProvider } from '../lib/toast';
 
 export const metadata: Metadata = {
   title: 'SWSMS-AI | Enterprise Logistics',
@@ -18,7 +19,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
       </head>
       <body className="antialiased selection:bg-primary/10 selection:text-primary bg-slate-50 text-slate-900 overflow-x-hidden">
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

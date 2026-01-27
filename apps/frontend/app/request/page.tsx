@@ -1,21 +1,34 @@
-
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import RequestFormView from '../../components/views/RequestFormView';
 
 export default function RequestPage() {
   const router = useRouter();
-  
-  const handleCancel = () => {
-    router.push('/');
-  };
 
-  const handleComplete = () => {
-    alert('Application Submitted Successfully!');
-    router.push('/');
-  };
+  useEffect(() => {
+    // Check if user is logged in
+    if (typeof window !== 'undefined') {
+      const role = localStorage.getItem('sws_persona');
+      const verified = localStorage.getItem('sws_verified') === 'true';
 
-  return <RequestFormView onCancel={handleCancel} onComplete={handleComplete} />;
+      if (role === 'CUSTOMER' && verified) {
+        // Redirect to customer dashboard if logged in as customer
+        router.push('/customer/dashboard');
+      } else {
+        // Redirect to login for non-authenticated users
+        router.push('/login');
+      }
+    }
+  }, [router]);
+
+  // Show loading state while redirecting
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-slate-600">Redirecting...</p>
+      </div>
+    </div>
+  );
 }
