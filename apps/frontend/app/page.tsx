@@ -1,15 +1,43 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function LandingPage() {
   const router = useRouter();
+  const [isCustomer, setIsCustomer] = useState(false);
+  const [customerName, setCustomerName] = useState('');
+  
+  useEffect(() => {
+    // Check if user is logged in as CUSTOMER
+    if (typeof window !== 'undefined') {
+      const role = localStorage.getItem('sws_persona');
+      const name = localStorage.getItem('sws_name');
+      const verified = localStorage.getItem('sws_verified') === 'true';
+      
+      if (role === 'CUSTOMER' && verified) {
+        setIsCustomer(true);
+        setCustomerName(name || '');
+      }
+    }
+  }, []);
   
   const navigateTo = (path: string) => {
     router.push(path);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('sws_persona');
+    localStorage.removeItem('sws_email');
+    localStorage.removeItem('sws_name');
+    localStorage.removeItem('sws_title');
+    localStorage.removeItem('sws_avatar');
+    localStorage.removeItem('sws_verified');
+    setIsCustomer(false);
+    setCustomerName('');
+    router.push('/');
   };
 
   return (
@@ -37,8 +65,22 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <button onClick={() => navigateTo('/login')} className="hidden sm:block text-sm font-bold text-slate-900 hover:text-primary transition-colors">Sign In</button>
-            <button onClick={() => navigateTo('/request')} className="px-6 py-2.5 bg-slate-900 text-white text-[10px] font-black rounded-xl shadow-xl shadow-slate-900/20 uppercase tracking-widest hover:bg-primary transition-all active:scale-95">Get Started</button>
+            {isCustomer ? (
+              <>
+                <span className="hidden sm:block text-sm font-bold text-slate-900">Welcome, {customerName || 'Customer'}</span>
+                <button onClick={() => navigateTo('/customer/dashboard')} className="px-6 py-2.5 bg-primary text-white text-[10px] font-black rounded-xl shadow-xl shadow-primary/20 uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95">
+                  My Dashboard
+                </button>
+                <button onClick={handleLogout} className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors">
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => navigateTo('/login')} className="hidden sm:block text-sm font-bold text-slate-900 hover:text-primary transition-colors">Sign In</button>
+                <button onClick={() => navigateTo('/request')} className="px-6 py-2.5 bg-slate-900 text-white text-[10px] font-black rounded-xl shadow-xl shadow-slate-900/20 uppercase tracking-widest hover:bg-primary transition-all active:scale-95">Get Started</button>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -60,11 +102,19 @@ export default function LandingPage() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-            <button onClick={() => navigateTo('/request')} className="w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/30 text-lg hover:-translate-y-1 transition-all">Start Scaling Now</button>
-            <button className="w-full sm:w-auto px-10 py-5 bg-white border border-slate-200 text-slate-900 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm">
-              <span className="material-symbols-outlined text-slate-400">play_circle</span>
-              See it in action
-            </button>
+            {isCustomer ? (
+              <button onClick={() => navigateTo('/customer/dashboard')} className="w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/30 text-lg hover:-translate-y-1 transition-all">
+                Go to My Dashboard
+              </button>
+            ) : (
+              <>
+                <button onClick={() => navigateTo('/request')} className="w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/30 text-lg hover:-translate-y-1 transition-all">Start Scaling Now</button>
+                <button className="w-full sm:w-auto px-10 py-5 bg-white border border-slate-200 text-slate-900 font-bold rounded-2xl hover:bg-slate-50 transition-all flex items-center justify-center gap-3 shadow-sm">
+                  <span className="material-symbols-outlined text-slate-400">play_circle</span>
+                  See it in action
+                </button>
+              </>
+            )}
           </div>
         </div>
       </section>
