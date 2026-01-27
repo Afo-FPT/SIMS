@@ -2,16 +2,19 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
 import RequestFormView from '../../components/views/RequestFormView';
 
 export default function RequestPage() {
+  const router = useRouter();
+  
   const handleCancel = () => {
-    window.location.href = '/';
+    router.push('/');
   };
 
   const handleComplete = () => {
     alert('Application Submitted Successfully!');
-    window.location.href = '/';
+    router.push('/');
   };
 
   return <RequestFormView onCancel={handleCancel} onComplete={handleComplete} />;

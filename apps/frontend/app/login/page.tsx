@@ -2,11 +2,15 @@
 'use client';
 
 import React from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const handleLogin = (role: string) => {
     localStorage.setItem('sws_persona', role);
-    window.location.href = '/dashboard';
+    router.push('/dashboard');
   };
 
   const roles = [
@@ -20,9 +24,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 font-display">
       <div className="w-full max-w-xl bg-white rounded-5xl shadow-2xl border border-slate-100 p-12 animate-slide-up">
         <div className="text-center mb-10">
-          <div className="inline-flex bg-primary p-3 rounded-2xl text-white shadow-xl shadow-primary/20 mb-6 cursor-pointer" onClick={() => window.location.href = '/'}>
+          <Link href="/" className="inline-flex bg-primary p-3 rounded-2xl text-white shadow-xl shadow-primary/20 mb-6 cursor-pointer">
             <span className="material-symbols-outlined text-3xl">warehouse</span>
-          </div>
+          </Link>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">SWSMS-AI Access</h1>
           <p className="text-slate-500 font-medium">Select your dedicated workspace</p>
         </div>
@@ -45,9 +49,9 @@ export default function LoginPage() {
           ))}
         </div>
 
-        <button onClick={() => window.location.href = '/'} className="w-full mt-10 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors">
+        <Link href="/" className="block w-full mt-10 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors text-center">
           Return to Website
-        </button>
+        </Link>
       </div>
     </div>
   );

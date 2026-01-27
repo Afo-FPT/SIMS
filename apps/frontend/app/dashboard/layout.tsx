@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '../../components/Sidebar';
 import Header from '../../components/Header';
 import { Persona, User } from '../../types';
@@ -11,6 +12,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [persona, setPersona] = useState<Persona>('STAFF');
   const [loading, setLoading] = useState(true);
 
@@ -19,10 +22,10 @@ export default function DashboardLayout({
     if (savedRole) {
       setPersona(savedRole);
     } else {
-      window.location.href = '/login';
+      router.push('/login');
     }
     setLoading(false);
-  }, []);
+  }, [router]);
 
   const handleNavigate = (view: string) => {
     const pathMap: Record<string, string> = {
@@ -47,16 +50,21 @@ export default function DashboardLayout({
     const targetPath = pathMap[view] !== undefined ? pathMap[view] : view.toLowerCase();
     const target = `/dashboard${targetPath ? '/' + targetPath : ''}`;
     
-    window.history.pushState({}, '', target);
-    window.dispatchEvent(new PopStateEvent('popstate'));
+    router.push(target);
   };
 
   const handleLogout = () => {
     localStorage.removeItem('sws_persona');
-    window.location.href = '/';
+    router.push('/');
   };
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="size-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   const getUserData = (): User => {
     switch(persona) {
@@ -69,8 +77,7 @@ export default function DashboardLayout({
   };
 
   const user = getUserData();
-  const rawPath = window.location.pathname;
-  const pathParts = rawPath.split('/');
+  const pathParts = pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1];
   
   const reverseMap: Record<string, string> = {
