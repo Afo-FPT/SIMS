@@ -138,3 +138,135 @@ export async function createWarehouse(
     updated_at: warehouse.updatedAt
   };
 }
+
+/**
+ * DTO for search and filter parameters
+ */
+export interface SearchFilterWarehouseParams {
+  search?: string;
+  status?: "ACTIVE" | "INACTIVE";
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * DTO for paginated warehouse response
+ */
+export interface PaginatedWarehouseResponse {
+  warehouses: WarehouseResponse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+/**
+ * Search and filter warehouses
+ */
+export async function searchAndFilterWarehouses(
+  params: SearchFilterWarehouseParams
+): Promise<PaginatedWarehouseResponse> {
+  const { search, status, page = 1, limit = 10 } = params;
+
+  // Build query
+  const query: any = {};
+
+  // Search by name or address
+  if (search && search.trim().length > 0) {
+    query.$or = [
+      { name: { $regex: search.trim(), $options: "i" } },
+      { address: { $regex: search.trim(), $options: "i" } }
+    ];
+  }
+
+  // Filter by status
+  if (status) {
+    query.status = status;
+  }
+
+  // Validate pagination
+  const pageNumber = Math.max(1, Number(page) || 1);
+  const limitNumber = Math.min(100, Math.max(1, Number(limit) || 10));
+  const skip = (pageNumber - 1) * limitNumber;
+
+  // Execute query with pagination
+  const [warehouses, total] = await Promise.all([
+    Warehouse.find(query)
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber),
+    Warehouse.countDocuments(query)
+  ]);
+
+  // Map to response DTO
+  const warehousesResponse: WarehouseResponse[] = warehouses.map((warehouse) => ({
+    warehouse_id: warehouse._id.toString(),
+    name: warehouse.name,
+    address: warehouse.address,
+    length: warehouse.length,
+    width: warehouse.width,
+    area: warehouse.area,
+    description: warehouse.description,
+    status: warehouse.status,
+    created_by: warehouse.createdBy.toString(),
+    created_at: warehouse.createdAt,
+    updated_at: warehouse.updatedAt
+  }));
+
+  return {
+    warehouses: warehousesResponse,
+    pagination: {
+      page: pageNumber,
+      limit: limitNumber,
+      total,
+      totalPages: Math.ceil(total / limitNumber)
+    }
+  };
+}
+
+/**
+ * Update warehouse status
+ */
+export async function updateWarehouseStatus(
+  warehouseId: string,
+  status: "ACTIVE" | "INACTIVE"
+): Promise<WarehouseResponse> {
+  // Validate warehouse ID
+  if (!Types.ObjectId.isValid(warehouseId)) {
+    throw new Error("Invalid warehouse ID");
+  }
+
+  // Validate status
+  if (status !== "ACTIVE" && status !== "INACTIVE") {
+    throw new Error("Status must be either ACTIVE or INACTIVE");
+  }
+
+  // Find and update warehouse
+  const warehouse = await Warehouse.findByIdAndUpdate(
+    warehouseId,
+    { status },
+    { new: true, runValidators: true }
+  ).populate("createdBy", "name email");
+
+  if (!warehouse) {
+    throw new Error("Warehouse not found");
+  }
+
+  // Return response DTO
+  return {
+    warehouse_id: warehouse._id.toString(),
+    name: warehouse.name,
+    address: warehouse.address,
+    length: warehouse.length,
+    width: warehouse.width,
+    area: warehouse.area,
+    description: warehouse.description,
+    status: warehouse.status,
+    created_by: warehouse.createdBy.toString(),
+    created_at: warehouse.createdAt,
+    updated_at: warehouse.updatedAt
+  };
+}

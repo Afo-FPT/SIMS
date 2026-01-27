@@ -1,5 +1,10 @@
 import { Request, Response } from "express";
-import { createShelves, CreateShelfRequest } from "../services/shelf.service";
+import {
+  createShelves,
+  CreateShelfRequest,
+  getRackUtilization,
+  updateRackStatus
+} from "../services/shelf.service";
 
 /**
  * Create shelves for a warehouse
@@ -55,6 +60,100 @@ export async function createShelvesController(req: Request, res: Response) {
       error.message.includes("already exist") ||
       error.message.includes("Duplicate") ||
       error.message.includes("Invalid")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    // Handle other errors
+    res.status(500).json({
+      message: error.message || "Internal server error"
+    });
+  }
+}
+
+/**
+ * Get rack utilization by shelf ID
+ * Authorization: Manager, Staff, Admin
+ */
+export async function getRackUtilizationController(
+  req: Request,
+  res: Response
+) {
+  try {
+    // Ensure user is authenticated
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Extract shelf ID from URL params
+    const { id } = req.params;
+
+    // Get rack utilization
+    const utilization = await getRackUtilization(id);
+
+    // Return success response
+    res.json({
+      message: "Rack utilization retrieved successfully",
+      data: utilization
+    });
+  } catch (error: any) {
+    // Handle validation errors
+    if (
+      error.message.includes("Invalid") ||
+      error.message.includes("not found")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    // Handle other errors
+    res.status(500).json({
+      message: error.message || "Internal server error"
+    });
+  }
+}
+
+/**
+ * Update rack (shelf) status
+ * Authorization: Manager only
+ */
+export async function updateRackStatusController(
+  req: Request,
+  res: Response
+) {
+  try {
+    // Ensure user is authenticated
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Extract parameters
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Validate status
+    if (
+      !status ||
+      (status !== "AVAILABLE" && status !== "RENTED" && status !== "MAINTENANCE")
+    ) {
+      return res.status(400).json({
+        message: "Status is required and must be AVAILABLE, RENTED, or MAINTENANCE"
+      });
+    }
+
+    // Update rack status
+    const shelf = await updateRackStatus(id, status);
+
+    // Return success response
+    res.json({
+      message: "Rack status updated successfully",
+      data: shelf
+    });
+  } catch (error: any) {
+    // Handle validation errors
+    if (
+      error.message.includes("Invalid") ||
+      error.message.includes("not found") ||
+      error.message.includes("must be")
     ) {
       return res.status(400).json({ message: error.message });
     }

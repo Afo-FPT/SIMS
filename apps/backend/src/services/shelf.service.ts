@@ -1,5 +1,6 @@
 import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
+import StoredItem from "../models/StoredItem";
 import { Types } from "mongoose";
 
 /**
@@ -204,4 +205,106 @@ export async function createShelves(
   } finally {
     session.endSession();
   }
+}
+
+/**
+ * DTO for rack utilization response
+ */
+export interface RackUtilizationResponse {
+  shelf_id: string;
+  shelf_code: string;
+  warehouse_id: string;
+  max_capacity: number;
+  current_utilization: number;
+  utilization_percentage: number;
+  status: "AVAILABLE" | "RENTED" | "MAINTENANCE";
+  items_count: number;
+}
+
+/**
+ * Get rack utilization by shelf ID
+ */
+export async function getRackUtilization(
+  shelfId: string
+): Promise<RackUtilizationResponse> {
+  // Validate shelf ID
+  if (!Types.ObjectId.isValid(shelfId)) {
+    throw new Error("Invalid shelf ID");
+  }
+
+  // Find shelf
+  const shelf = await Shelf.findById(shelfId).populate("warehouseId", "name");
+  if (!shelf) {
+    throw new Error("Shelf not found");
+  }
+
+  // Calculate current utilization from StoredItem
+  const storedItems = await StoredItem.find({ shelfId: shelf._id });
+  const currentUtilization = storedItems.reduce(
+    (sum, item) => sum + item.quantity,
+    0
+  );
+
+  // Calculate utilization percentage
+  const utilizationPercentage =
+    shelf.maxCapacity > 0
+      ? Math.min(100, (currentUtilization / shelf.maxCapacity) * 100)
+      : 0;
+
+  return {
+    shelf_id: shelf._id.toString(),
+    shelf_code: shelf.shelfCode,
+    warehouse_id: shelf.warehouseId.toString(),
+    max_capacity: shelf.maxCapacity,
+    current_utilization: currentUtilization,
+    utilization_percentage: Math.round(utilizationPercentage * 100) / 100, // Round to 2 decimal places
+    status: shelf.status,
+    items_count: storedItems.length
+  };
+}
+
+/**
+ * Update rack (shelf) status
+ */
+export async function updateRackStatus(
+  shelfId: string,
+  status: "AVAILABLE" | "RENTED" | "MAINTENANCE"
+): Promise<ShelfResponse> {
+  // Validate shelf ID
+  if (!Types.ObjectId.isValid(shelfId)) {
+    throw new Error("Invalid shelf ID");
+  }
+
+  // Validate status
+  if (
+    status !== "AVAILABLE" &&
+    status !== "RENTED" &&
+    status !== "MAINTENANCE"
+  ) {
+    throw new Error("Status must be AVAILABLE, RENTED, or MAINTENANCE");
+  }
+
+  // Find and update shelf
+  const shelf = await Shelf.findByIdAndUpdate(
+    shelfId,
+    { status },
+    { new: true, runValidators: true }
+  );
+
+  if (!shelf) {
+    throw new Error("Shelf not found");
+  }
+
+  // Return response DTO
+  return {
+    shelf_id: shelf._id.toString(),
+    shelf_code: shelf.shelfCode,
+    tier_count: shelf.tierCount,
+    width: shelf.width,
+    depth: shelf.depth,
+    max_capacity: shelf.maxCapacity,
+    status: shelf.status,
+    created_at: shelf.createdAt,
+    updated_at: shelf.updatedAt
+  };
 }

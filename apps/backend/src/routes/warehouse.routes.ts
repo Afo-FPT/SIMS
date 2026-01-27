@@ -1,9 +1,25 @@
 import { Router } from "express";
-import { createWarehouseController } from "../controllers/warehouse.controller";
+import {
+  createWarehouseController,
+  searchAndFilterWarehousesController,
+  updateWarehouseStatusController
+} from "../controllers/warehouse.controller";
 import { createShelvesController } from "../controllers/shelf.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
+
+/**
+ * GET /api/warehouses
+ * Search and filter warehouses
+ * Authorization: Manager, Staff, Admin
+ */
+router.get(
+  "/",
+  authenticate,
+  authorizeRoles("manager", "staff", "admin"),
+  searchAndFilterWarehousesController
+);
 
 /**
  * POST /api/warehouses
@@ -15,6 +31,18 @@ router.post(
   authenticate,
   authorizeRoles("manager"),
   createWarehouseController
+);
+
+/**
+ * PATCH /api/warehouses/:id/status
+ * Update warehouse status
+ * Authorization: Manager only
+ */
+router.patch(
+  "/:id/status",
+  authenticate,
+  authorizeRoles("manager"),
+  updateWarehouseStatusController
 );
 
 /**

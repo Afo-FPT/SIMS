@@ -10,6 +10,8 @@ import inboundRequestRoutes from "./routes/inbound-requests.routes";
 import outboundRequestRoutes from "./routes/outbound-requests.routes";
 import staffStorageRequestRoutes from "./routes/staff-storage-requests.routes";
 import storedItemsRoutes from "./routes/stored-items.routes";
+import shelfRoutes from "./routes/shelf.routes";
+import stockHistoryRoutes from "./routes/stock-history.routes";
 
 
 const app = express();
@@ -26,6 +28,8 @@ app.use("/api/inbound-requests", inboundRequestRoutes);
 app.use("/api/outbound-requests", outboundRequestRoutes);
 app.use("/api/staff", staffStorageRequestRoutes);
 app.use("/api/stored-items", storedItemsRoutes);
+app.use("/api/shelves", shelfRoutes);
+app.use("/api/stock-history", stockHistoryRoutes);
 
 
 
