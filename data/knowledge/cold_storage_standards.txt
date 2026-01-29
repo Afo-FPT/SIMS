@@ -1,0 +1,6 @@
+Tiêu chuẩn kho lạnh (Cold Storage):
+- Nhiệt độ: 0°C đến 5°C cho thực phẩm tươi, -18°C cho đông lạnh.
+- Độ ẩm: 85-95% để tránh khô sản phẩm.
+- Kệ pallet cao, lối đi hẹp, hệ thống làm lạnh liên tục.
+- Khu vực riêng biệt để tránh nhiễm chéo mùi.
+- Tuân thủ HACCP và ISO 22000.

@@ -1,0 +1,6 @@
+Bố trí kho ABC (ABC Analysis Layout):
+- Zone A: 20% sản phẩm chiếm 80% doanh thu → gần khu vực xuất hàng.
+- Zone B: sản phẩm trung bình.
+- Zone C: sản phẩm chậm luân chuyển → xa hơn.
+- Lợi ích: giảm thời gian di chuyển, tăng hiệu quả picking.
+- Thường kết hợp U-shaped hoặc straight flow.

@@ -1,0 +1,11 @@
+{
+    "warehouse_name": "Kho Thực Phẩm Đông Lạnh HCM",
+    "dimensions": {"length_m": 50.0, "width_m": 30.0, "height_m": 10.0},
+    "total_area_sqm": 1500.0,
+    "racks": {"num_racks": 40, "rack_height_m": 8.0, "aisle_width_m": 3.5},
+    "storage_zones": [
+      {"zone_name": "Khu Đông Lạnh", "type": "cold", "temperature_range_c": "-18 đến -20", "humidity_range_percent": "85-90", "main_product_types": ["thịt", "cá", "kem"]}
+    ],
+    "layout_type": "ABC",
+    "recommended_features": ["Hệ thống giám sát nhiệt độ tự động", "Pallet racking", "FIFO management"]
+  }

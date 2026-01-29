@@ -1,0 +1,7 @@
+google-genai
+llama-index
+llama-index-embeddings-gemini
+llama-index-llms-gemini
+streamlit  # Nếu muốn nâng cấp UI sau (hiện tại dùng console)
+requests
+python-dotenv  # Để load env variables (tùy chọn)

@@ -1,0 +1,6 @@
+Tiêu chuẩn kho khô (Dry Storage):
+- Nhiệt độ: 15-25°C.
+- Độ ẩm: dưới 60% để tránh nấm mốc.
+- Sản phẩm chính: hàng tiêu dùng, điện tử, hóa chất khô.
+- Sử dụng kệ đa tầng, FIFO (First In First Out).
+- Tránh ánh nắng trực tiếp.
