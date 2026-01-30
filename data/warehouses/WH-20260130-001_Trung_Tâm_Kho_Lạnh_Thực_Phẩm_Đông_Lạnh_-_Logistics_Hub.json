@@ -1,0 +1,60 @@
+{
+    "warehouse_name": "Trung Tâm Kho Lạnh Thực Phẩm Đông Lạnh - Logistics Hub",
+    "address": "Lô B2-4-1, Khu Công Nghiệp Cát Lái, TP. Thủ Đức, TP.HCM",
+    "dimensions": {
+        "length_m": 50,
+        "width_m": 30,
+        "height_m": 12
+    },
+    "total_area_sqm": 1500,
+    "racks": {
+        "num_racks": 40,
+        "rack_height_m": 10,
+        "aisle_width_m": 2.8
+    },
+    "storage_zones": [
+        {
+            "zone_name": "Zone A - Fast Moving",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -22°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Thịt đông lạnh",
+                "Hải sản xuất khẩu",
+                "Thực phẩm chế biến sẵn"
+            ]
+        },
+        {
+            "zone_name": "Zone B - Medium Moving",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -20°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Rau củ đông lạnh",
+                "Kem và các sản phẩm từ sữa"
+            ]
+        },
+        {
+            "zone_name": "Zone C - Slow Moving",
+            "type": "cold",
+            "temperature_range_c": "-18°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Nguyên liệu thực phẩm đặc thù",
+                "Sản phẩm dự trữ dài hạn"
+            ]
+        }
+    ],
+    "layout_type": "ABC Analysis Layout (U-shaped Flow)",
+    "recommended_features": [
+        "Hệ thống làm lạnh liên tục (Continuous Cooling System)",
+        "Tuân thủ tiêu chuẩn HACCP và ISO 22000",
+        "Hệ thống kệ Pallet cao tầng (High-bay Racking)",
+        "Lối đi hẹp tối ưu diện tích (VNA - Very Narrow Aisle)",
+        "Cửa kho cách nhiệt (Dock Levelers & Insulated Doors)",
+        "Hệ thống quản lý kho WMS hỗ trợ FIFO",
+        "Khu vực đệm (Anteroom) để kiểm soát nhiệt độ khi xuất nhập hàng"
+    ],
+    "id": "WH-20260130-001",
+    "created_at": "2026-01-30T15:32:32.368011"
+}
