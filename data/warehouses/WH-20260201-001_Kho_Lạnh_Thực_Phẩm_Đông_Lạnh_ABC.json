@@ -1,0 +1,64 @@
+{
+    "warehouse_name": "Kho Lạnh Thực Phẩm Đông Lạnh ABC",
+    "address": "Lô C12, Khu Công Nghiệp Hiệp Phước, Huyện Nhà Bè, TP. Hồ Chí Minh",
+    "dimensions": {
+        "length": 50,
+        "width": 30,
+        "height": 12,
+        "unit": "meters"
+    },
+    "total_area_sqm": 1500,
+    "racks": {
+        "total_racks": 40,
+        "rack_type": "Selective Pallet Racking",
+        "levels_per_rack": 4,
+        "pallet_capacity_per_level": 2
+    },
+    "storage_zones": [
+        {
+            "zone_id": "Z1",
+            "name": "Khu vực Thịt bò",
+            "temperature_range": "-18°C to -25°C",
+            "humidity": "85%"
+        },
+        {
+            "zone_id": "Z2",
+            "name": "Khu vực Cá hồi",
+            "temperature_range": "-20°C to -25°C",
+            "humidity": "90%"
+        },
+        {
+            "zone_id": "Z3",
+            "name": "Khu vực Kem tươi",
+            "temperature_range": "-22°C to -28°C",
+            "humidity": "80%"
+        }
+    ],
+    "layout_type": "U-shaped flow",
+    "recommended_features": [
+        "Hệ thống làm lạnh trung tâm công suất lớn",
+        "Cửa kho cách nhiệt tốc độ cao (High-speed doors)",
+        "Hệ thống giám sát nhiệt độ và độ ẩm IoT 24/7",
+        "Sàn kho chống đông (Heated floor sub-layers)",
+        "Hệ thống đèn LED chịu nhiệt độ âm sâu"
+    ],
+    "shelf_arrangement": [
+        {
+            "product_type": "Thịt bò",
+            "shelf_position": "Dãy kệ A1 - A15",
+            "reason": "Sản lượng lớn, ưu tiên vị trí gần khu vực xuất hàng để tối ưu hóa quy trình FIFO"
+        },
+        {
+            "product_type": "Cá hồi",
+            "shelf_position": "Dãy kệ B1 - B15",
+            "reason": "Cần khu vực riêng biệt để tránh ám mùi sang các sản phẩm nhạy cảm như kem"
+        },
+        {
+            "product_type": "Kem tươi",
+            "shelf_position": "Dãy kệ C1 - C10",
+            "reason": "Sản phẩm nhạy cảm nhất với nhiệt độ, đặt tại khu vực sâu nhất của kho để đảm bảo nhiệt độ âm sâu ổn định"
+        }
+    ],
+    "id": "WH-20260201-001",
+    "created_at": "2026-02-01T17:24:32.045095"
+}

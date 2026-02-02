@@ -1,0 +1,72 @@
+{
+    "warehouse_name": "Trung tâm Kho lạnh Thực phẩm Đông lạnh ABC - Chi nhánh Tân Bình",
+    "address": "Lô C12, Khu công nghiệp Tân Bình, Quận Tân Phú, TP.HCM",
+    "dimensions": {
+        "length_m": 50,
+        "width_m": 30,
+        "height_m": 12
+    },
+    "total_area_sqm": 1500,
+    "racks": {
+        "num_racks": 40,
+        "rack_height_m": 10,
+        "aisle_width_m": 3.5
+    },
+    "storage_zones": [
+        {
+            "zone_name": "Zone A - Fast Moving",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -22°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Thịt bò đông lạnh"
+            ]
+        },
+        {
+            "zone_name": "Zone B - Medium Flow",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -22°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Cá hồi đông lạnh"
+            ]
+        },
+        {
+            "zone_name": "Zone C - Specialized Storage",
+            "type": "cold",
+            "temperature_range_c": "-22°C to -25°C",
+            "humidity_range_percent": "90-95%",
+            "main_product_types": [
+                "Kem tươi"
+            ]
+        }
+    ],
+    "layout_type": "U-shaped flow with ABC Analysis",
+    "recommended_features": [
+        "Hệ thống làm lạnh biến tần liên tục",
+        "Cửa dock cách nhiệt Air-lock",
+        "Máy phát điện dự phòng 100% công suất",
+        "Hệ thống quản lý kho WMS tích hợp FIFO",
+        "Cảm biến nhiệt độ và độ ẩm thời gian thực",
+        "Tuân thủ tiêu chuẩn HACCP và ISO 22000"
+    ],
+    "shelf_arrangement": [
+        {
+            "product_type": "Thịt bò",
+            "shelf_position": "near entrance | low shelf",
+            "reason": "Sản phẩm thuộc Zone A có sản lượng lớn và trọng lượng nặng; đặt gần lối ra vào và tầng thấp để tối ưu tốc độ picking và an toàn lao động."
+        },
+        {
+            "product_type": "Cá hồi",
+            "shelf_position": "middle zone | medium shelf",
+            "reason": "Sản phẩm thuộc Zone B với giá trị cao và tốc độ luân chuyển trung bình; đặt tại khu vực giữa kho để đảm bảo ổn định nhiệt độ."
+        },
+        {
+            "product_type": "Kem tươi",
+            "shelf_position": "back of warehouse | high shelf",
+            "reason": "Sản phẩm thuộc Zone C, trọng lượng nhẹ nhưng cực kỳ nhạy cảm với biến thiên nhiệt độ; đặt sâu trong kho và tầng cao để tránh khí nóng xâm nhập khi mở cửa."
+        }
+    ],
+    "id": "WH-20260202-001",
+    "created_at": "2026-02-02T08:30:33.143049"
+}

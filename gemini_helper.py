@@ -37,23 +37,33 @@ Hãy trả lời chuyên nghiệp, chi tiết bằng tiếng Việt."""
         return f"Lỗi khi gọi Gemini: {str(e)}"
 
 
-def generate_warehouse_json(user_input: str, retrieved_docs: list) -> dict:
+def generate_warehouse_json(user_input: str, retrieved_docs: list, product_types: list = None) -> dict:
     """
     Tạo cấu trúc kho với trường mới: address (địa chỉ kho hàng)
     Đảm bảo JSON hoàn chỉnh, không bị cắt ngang, có retry tự động
+    Thêm hỗ trợ product_types để tối ưu shelf_arrangement
     """
     context = "\n\n".join([doc.text for doc in retrieved_docs])
     
+    # Xử lý product_types nếu có
+    product_str = ", ".join(product_types) if product_types and isinstance(product_types, list) else "không xác định"
+    arrangement_instruction = f"""
+    Loại sản phẩm chính: {product_str}
+    Tối ưu sắp xếp sản phẩm lên kệ dựa trên loại sản phẩm (ví dụ ABC: sản phẩm bán nhanh gần lối vào, cao tầng cho hàng nhẹ, thấp tầng cho hàng nặng).
+    Thêm field "shelf_arrangement": [{{ "product_type": str, "shelf_position": "near entrance|back|high shelf|low shelf|special zone|etc", "reason": str }}]
+    """ if product_types else ""
+
     prompt = f"""Dựa trên tiêu chuẩn kho hàng và yêu cầu sau, tạo JSON cấu trúc kho hoàn chỉnh.
 Chỉ output JSON thuần, không giải thích, không code block:
 
 Tiêu chuẩn: {context}
 Yêu cầu: {user_input}
+{arrangement_instruction}
 
 Schema bắt buộc (phải có đầy đủ các trường sau):
 {{
     "warehouse_name": "string",
-    "address": "string",   // Địa chỉ cụ thể của kho, ví dụ: "Khu công nghiệp Tân Bình, TP.HCM" hoặc "123 Lê Lợi, Quận 1, Hà Nội"
+    "address": "string",   // Địa chỉ cụ thể của kho, ví dụ: "Khu công nghiệp Tân Bình, TP.HCM"
     "dimensions": {{"length_m": number, "width_m": number, "height_m": number}},
     "total_area_sqm": number,
     "racks": {{"num_racks": integer, "rack_height_m": number, "aisle_width_m": number}},
@@ -67,7 +77,10 @@ Schema bắt buộc (phải có đầy đủ các trường sau):
         }}
     ],
     "layout_type": "string",
-    "recommended_features": ["string"]
+    "recommended_features": ["string"],
+    "shelf_arrangement": [  // Field mới: Tối ưu sắp xếp sản phẩm lên kệ
+        {{"product_type": "string", "shelf_position": "string", "reason": "string"}}
+    ]
 }}
 """
 
@@ -77,14 +90,12 @@ Schema bắt buộc (phải có đầy đủ các trường sau):
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=2048,  # Tăng để tránh cắt ngang
+                max_output_tokens=2048,
                 response_mime_type="application/json"
             )
         )
 
         json_text = response.text.strip()
-
-        # Clean code block triệt để
         json_text = json_text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
         return json.loads(json_text)
@@ -93,22 +104,23 @@ Schema bắt buộc (phải có đầy đủ các trường sau):
         print(f"Lỗi parse JSON (lần 1): {je}")
         print(f"Raw output từ Gemini:\n{response.text}")
 
-        # Retry lần 2 với prompt ngắn gọn + temperature = 0 để đảm bảo chính xác
+        # Retry lần 2 với prompt ngắn gọn
         try:
-            print("Đang thử lại lần 2 với prompt đơn giản hơn...")
+            print("Đang thử lại lần 2...")
             retry_prompt = f"""Tạo JSON cấu trúc kho cho yêu cầu: {user_input}
-Phải bao gồm trường "address" (địa chỉ kho).
-Chỉ output JSON thuần theo đúng schema sau:
+Phải bao gồm trường "address" và "shelf_arrangement" nếu có loại sản phẩm.
+Chỉ output JSON thuần theo schema sau:
 
 {{
     "warehouse_name": "string",
     "address": "string",
-    "dimensions": {{"length_m": number, "width_m": number, "height_m": number}},
+    "dimensions": {{...}},
     "total_area_sqm": number,
-    "racks": {{"num_racks": integer, "rack_height_m": number, "aisle_width_m": number}},
+    "racks": {{...}},
     "storage_zones": [...],
     "layout_type": "string",
-    "recommended_features": ["string"]
+    "recommended_features": ["string"],
+    "shelf_arrangement": [{{ "product_type": "string", "shelf_position": "string", "reason": "string" }}]
 }}
 """
 
@@ -134,3 +146,57 @@ Chỉ output JSON thuần theo đúng schema sau:
     except Exception as e:
         print(f"Lỗi tạo JSON warehouse: {e}")
         return {}
+
+
+# =====================================================================
+# HÀM MỚI: extract_product_types (đã có từ trước)
+# =====================================================================
+def extract_product_types(user_input: str) -> list:
+    """
+    Extract danh sách loại sản phẩm chính (main_product_types) từ yêu cầu người dùng.
+    Output: list string, ví dụ ["thịt", "cá", "kem"]
+    Nếu không tìm thấy, trả về list rỗng [].
+    """
+    prompt = f"""
+    Từ yêu cầu của người dùng sau:
+    {user_input}
+
+    Hãy extract danh sách các loại sản phẩm chính (main_product_types) mà kho cần lưu trữ.
+    Chỉ output JSON thuần, không giải thích, không code block:
+
+    {{"product_types": ["string", "string", ...]}}
+
+    Nếu không có thông tin loại sản phẩm nào, trả về {{"product_types": []}}.
+    """
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=512,
+                response_mime_type="application/json"
+            )
+        )
+
+        json_text = response.text.strip()
+        json_text = json_text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+        extracted = json.loads(json_text)
+        product_types = extracted.get("product_types", [])
+
+        # Validate
+        if not isinstance(product_types, list):
+            product_types = []
+        product_types = [str(item).strip() for item in product_types if item and str(item).strip()]
+
+        return product_types
+
+    except json.JSONDecodeError as je:
+        print(f"Lỗi parse JSON khi extract product types: {je}")
+        print(f"Raw output từ Gemini:\n{response.text}")
+        return []
+    except Exception as e:
+        print(f"Lỗi khi extract product types: {str(e)}")
+        return []

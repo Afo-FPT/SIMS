@@ -1,0 +1,35 @@
+# Loại bỏ các file/folder không cần copy vào image Docker
+
+# Python cache & build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+venv/
+env/
+
+# Data lớn, persist qua volume nên không copy
+data/
+vector_store/
+
+# Env & secrets (bảo mật)
+.env
+.env.local
+.env.*
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Logs & temp
+*.log
+tmp/
+temp/
+
+# Nếu sau này có frontend
+node_modules/
+.next/

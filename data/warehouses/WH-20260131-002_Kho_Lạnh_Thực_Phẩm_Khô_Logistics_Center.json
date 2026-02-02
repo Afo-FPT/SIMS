@@ -1,0 +1,60 @@
+{
+    "warehouse_name": "Kho Lạnh Thực Phẩm Khô Logistics Center",
+    "address": "Lô C15, Khu Công Nghiệp Hiệp Phước, Nhà Bè, TP.HCM",
+    "dimensions": {
+        "length_m": 50,
+        "width_m": 30,
+        "height_m": 12
+    },
+    "total_area_sqm": 1500,
+    "racks": {
+        "num_racks": 40,
+        "rack_height_m": 9,
+        "aisle_width_m": 2.8
+    },
+    "storage_zones": [
+        {
+            "zone_name": "Zone A - Fast Moving",
+            "type": "cold",
+            "temperature_range_c": "0°C to 5°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Thực phẩm khô cao cấp",
+                "Hạt dinh dưỡng đóng gói",
+                "Gia vị đặc sản"
+            ]
+        },
+        {
+            "zone_name": "Zone B - Medium Moving",
+            "type": "cold",
+            "temperature_range_c": "0°C to 5°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Ngũ cốc",
+                "Thực phẩm khô đóng hộp",
+                "Đồ uống đóng chai"
+            ]
+        },
+        {
+            "zone_name": "Zone C - Slow Moving",
+            "type": "cold",
+            "temperature_range_c": "0°C to 5°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Nguyên liệu khô dự trữ",
+                "Hàng đóng gói số lượng lớn"
+            ]
+        }
+    ],
+    "layout_type": "U-shaped Flow with ABC Analysis",
+    "recommended_features": [
+        "Hệ thống làm lạnh liên tục (Continuous Cooling System)",
+        "Tuân thủ tiêu chuẩn HACCP và ISO 22000",
+        "Quản lý kho theo phương pháp FIFO (First In First Out)",
+        "Kệ pallet cao tối ưu diện tích",
+        "Hệ thống cảm biến nhiệt độ và độ ẩm tự động",
+        "Khu vực đệm (Buffer zone) để tránh thất thoát nhiệt khi xuất nhập hàng"
+    ],
+    "id": "WH-20260131-002",
+    "created_at": "2026-01-31T09:11:44.215784"
+}

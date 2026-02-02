@@ -1,0 +1,58 @@
+{
+    "warehouse_name": "Trung tâm Lưu trữ Đông lạnh Thực phẩm Logistics X",
+    "address": "Lô B2-4, Khu Công Nghiệp Quang Minh, Mê Linh, Hà Nội",
+    "dimensions": {
+        "length_m": 50,
+        "width_m": 30,
+        "height_m": 12
+    },
+    "total_area_sqm": 1500,
+    "racks": {
+        "num_racks": 40,
+        "rack_height_m": 10,
+        "aisle_width_m": 2.8
+    },
+    "storage_zones": [
+        {
+            "zone_name": "Zone A - Fast Moving Frozen",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -22°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Thịt đông lạnh",
+                "Hải sản xuất khẩu"
+            ]
+        },
+        {
+            "zone_name": "Zone B - Medium Moving Frozen",
+            "type": "cold",
+            "temperature_range_c": "-18°C to -20°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Thực phẩm chế biến sẵn",
+                "Kem và sản phẩm sữa"
+            ]
+        },
+        {
+            "zone_name": "Zone C - Slow Moving Frozen",
+            "type": "cold",
+            "temperature_range_c": "-18°C",
+            "humidity_range_percent": "85-95%",
+            "main_product_types": [
+                "Nguyên liệu dự trữ mùa vụ",
+                "Sản phẩm đóng gói số lượng lớn"
+            ]
+        }
+    ],
+    "layout_type": "U-shaped Flow with ABC Analysis",
+    "recommended_features": [
+        "Hệ thống làm lạnh liên tục (Continuous Cooling System)",
+        "Tuân thủ tiêu chuẩn HACCP và ISO 22000",
+        "Hệ thống kệ Pallet cao tối ưu diện tích",
+        "Cửa kho cách nhiệt và màn nhựa ngăn thất thoát nhiệt",
+        "Hệ thống quản lý kho WMS tích hợp FIFO",
+        "Thiết bị cảm biến nhiệt độ và độ ẩm thời gian thực"
+    ],
+    "id": "WH-20260131-001",
+    "created_at": "2026-01-31T09:06:38.513631"
+}

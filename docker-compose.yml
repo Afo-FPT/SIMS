@@ -1,0 +1,19 @@
+version: '3.9'
+
+services:
+  ai-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: warehouse-ai-assistant
+    restart: unless-stopped
+    env_file:
+      - .env                           # Load GEMINI_API_KEY, N8N_WEBHOOK_URL, v.v.
+    volumes:
+      - ./data/warehouses:/app/data/warehouses   # Persist JSON warehouse
+      - ./vector_store:/app/vector_store         # Persist vector index RAG
+    tty: true                              # Cho phép tương tác console
+    stdin_open: true                       # Cho phép gõ lệnh trong container
+    command: ["python", "main.py"]         # Chạy console AI
+
+# Volume (không cần định nghĩa riêng vì dùng bind mount)
