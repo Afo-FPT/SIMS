@@ -59,6 +59,8 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'CONFIG': 'config',
       'SETTINGS': 'settings',
       'HISTORY': 'history',
+      'INBOUND_REQUESTS': 'inbound-requests',
+      'OUTBOUND_REQUESTS': 'outbound-requests',
     };
 
     const targetPath = pathMap[view] || view.toLowerCase();
@@ -132,6 +134,8 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'config': 'CONFIG',
     'settings': 'SETTINGS',
     'history': 'HISTORY',
+    'inbound-requests': 'INBOUND_REQUESTS',
+    'outbound-requests': 'OUTBOUND_REQUESTS',
   };
 
   let activeView = reverseMap[lastPart] || 'DASHBOARD';

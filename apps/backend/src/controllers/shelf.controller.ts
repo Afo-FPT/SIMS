@@ -3,7 +3,8 @@ import {
   createShelves,
   CreateShelfRequest,
   getRackUtilization,
-  updateRackStatus
+  updateRackStatus,
+  listShelvesForContract
 } from "../services/shelf.service";
 
 /**
@@ -161,5 +162,27 @@ export async function updateRackStatusController(
     res.status(500).json({
       message: error.message || "Internal server error"
     });
+  }
+}
+
+/**
+ * GET /api/contracts/:contractId/shelves
+ * List shelves inside zones rented by a contract
+ * Authorization: Customer (own), Manager, Staff
+ */
+export async function listContractShelvesController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { contractId } = req.params;
+    const data = await listShelvesForContract(contractId, req.user.userId, req.user.role);
+    return res.json({ message: "Contract shelves retrieved successfully", data });
+  } catch (error: any) {
+    const msg = error?.message || "Internal server error";
+    if (msg.includes("Invalid") || msg.includes("not found") || msg.includes("Access denied")) {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: msg });
   }
 }

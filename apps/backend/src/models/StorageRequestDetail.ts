@@ -2,9 +2,12 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 
 export interface IStorageRequestDetail extends Document {
   requestId: Types.ObjectId;
-  shelfId: Types.ObjectId;
+  /** For IN requests: shelfId can be assigned later by staff during putaway */
+  shelfId?: Types.ObjectId;
   itemName: string;
   unit: string;
+  /** Optional: quantity per 1 unit/package (for customer request payload) */
+  quantityPerUnit?: number;
   quantityRequested: number;
   quantityActual?: number;
   createdAt: Date;
@@ -21,7 +24,7 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
     shelfId: {
       type: Schema.Types.ObjectId,
       ref: "Shelf",
-      required: true
+      required: false
     },
     itemName: {
       type: String,
@@ -33,6 +36,10 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
       required: true,
       trim: true,
       default: "pcs"
+    },
+    quantityPerUnit: {
+      type: Number,
+      min: 0
     },
     quantityRequested: {
       type: Number,

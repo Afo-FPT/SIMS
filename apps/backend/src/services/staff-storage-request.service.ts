@@ -6,6 +6,8 @@ import StoredItem from "../models/StoredItem";
 export interface StaffCompleteRequestItemDTO {
   requestDetailId: string;
   quantityActual: number;
+  /** For IN requests: staff must choose shelf for putaway */
+  shelfId?: string;
 }
 
 export interface StaffCompleteStorageRequestDTO {
@@ -52,6 +54,26 @@ function validateStaffCompleteDTO(dto: StaffCompleteStorageRequestDTO) {
       throw new Error(`items[${idx}].quantityActual must be >= 0`);
     }
   });
+}
+
+async function validateShelfBelongsToContract(params: {
+  contractId: Types.ObjectId;
+  shelfId: Types.ObjectId;
+  session: any;
+}): Promise<void> {
+  const Contract = (await import("../models/Contract")).default;
+  const Shelf = (await import("../models/Shelf")).default;
+
+  const contract = await Contract.findById(params.contractId).session(params.session);
+  if (!contract) throw new Error("Contract not found");
+
+  const shelf = await Shelf.findById(params.shelfId).session(params.session);
+  if (!shelf) throw new Error("Shelf not found");
+
+  const zoneIds = (contract.rentedZones || []).map((rz: any) => rz.zoneId.toString());
+  if (!zoneIds.includes(shelf.zoneId.toString())) {
+    throw new Error("Shelf does not belong to the contract (shelf's zone is not rented by this contract)");
+  }
 }
 
 async function getTotalStoredQuantity(params: {
@@ -152,6 +174,17 @@ export async function staffCompleteStorageRequest(
 
     const detailById = new Map(details.map((d) => [d._id.toString(), d]));
 
+    // For inbound: staff must provide shelfId for each detail (putaway)
+    if (request.requestType === "IN") {
+      for (const it of dto.items) {
+        const detail = detailById.get(it.requestDetailId);
+        if (!detail) continue;
+        if (!it.shelfId || !Types.ObjectId.isValid(it.shelfId)) {
+          throw new Error("shelfId is required and must be valid for inbound completion");
+        }
+      }
+    }
+
     // Validate all incoming detail ids belong to this request and quantities are within requested
     for (const it of dto.items) {
       const detail = detailById.get(it.requestDetailId);
@@ -189,6 +222,13 @@ export async function staffCompleteStorageRequest(
     for (const it of dto.items) {
       const detail = detailById.get(it.requestDetailId)!;
       const unit = (detail as any).unit || "pcs";
+
+      // For inbound: assign shelfId now (putaway), and validate it belongs to contract's zone(s)
+      if (request.requestType === "IN") {
+        const shelfId = new Types.ObjectId(it.shelfId as string);
+        await validateShelfBelongsToContract({ contractId: request.contractId, shelfId, session });
+        (detail as any).shelfId = shelfId;
+      }
 
       detail.quantityActual = it.quantityActual;
       await detail.save({ session });
@@ -233,7 +273,7 @@ export async function staffCompleteStorageRequest(
       final_status: "DONE_BY_STAFF",
       items: updatedDetails.map((d) => ({
         request_detail_id: d._id.toString(),
-        shelf_id: d.shelfId.toString(),
+        shelf_id: d.shelfId?.toString?.() ?? "",
         item_name: d.itemName,
         unit: (d as any).unit || "pcs",
         quantity_requested: d.quantityRequested,

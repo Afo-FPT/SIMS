@@ -37,12 +37,12 @@ export async function createInboundRequestController(
       });
     }
 
-    // Transform items to DTO format
+    // Transform items to DTO format (customer does NOT choose shelf; staff will putaway later)
     const itemsDTO: InboundRequestItem[] = items.map((item: any) => ({
-      shelfId: item.shelfId,
       itemName: item.itemName,
       quantity: Number(item.quantity),
-      unit: item.unit || "pcs"
+      unit: item.unit || "pcs",
+      quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined
     }));
 
     // Prepare DTO

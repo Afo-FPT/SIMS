@@ -6,6 +6,7 @@ import {
   getContractByIdController,
   updateContractStatusController
 } from "../controllers/contract.controller";
+import { listContractShelvesController } from "../controllers/shelf.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -57,6 +58,17 @@ router.get(
   authenticate,
   authorizeRoles("manager", "customer"),
   getContractByIdController
+);
+
+/**
+ * GET /api/contracts/:contractId/shelves
+ * Authorization: Customer (own), Manager, Staff
+ */
+router.get(
+  "/:contractId/shelves",
+  authenticate,
+  authorizeRoles("customer", "manager", "staff"),
+  listContractShelvesController
 );
 
 /**

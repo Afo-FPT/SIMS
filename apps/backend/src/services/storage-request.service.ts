@@ -8,10 +8,10 @@ import Shelf from "../models/Shelf";
  * DTO for inbound request item
  */
 export interface InboundRequestItem {
-  shelfId: string;
   itemName: string;
   quantity: number;
   unit: string;
+  quantityPerUnit?: number;
 }
 
 /**
@@ -45,9 +45,10 @@ export interface CreateOutboundRequestDTO {
  */
 export interface RequestDetailResponse {
   requestDetailId: string;
-  shelfId: string;
+  shelfId?: string;
   itemName: string;
   unit: string;
+  quantityPerUnit?: number;
   quantityRequested: number;
   quantityActual?: number;
 }
@@ -146,15 +147,6 @@ function validateCreateInboundRequest(data: CreateInboundRequestDTO): void {
 
   // Validate each item
   data.items.forEach((item, index) => {
-    // Validate shelfId
-    if (!item.shelfId || item.shelfId.trim().length === 0) {
-      throw new Error(`Item ${index + 1}: Shelf ID is required`);
-    }
-
-    if (!Types.ObjectId.isValid(item.shelfId)) {
-      throw new Error(`Item ${index + 1}: Invalid shelf ID`);
-    }
-
     // Validate itemName
     if (!item.itemName || item.itemName.trim().length === 0) {
       throw new Error(`Item ${index + 1}: Item name is required`);
@@ -172,6 +164,13 @@ function validateCreateInboundRequest(data: CreateInboundRequestDTO): void {
     // Validate unit
     if (!item.unit || item.unit.trim().length === 0) {
       throw new Error(`Item ${index + 1}: Unit is required`);
+    }
+
+    if (item.quantityPerUnit != null) {
+      const qpu = Number(item.quantityPerUnit);
+      if (isNaN(qpu) || qpu < 0) {
+        throw new Error(`Item ${index + 1}: quantityPerUnit must be a valid number >= 0`);
+      }
     }
   });
 }
@@ -241,17 +240,13 @@ export async function createInboundRequest(
   // Validate contract ownership
   await validateContractOwnership(data.contractId, customerId);
 
-  // Validate all shelves belong to the contract
-  for (const item of data.items) {
-    await validateShelfBelongsToContract(item.shelfId, data.contractId);
-  }
-
   // Start transaction-like operations (create request first, then details)
   const request = await StorageRequest.create({
     contractId: new Types.ObjectId(data.contractId),
     customerId: new Types.ObjectId(customerId),
     requestType: "IN",
-    status: "PENDING"
+    // Bỏ bước manager duyệt: tạo thẳng ở trạng thái APPROVED
+    status: "APPROVED"
   });
 
   // Create request details
@@ -259,9 +254,9 @@ export async function createInboundRequest(
     data.items.map((item) =>
       StorageRequestDetail.create({
         requestId: request._id,
-        shelfId: new Types.ObjectId(item.shelfId),
         itemName: item.itemName.trim(),
         unit: item.unit?.trim() || "pcs",
+        quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined,
         quantityRequested: item.quantity,
         quantityActual: undefined // Not set at creation time
       })
@@ -271,9 +266,10 @@ export async function createInboundRequest(
   // Build response
   const itemsResponse: RequestDetailResponse[] = requestDetails.map((detail) => ({
     requestDetailId: detail._id.toString(),
-    shelfId: detail.shelfId.toString(),
+    shelfId: detail.shelfId ? detail.shelfId.toString() : undefined,
     itemName: detail.itemName,
     unit: (detail as any).unit || "pcs",
+    quantityPerUnit: (detail as any).quantityPerUnit,
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));
@@ -317,7 +313,8 @@ export async function createOutboundRequest(
     contractId: new Types.ObjectId(data.contractId),
     customerId: new Types.ObjectId(customerId),
     requestType: "OUT",
-    status: "PENDING"
+    // Bỏ bước manager duyệt cho outbound: tạo thẳng ở trạng thái APPROVED
+    status: "APPROVED"
   });
 
   // Create request details

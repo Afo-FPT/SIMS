@@ -2,6 +2,7 @@ import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
 import Zone from "../models/Zone";
 import StoredItem from "../models/StoredItem";
+import Contract from "../models/Contract";
 import { Types } from "mongoose";
 
 /**
@@ -35,6 +36,47 @@ export interface ShelfResponse {
   status: "AVAILABLE" | "RENTED" | "MAINTENANCE";
   created_at: Date;
   updated_at: Date;
+}
+
+export interface ShelfViewDTO {
+  shelf_id: string;
+  shelf_code: string;
+  zone_id: string;
+  zone_code?: string;
+  status: "AVAILABLE" | "RENTED" | "MAINTENANCE";
+}
+
+export async function listShelvesForContract(
+  contractId: string,
+  userId: string,
+  userRole: string
+): Promise<ShelfViewDTO[]> {
+  if (!Types.ObjectId.isValid(contractId)) throw new Error("Invalid contract ID");
+  if (!Types.ObjectId.isValid(userId)) throw new Error("Invalid user ID");
+
+  const contract = await Contract.findById(contractId).select("customerId rentedZones");
+  if (!contract) throw new Error("Contract not found");
+
+  if (userRole === "customer" && contract.customerId.toString() !== userId) {
+    throw new Error("Access denied. You can only view your own contract shelves.");
+  }
+
+  const zoneIds = (contract.rentedZones || []).map((rz: any) => rz.zoneId);
+  if (zoneIds.length === 0) return [];
+
+  const shelves = await Shelf.find({ zoneId: { $in: zoneIds } })
+    .populate("zoneId", "zoneCode")
+    .select("_id shelfCode status zoneId")
+    .sort({ shelfCode: 1 })
+    .lean();
+
+  return shelves.map((s: any) => ({
+    shelf_id: s._id.toString(),
+    shelf_code: s.shelfCode,
+    zone_id: s.zoneId?._id?.toString?.() ?? s.zoneId.toString(),
+    zone_code: s.zoneId?.zoneCode,
+    status: s.status
+  }));
 }
 
 async function validateWarehouseExists(warehouseId: string): Promise<void> {

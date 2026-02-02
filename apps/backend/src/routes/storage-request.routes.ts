@@ -3,10 +3,26 @@ import {
   createInboundRequestController,
   createOutboundRequestController
 } from "../controllers/storage-request.controller";
+import {
+  listStorageRequestsController,
+  getStorageRequestByIdController
+} from "../controllers/storage-request-query.controller";
 import { customerConfirmStorageRequestController } from "../controllers/storage-request-confirm.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
+
+/**
+ * GET /api/storage-requests
+ * List storage requests
+ * Authorization: Customer (own), Manager/Staff/Admin (all)
+ */
+router.get(
+  "/",
+  authenticate,
+  authorizeRoles("customer", "manager", "staff", "admin"),
+  listStorageRequestsController
+);
 
 /**
  * POST /api/storage-requests/inbound
@@ -30,6 +46,18 @@ router.post(
   authenticate,
   authorizeRoles("customer"),
   createOutboundRequestController
+);
+
+/**
+ * GET /api/storage-requests/:id
+ * Get request detail
+ * Authorization: Customer (own), Manager/Staff/Admin (any)
+ */
+router.get(
+  "/:id",
+  authenticate,
+  authorizeRoles("customer", "manager", "staff", "admin"),
+  getStorageRequestByIdController
 );
 
 /**

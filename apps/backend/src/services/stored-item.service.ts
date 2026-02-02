@@ -7,6 +7,7 @@ export interface StoredItemViewDTO {
   stored_item_id: string;
   contract_id: string;
   shelf_id: string;
+  shelf_code?: string;
   item_name: string;
   quantity: number;
   unit: string;
@@ -70,12 +71,18 @@ export async function getMyStoredItems(
     query.shelfId = { $in: allowedShelfIds };
   }
 
-  const items = await StoredItem.find(query).sort({ updatedAt: -1 });
+  const items = await StoredItem.find(query)
+    .populate("shelfId", "shelfCode")
+    .sort({ updatedAt: -1 });
 
   return items.map((it) => ({
     stored_item_id: it._id.toString(),
     contract_id: it.contractId.toString(),
-    shelf_id: it.shelfId.toString(),
+    shelf_id: (it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString(),
+    shelf_code:
+      typeof (it as any).shelfId === "object" && "shelfCode" in (it as any).shelfId
+        ? (it as any).shelfId.shelfCode
+        : undefined,
     item_name: it.itemName,
     quantity: it.quantity,
     unit: it.unit,

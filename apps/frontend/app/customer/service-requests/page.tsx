@@ -1,18 +1,18 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import type {
   ServiceRequest,
   ServiceRequestType,
   ServiceRequestItem,
   PickupDelivery,
+  Contract,
 } from '../../../lib/customer-types';
-import {
-  MOCK_SERVICE_REQUESTS,
-  MOCK_INVENTORY,
-  getActiveContractsForCustomer,
-} from '../../../lib/customer-mock';
+import { createInboundStorageRequest, createOutboundStorageRequest } from '../../../lib/storage-requests.api';
+import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { MOCK_SERVICE_REQUESTS, MOCK_INVENTORY } from '../../../lib/customer-mock';
 import { useToastHelpers } from '../../../lib/toast';
+import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
 
 const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
   { id: 'Inbound', label: 'Inbound' },
@@ -22,28 +22,72 @@ const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
 
 export default function ServiceRequestsPage() {
   const toast = useToastHelpers();
-  const activeContracts = useMemo(() => getActiveContractsForCustomer(), []);
-  const hasActive = activeContracts.length > 0;
+  const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
+  const [contractsLoading, setContractsLoading] = useState(true);
+  const [contractsError, setContractsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCustomerContracts()
+      .then((contracts) => {
+        if (!cancelled) {
+          const active = contracts.filter((c) => c.status === 'active');
+          setActiveContracts(active);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setContractsError(err instanceof Error ? err.message : 'Failed to load contracts');
+      })
+      .finally(() => {
+        if (!cancelled) setContractsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const [requests, setRequests] = useState<ServiceRequest[]>(MOCK_SERVICE_REQUESTS);
-  const [contractId, setContractId] = useState(activeContracts[0]?.id ?? '');
+  const [contractId, setContractId] = useState('');
+
+  useEffect(() => {
+    if (activeContracts.length > 0 && !contractId) {
+      setContractId(activeContracts[0].id);
+    }
+  }, [activeContracts, contractId]);
+
+  const hasActive = activeContracts.length > 0;
   const [type, setType] = useState<ServiceRequestType>('Inbound');
   const [preferredDate, setPreferredDate] = useState('');
   const [preferredTime, setPreferredTime] = useState('');
   const [notes, setNotes] = useState('');
   const [inboundRef, setInboundRef] = useState('');
-  const [inboundItems, setInboundItems] = useState<ServiceRequestItem[]>([]);
+  const [inboundItems, setInboundItems] = useState<(ServiceRequestItem & { quantityPerUnit?: number })[]>([]);
   const [expectedArrival, setExpectedArrival] = useState('');
   const [outboundRef, setOutboundRef] = useState('');
-  const [outboundItems, setOutboundItems] = useState<{ sku: string; quantity: number }[]>([]);
+  const [outboundItems, setOutboundItems] = useState<{ storedItemId: string; sku: string; quantity: number }[]>([]);
+  const [storedItemOptions, setStoredItemOptions] = useState<StoredItemOption[]>([]);
   const [pickupDelivery, setPickupDelivery] = useState<PickupDelivery>('Pickup');
   const [destination, setDestination] = useState('');
   const [checkScope, setCheckScope] = useState<'Full inventory' | 'By SKU list'>('Full inventory');
   const [checkSkuList, setCheckSkuList] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Load stored items for outbound when contract or type changes
+  useEffect(() => {
+    if (type !== 'Outbound' || !contractId) return;
+    let cancelled = false;
+    listMyStoredItems(contractId)
+      .then((data) => {
+        if (!cancelled) setStoredItemOptions(data);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load stored items for outbound');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, contractId, toast]);
+
   const addInboundRow = () => {
-    setInboundItems((prev) => [...prev, { sku: '', name: '', quantity: 0, note: '' }]);
+    setInboundItems((prev) => [...prev, { sku: '', name: '', quantity: 0, note: '', quantityPerUnit: undefined }]);
   };
   const removeInboundRow = (i: number) => {
     setInboundItems((prev) => prev.filter((_, j) => j !== i));
@@ -53,14 +97,14 @@ export default function ServiceRequestsPage() {
   };
 
   const addOutboundRow = () => {
-    setOutboundItems((prev) => [...prev, { sku: '', quantity: 0 }]);
+    setOutboundItems((prev) => [...prev, { storedItemId: '', sku: '', quantity: 0 }]);
   };
   const removeOutboundRow = (i: number) => {
     setOutboundItems((prev) => prev.filter((_, j) => j !== i));
   };
   const updateOutboundRow = (
     i: number,
-    f: Partial<{ sku: string; quantity: number }>
+    f: Partial<{ storedItemId: string; sku: string; quantity: number }>
   ) => {
     setOutboundItems((prev) => prev.map((r, j) => (j === i ? { ...r, ...f } : r)));
   };
@@ -80,8 +124,8 @@ export default function ServiceRequestsPage() {
       if (withQty.length === 0) e.items = 'Add at least one item';
     }
     if (type === 'Outbound') {
-      const withQty = outboundItems.filter((r) => r.sku && r.quantity > 0);
-      if (withQty.length === 0) e.items = 'Add at least one item';
+      const withQty = outboundItems.filter((r) => r.storedItemId && r.quantity > 0);
+      if (withQty.length === 0) e.items = 'Add at least one item (select stored item + quantity)';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -105,31 +149,67 @@ export default function ServiceRequestsPage() {
     };
     if (type === 'Inbound') {
       const items = inboundItems.filter((r) => r.sku && r.quantity > 0);
-      setRequests((prev) => [
-        ...prev,
-        {
-          ...base,
-          inboundRef: inboundRef || undefined,
-          items,
-          expectedArrival: expectedArrival || undefined,
-        } as ServiceRequest,
-      ]);
-      toast.success(`${type} request ${base.id} submitted successfully`);
+      createInboundStorageRequest({
+        contractId,
+        items: items.map((it) => ({
+          itemName: it.name || it.sku,
+          quantity: Number(it.quantity),
+          unit: 'pcs',
+          quantityPerUnit: (it as any).quantityPerUnit != null ? Number((it as any).quantityPerUnit) : undefined,
+        })),
+      })
+        .then(() => {
+          toast.success('Inbound request submitted. Manager will approve, then staff will putaway into shelves in your rented zone.');
+          // keep local list for UI
+          setRequests((prev) => [
+            ...prev,
+            {
+              ...base,
+              inboundRef: inboundRef || undefined,
+              items,
+              expectedArrival: expectedArrival || undefined,
+            } as ServiceRequest,
+          ]);
+          setInboundItems([]);
+          setInboundRef('');
+          setExpectedArrival('');
+        })
+        .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit inbound request'));
     } else if (type === 'Outbound') {
       const items = outboundItems
-        .filter((r) => r.sku && r.quantity > 0)
-        .map((r) => ({ sku: r.sku, quantity: r.quantity }));
-      setRequests((prev) => [
-        ...prev,
-        {
-          ...base,
-          outboundRef: outboundRef || undefined,
-          items,
-          pickupDelivery,
-          destination: pickupDelivery === 'Delivery' ? destination : undefined,
-        } as ServiceRequest,
-      ]);
-      toast.success(`${type} request ${base.id} submitted successfully`);
+        .filter((r) => r.storedItemId && r.quantity > 0)
+        .map((r) => {
+          const stored = storedItemOptions.find((s) => s.stored_item_id === r.storedItemId);
+          if (!stored) return null;
+          return {
+            shelfId: stored.shelf_id,
+            itemName: stored.item_name,
+            quantity: r.quantity,
+            unit: stored.unit || 'pcs',
+          } as const;
+        })
+        .filter((x): x is { shelfId: string; itemName: string; quantity: number; unit: string } => !!x);
+
+      createOutboundStorageRequest({
+        contractId,
+        items,
+      })
+        .then(() => {
+          toast.success('Outbound request submitted. Staff will pick from shelves and dispatch.');
+          setRequests((prev) => [
+            ...prev,
+            {
+              ...base,
+              outboundRef: outboundRef || undefined,
+              items: outboundItems,
+              pickupDelivery,
+              destination: pickupDelivery === 'Delivery' ? destination : undefined,
+            } as ServiceRequest,
+          ]);
+          setOutboundItems([]);
+          setOutboundRef('');
+        })
+        .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request'));
     } else {
       setRequests((prev) => [
         ...prev,
@@ -142,6 +222,38 @@ export default function ServiceRequestsPage() {
       toast.success(`${type} request ${base.id} submitted successfully`);
     }
   };
+
+  if (contractsLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-black text-slate-900">Service Requests</h1>
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-8 text-center">
+          <span className="material-symbols-outlined text-4xl text-slate-400 mb-4 animate-pulse">hourglass_empty</span>
+          <p className="text-lg font-bold text-slate-600">Loading contracts…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (contractsError) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-black text-slate-900">Service Requests</h1>
+        <div className="bg-red-50 border border-red-200 rounded-3xl p-8 text-center">
+          <span className="material-symbols-outlined text-4xl text-red-500 mb-4">error</span>
+          <p className="text-lg font-bold text-red-800">Failed to load contracts</p>
+          <p className="text-sm text-red-700 mt-2">{contractsError}</p>
+          <a
+            href="/customer/contracts"
+            className="inline-flex items-center gap-2 mt-4 px-6 py-3 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600"
+          >
+            Go to Contracts
+            <span className="material-symbols-outlined">arrow_forward</span>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   if (!hasActive) {
     return (
@@ -260,6 +372,7 @@ export default function ServiceRequestsPage() {
                       <th className="px-4 py-3 font-bold text-slate-700">SKU</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Name</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty</th>
+                      <th className="px-4 py-3 font-bold text-slate-700">Qty / unit</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Note</th>
                       <th className="px-4 py-3 w-12" />
                     </tr>
@@ -290,6 +403,21 @@ export default function ServiceRequestsPage() {
                               updateInboundRow(i, { quantity: Number(e.target.value) || 0 })
                             }
                             className="w-24 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min={0}
+                            value={(r as any).quantityPerUnit ?? ''}
+                            onChange={(e) =>
+                              updateInboundRow(
+                                i,
+                                { quantityPerUnit: e.target.value === '' ? undefined : Number(e.target.value) } as any
+                              )
+                            }
+                            className="w-28 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="optional"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -361,7 +489,7 @@ export default function ServiceRequestsPage() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-4 py-3 font-bold text-slate-700">SKU</th>
+                      <th className="px-4 py-3 font-bold text-slate-700">Stored item</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty</th>
                       <th className="px-4 py-3 w-12" />
                     </tr>
@@ -370,11 +498,26 @@ export default function ServiceRequestsPage() {
                     {outboundItems.map((r, i) => (
                       <tr key={i} className="border-b border-slate-100">
                         <td className="px-4 py-2">
-                          <input
-                            value={r.sku}
-                            onChange={(e) => updateOutboundRow(i, { sku: e.target.value })}
+                          <select
+                            value={r.storedItemId}
+                            onChange={(e) => {
+                              const storedId = e.target.value;
+                              const stored = storedItemOptions.find((s) => s.stored_item_id === storedId);
+                              updateOutboundRow(i, {
+                                storedItemId: storedId,
+                                sku: stored ? stored.item_name : '',
+                              });
+                            }}
                             className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
-                          />
+                          >
+                            <option value="">Select stored item</option>
+                            {storedItemOptions.map((s) => (
+                              <option key={s.stored_item_id} value={s.stored_item_id}>
+                                {s.item_name}
+                                {s.shelf_code ? ` @ ${s.shelf_code}` : ''}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-4 py-2">
                           <input
