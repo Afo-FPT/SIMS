@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createContractController,
+  requestDraftContractController,
   getContractsController,
   getContractByIdController,
   updateContractStatusController
@@ -19,6 +20,19 @@ router.post(
   authenticate,
   authorizeRoles("manager"),
   createContractController
+);
+
+/**
+ * POST /api/contracts/request-draft
+ * Customer requests draft contract: warehouse + shelf count + date range;
+ * system auto-selects available shelves and creates draft for manager to activate.
+ * Authorization: Customer only
+ */
+router.post(
+  "/request-draft",
+  authenticate,
+  authorizeRoles("customer"),
+  requestDraftContractController
 );
 
 /**

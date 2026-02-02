@@ -12,6 +12,7 @@ import staffStorageRequestRoutes from "./routes/staff-storage-requests.routes";
 import storedItemsRoutes from "./routes/stored-items.routes";
 import shelfRoutes from "./routes/shelf.routes";
 import stockHistoryRoutes from "./routes/stock-history.routes";
+import rentRequestRoutes from "./routes/rent-request.routes";
 
 
 const app = express();
@@ -30,6 +31,7 @@ app.use("/api/staff", staffStorageRequestRoutes);
 app.use("/api/stored-items", storedItemsRoutes);
 app.use("/api/shelves", shelfRoutes);
 app.use("/api/stock-history", stockHistoryRoutes);
+app.use("/api/rent-requests", rentRequestRoutes);
 
 
 

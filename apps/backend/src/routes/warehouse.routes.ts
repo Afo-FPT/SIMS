@@ -5,19 +5,20 @@ import {
   updateWarehouseStatusController
 } from "../controllers/warehouse.controller";
 import { createShelvesController } from "../controllers/shelf.controller";
+import zoneRoutes from "./zone.routes";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router();
 
 /**
  * GET /api/warehouses
- * Search and filter warehouses
- * Authorization: Manager, Staff, Admin
+ * Search and filter warehouses (customer: list for rent request; manager/staff/admin: manage)
+ * Authorization: Customer, Manager, Staff, Admin
  */
 router.get(
   "/",
   authenticate,
-  authorizeRoles("manager", "staff", "admin"),
+  authorizeRoles("customer", "manager", "staff", "admin"),
   searchAndFilterWarehousesController
 );
 
@@ -46,8 +47,13 @@ router.patch(
 );
 
 /**
+ * /api/warehouses/:warehouseId/zones - list/create zones in warehouse
+ */
+router.use("/:warehouseId/zones", zoneRoutes);
+
+/**
  * POST /api/warehouses/:warehouseId/shelves
- * Create shelves for a warehouse (batch creation)
+ * Create shelves in a zone (batch creation)
  * Authorization: Manager only
  */
 router.post(

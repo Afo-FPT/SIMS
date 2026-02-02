@@ -1,47 +1,41 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 /**
- * Interface for rented shelf item in contract
- * Customer rents the entire shelf (all tiers/levels)
+ * Contract rents Zone(s). Each zone contains shelves for detailed location tracking.
  */
-export interface IRentedShelf {
-  shelfId: Types.ObjectId;
-  area?: number; // Optional: total area in m² (all tiers)
-  capacity?: number; // Optional: total capacity in kg or m³ (all tiers)
+export interface IRentedZone {
+  zoneId: Types.ObjectId;
   startDate: Date;
   endDate: Date;
-  price: number; // Price for the entire shelf
+  price: number;
 }
 
 /**
  * Contract interface
+ * Contract is tied to Zone(s), not to individual shelves.
+ * When draft from customer: requestedZoneId/requestedStartDate/requestedEndDate; manager activates to assign zone.
  */
 export interface IContract extends Document {
-  contractCode: string; // Unique contract code
-  customerId: Types.ObjectId; // FK → User (customer)
-  warehouseId: Types.ObjectId; // FK → Warehouse
-  rentedShelves: IRentedShelf[]; // Array of rented shelf levels
+  contractCode: string;
+  customerId: Types.ObjectId;
+  warehouseId: Types.ObjectId;
+  rentedZones: IRentedZone[];
+  /** Customer draft: single zone request; assigned when manager activates */
+  requestedZoneId?: Types.ObjectId;
+  requestedStartDate?: Date;
+  requestedEndDate?: Date;
   status: "draft" | "active" | "expired" | "terminated";
-  createdBy: Types.ObjectId; // FK → User (manager)
+  createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
-const RentedShelfSchema = new Schema<IRentedShelf>(
+const RentedZoneSchema = new Schema<IRentedZone>(
   {
-    shelfId: {
+    zoneId: {
       type: Schema.Types.ObjectId,
-      ref: "Shelf",
+      ref: "Zone",
       required: true
-    },
-    
-    area: {
-      type: Number,
-      min: 0
-    },
-    capacity: {
-      type: Number,
-      min: 0
     },
     startDate: {
       type: Date,
@@ -79,16 +73,19 @@ const ContractSchema = new Schema<IContract>(
       ref: "Warehouse",
       required: true
     },
-    rentedShelves: {
-      type: [RentedShelfSchema],
-      required: true,
+    rentedZones: {
+      type: [RentedZoneSchema],
+      default: [],
       validate: {
-        validator: function (v: IRentedShelf[]) {
-          return v && v.length > 0;
+        validator: function (v: IRentedZone[]) {
+          return Array.isArray(v);
         },
-        message: "At least one rented shelf is required"
+        message: "rentedZones must be an array"
       }
     },
+    requestedZoneId: { type: Schema.Types.ObjectId, ref: "Zone" },
+    requestedStartDate: { type: Date },
+    requestedEndDate: { type: Date },
     status: {
       type: String,
       enum: ["draft", "active", "expired", "terminated"],
@@ -105,13 +102,11 @@ const ContractSchema = new Schema<IContract>(
   }
 );
 
-// Indexes for faster queries
-// Note: contractCode index is already created by unique: true, so we don't need to add it again
 ContractSchema.index({ customerId: 1 });
 ContractSchema.index({ warehouseId: 1 });
 ContractSchema.index({ status: 1 });
 ContractSchema.index({ createdBy: 1 });
-ContractSchema.index({ "rentedShelves.shelfId": 1 });
+ContractSchema.index({ "rentedZones.zoneId": 1 });
 
 const Contract = mongoose.model<IContract>("Contract", ContractSchema);
 

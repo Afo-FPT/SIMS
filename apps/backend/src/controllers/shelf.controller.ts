@@ -19,20 +19,20 @@ export async function createShelvesController(req: Request, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // Extract warehouseId from URL params
     const { warehouseId } = req.params;
+    const { zoneId, shelves } = req.body;
 
-    // Extract request data
-    const { shelves } = req.body;
-
-    // Validate request structure
+    if (!zoneId) {
+      return res.status(400).json({
+        message: "zoneId is required (zone where shelves will be created)"
+      });
+    }
     if (!shelves || !Array.isArray(shelves)) {
       return res.status(400).json({
         message: "Request body must contain 'shelves' array"
       });
     }
 
-    // Prepare DTO
     const createRequest: CreateShelfRequest = {
       shelves: shelves.map((item: any) => ({
         shelfCode: item.shelfCode,
@@ -43,8 +43,7 @@ export async function createShelvesController(req: Request, res: Response) {
       }))
     };
 
-    // Create shelves using service
-    const createdShelves = await createShelves(warehouseId, createRequest);
+    const createdShelves = await createShelves(warehouseId, zoneId, createRequest);
 
     // Return success response
     res.status(201).json({

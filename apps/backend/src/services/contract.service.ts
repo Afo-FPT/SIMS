@@ -1,19 +1,18 @@
-import Contract, { IRentedShelf } from "../models/Contract";
+import Contract, { IRentedZone } from "../models/Contract";
+import Zone from "../models/Zone";
 import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
 import User from "../models/User";
 import { Types } from "mongoose";
 
 /**
- * DTO for creating a contract
+ * DTO for creating a contract (manager: assign zones)
  */
 export interface CreateContractRequest {
   customerId: string;
   warehouseId: string;
-  rentedShelves: {
-    shelfId: string;
-    area?: number;
-    capacity?: number;
+  rentedZones: {
+    zoneId: string;
     startDate: string | Date;
     endDate: string | Date;
     price: number;
@@ -27,296 +26,239 @@ export interface ContractResponse {
   contract_id: string;
   contract_code: string;
   customer_id: string;
+  customer_name?: string;
   warehouse_id: string;
-  rented_shelves: {
-    shelf_id: string;
-    area?: number;
-    capacity?: number;
+  warehouse_name?: string;
+  rented_zones: {
+    zone_id: string;
+    zone_code?: string;
+    zone_name?: string;
     start_date: Date;
     end_date: Date;
     price: number;
   }[];
+  requested_zone_id?: string;
+  requested_start_date?: Date;
+  requested_end_date?: Date;
   status: "draft" | "active" | "expired" | "terminated";
   created_by: string;
   created_at: Date;
   updated_at: Date;
 }
 
-/**
- * Generate unique contract code
- */
+function mapContractToResponse(contract: any): ContractResponse {
+  return {
+    contract_id: contract._id.toString(),
+    contract_code: contract.contractCode,
+    customer_id: contract.customerId.toString(),
+    customer_name: (contract.customerId as any)?.name,
+    warehouse_id: contract.warehouseId.toString(),
+    warehouse_name: (contract.warehouseId as any)?.name,
+    rented_zones: (contract.rentedZones || []).map((rz: any) => ({
+      zone_id: rz.zoneId?.toString?.() ?? rz.zoneId.toString(),
+      zone_code: (rz.zoneId as any)?.zoneCode,
+      zone_name: (rz.zoneId as any)?.name,
+      start_date: rz.startDate,
+      end_date: rz.endDate,
+      price: rz.price
+    })),
+    requested_zone_id: contract.requestedZoneId?.toString?.(),
+    requested_start_date: contract.requestedStartDate,
+    requested_end_date: contract.requestedEndDate,
+    status: contract.status,
+    created_by: contract.createdBy.toString(),
+    created_at: contract.createdAt,
+    updated_at: contract.updatedAt
+  };
+}
+
 function generateContractCode(): string {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).substring(2, 6).toUpperCase();
   return `CT-${timestamp}-${random}`;
 }
 
-/**
- * Validate customer exists and is a customer role
- */
 async function validateCustomer(customerId: string): Promise<void> {
   if (!Types.ObjectId.isValid(customerId)) {
     throw new Error("Invalid customer ID");
   }
-
   const customer = await User.findById(customerId);
   if (!customer) {
     throw new Error("Customer not found");
   }
-
   if (customer.role !== "customer") {
     throw new Error("User must be a customer");
   }
-
   if (!customer.isActive) {
     throw new Error("Customer account is not active");
   }
 }
 
-/**
- * Validate warehouse exists
- */
 async function validateWarehouse(warehouseId: string): Promise<void> {
   if (!Types.ObjectId.isValid(warehouseId)) {
     throw new Error("Invalid warehouse ID");
   }
-
   const warehouse = await Warehouse.findById(warehouseId);
   if (!warehouse) {
     throw new Error("Warehouse not found");
   }
-
   if (warehouse.status !== "ACTIVE") {
     throw new Error("Warehouse is not active");
   }
 }
 
-/**
- * Validate shelf exists and belongs to warehouse
- * Customer rents the entire shelf (all tiers)
- */
-async function validateShelf(
-  shelfId: string,
-  warehouseId: string
-): Promise<void> {
-  if (!Types.ObjectId.isValid(shelfId)) {
-    throw new Error("Invalid shelf ID");
+async function validateZone(zoneId: string, warehouseId: string): Promise<void> {
+  if (!Types.ObjectId.isValid(zoneId)) {
+    throw new Error("Invalid zone ID");
   }
-
-  const shelf = await Shelf.findById(shelfId);
-  if (!shelf) {
-    throw new Error("Shelf not found");
+  const zone = await Zone.findById(zoneId);
+  if (!zone) {
+    throw new Error("Zone not found");
   }
-
-  // Check shelf belongs to warehouse
-  if (shelf.warehouseId.toString() !== warehouseId) {
-    throw new Error("Shelf does not belong to the specified warehouse");
+  if (zone.warehouseId.toString() !== warehouseId) {
+    throw new Error("Zone does not belong to the specified warehouse");
   }
-
-  // Check shelf is available (not already rented or under maintenance)
-  if (shelf.status === "MAINTENANCE") {
-    throw new Error("Shelf is under maintenance");
-  }
-
-  if (shelf.status === "RENTED") {
-    throw new Error("Shelf is already rented");
+  if (zone.status !== "ACTIVE") {
+    throw new Error("Zone is not active");
   }
 }
 
 /**
- * Check if shelf is already rented during the period
- * Customer rents the entire shelf (all tiers), so we check by shelfId only
- * 
- * Logic: Check for overlapping contracts (both draft and active)
- * - Draft contracts also block the shelf during their period
- * - This prevents double booking even if contract is not yet activated
- * 
- * Example:
- * - Contract A (draft): 2027-01-01 to 2027-12-31
- * - Contract B (new): 2026-06-01 to 2026-12-31 → ✅ Allowed (no overlap)
- * - Contract C (new): 2026-12-01 to 2027-06-30 → ❌ Blocked (overlaps with Contract A)
+ * Check if a zone is available for [startDate, endDate].
+ * No overlap with other ACTIVE contracts that rent the same zone (same start/end range).
+ * excludeContractId: when activating a draft, exclude that contract from the check.
  */
-async function checkShelfAvailability(
-  shelfId: string,
+async function checkZoneAvailability(
+  zoneId: string,
   startDate: Date,
   endDate: Date,
   excludeContractId?: string
 ): Promise<{ available: boolean; conflictingContract?: any }> {
+  const zoneOid = new Types.ObjectId(zoneId);
   const query: any = {
-    status: { $in: ["draft", "active"] },
-    "rentedShelves.shelfId": new Types.ObjectId(shelfId),
-    $or: [
-      // Contract starts during existing contract
-      {
-        "rentedShelves.startDate": { $lte: startDate },
-        "rentedShelves.endDate": { $gte: startDate }
-      },
-      // Contract ends during existing contract
-      {
-        "rentedShelves.startDate": { $lte: endDate },
-        "rentedShelves.endDate": { $gte: endDate }
-      },
-      // Contract completely overlaps existing contract
-      {
-        "rentedShelves.startDate": { $gte: startDate },
-        "rentedShelves.endDate": { $lte: endDate }
+    status: "active",
+    rentedZones: {
+      $elemMatch: {
+        zoneId: zoneOid,
+        startDate: { $lte: endDate },
+        endDate: { $gte: startDate }
       }
-    ]
+    }
   };
-
   if (excludeContractId) {
     query._id = { $ne: new Types.ObjectId(excludeContractId) };
   }
-
-  const overlappingContract = await Contract.findOne(query)
+  const overlapping = await Contract.findOne(query)
     .populate("customerId", "name email")
-    .select("contractCode status customerId rentedShelves");
-
+    .select("contractCode status rentedZones");
   return {
-    available: !overlappingContract,
-    conflictingContract: overlappingContract || undefined
+    available: !overlapping,
+    conflictingContract: overlapping || undefined
   };
 }
 
 /**
- * Validate rented shelves
+ * Find first available zone in warehouse for [startDate, endDate] (no overlap with other active contracts).
+ * Returns zone _id or null if none available.
  */
-async function validateRentedShelves(
+async function findAvailableZoneInWarehouse(
   warehouseId: string,
-  rentedShelves: CreateContractRequest["rentedShelves"]
-): Promise<void> {
-  if (!rentedShelves || rentedShelves.length === 0) {
-    throw new Error("At least one rented shelf is required");
+  startDate: Date,
+  endDate: Date,
+  excludeContractId?: string
+): Promise<Types.ObjectId | null> {
+  const zones = await Zone.find({
+    warehouseId: new Types.ObjectId(warehouseId),
+    status: "ACTIVE"
+  })
+    .sort({ zoneCode: 1 })
+    .select("_id")
+    .lean();
+  for (const z of zones) {
+    const check = await checkZoneAvailability(z._id.toString(), startDate, endDate, excludeContractId);
+    if (check.available) {
+      return z._id as Types.ObjectId;
+    }
   }
+  return null;
+}
 
-  // Validate each shelf
-  for (const rentedShelf of rentedShelves) {
-    // Validate shelf exists and belongs to warehouse
-    await validateShelf(rentedShelf.shelfId, warehouseId);
-
-    // Validate dates
-    const startDate = new Date(rentedShelf.startDate);
-    const endDate = new Date(rentedShelf.endDate);
-
-    if (isNaN(startDate.getTime())) {
-      throw new Error("Invalid start date");
+async function validateRentedZones(
+  warehouseId: string,
+  rentedZones: CreateContractRequest["rentedZones"]
+): Promise<void> {
+  if (!rentedZones || rentedZones.length === 0) {
+    throw new Error("At least one rented zone is required");
+  }
+  for (const rz of rentedZones) {
+    await validateZone(rz.zoneId, warehouseId);
+    const startDate = new Date(rz.startDate);
+    const endDate = new Date(rz.endDate);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new Error("Invalid start or end date");
     }
-
-    if (isNaN(endDate.getTime())) {
-      throw new Error("Invalid end date");
-    }
-
     if (startDate >= endDate) {
       throw new Error("End date must be after start date");
     }
-
-    if (startDate < new Date()) {
+    const startDay = new Date(startDate);
+    startDay.setUTCHours(0, 0, 0, 0);
+    const todayDay = new Date();
+    todayDay.setUTCHours(0, 0, 0, 0);
+    if (startDay < todayDay) {
       throw new Error("Start date cannot be in the past");
     }
-
-    // Validate price
-    if (!rentedShelf.price || rentedShelf.price <= 0) {
+    if (!rz.price || rz.price <= 0) {
       throw new Error("Price must be greater than 0");
     }
-
-    // Check availability (entire shelf)
-    // This checks for overlapping contracts (both draft and active)
-    // Even draft contracts block the shelf during their rental period
-    const availabilityCheck = await checkShelfAvailability(
-      rentedShelf.shelfId,
-      startDate,
-      endDate
-    );
-
-    if (!availabilityCheck.available) {
-      const shelf = await Shelf.findById(rentedShelf.shelfId);
-      const conflictingContract = availabilityCheck.conflictingContract;
-      
-      // Find the conflicting rented shelf details
-      const conflictingRentedShelf = conflictingContract?.rentedShelves.find(
-        (rs: any) => rs.shelfId.toString() === rentedShelf.shelfId
-      );
-
-      const contractStatus = conflictingContract?.status === "draft" 
-        ? "draft (chưa kích hoạt)" 
-        : "active";
-      
-      const conflictStartDate = conflictingRentedShelf?.startDate 
-        ? new Date(conflictingRentedShelf.startDate).toLocaleDateString("vi-VN")
-        : "N/A";
-      const conflictEndDate = conflictingRentedShelf?.endDate
-        ? new Date(conflictingRentedShelf.endDate).toLocaleDateString("vi-VN")
-        : "N/A";
-
+    const check = await checkZoneAvailability(rz.zoneId, startDate, endDate);
+    if (!check.available) {
+      const zone = await Zone.findById(rz.zoneId);
+      const conflict = check.conflictingContract;
+      const conflictRz = conflict?.rentedZones?.find((r: any) => r.zoneId.toString() === rz.zoneId);
       throw new Error(
-        `Kệ ${shelf?.shelfCode} đã được thuê trong khoảng thời gian này. ` +
-        `Hợp đồng ${conflictingContract?.contractCode} (${contractStatus}) ` +
-        `đã đặt kệ này từ ${conflictStartDate} đến ${conflictEndDate}. ` +
-        `Vui lòng chọn khoảng thời gian khác hoặc kệ khác.`
+        `Zone ${zone?.zoneCode || rz.zoneId} is already rented in this period by contract ${conflict?.contractCode}. Choose another zone or period.`
       );
     }
   }
 }
 
-/**
- * Create a new contract
- */
 export async function createContract(
   data: CreateContractRequest,
   createdBy: string
 ): Promise<ContractResponse> {
-  // Validate manager
   if (!Types.ObjectId.isValid(createdBy)) {
-    throw new Error("Invalid manager ID");
+    throw new Error("Invalid creator ID");
   }
-
-  // Validate customer
   await validateCustomer(data.customerId);
-
-  // Validate warehouse
   await validateWarehouse(data.warehouseId);
+  await validateRentedZones(data.warehouseId, data.rentedZones);
 
-  // Validate rented shelves
-  await validateRentedShelves(data.warehouseId, data.rentedShelves);
-
-  // Generate contract code
   let contractCode = generateContractCode();
   let attempts = 0;
-  const maxAttempts = 10;
-
-  // Ensure contract code is unique
-  while (attempts < maxAttempts) {
+  while (attempts < 10) {
     const existing = await Contract.findOne({ contractCode });
-    if (!existing) {
-      break;
-    }
+    if (!existing) break;
     contractCode = generateContractCode();
     attempts++;
   }
-
-  if (attempts >= maxAttempts) {
+  if (attempts >= 10) {
     throw new Error("Failed to generate unique contract code");
   }
 
-  // Use transaction for atomic creation
   const session = await Contract.startSession();
   session.startTransaction();
-
   try {
-    // Create contract
-    const contract = await Contract.create(
+    const [created] = await Contract.create(
       [
         {
           contractCode,
           customerId: new Types.ObjectId(data.customerId),
           warehouseId: new Types.ObjectId(data.warehouseId),
-          rentedShelves: data.rentedShelves.map((rs) => ({
-            shelfId: new Types.ObjectId(rs.shelfId),
-            area: rs.area,
-            capacity: rs.capacity,
-            startDate: new Date(rs.startDate),
-            endDate: new Date(rs.endDate),
-            price: rs.price
+          rentedZones: data.rentedZones.map((rz) => ({
+            zoneId: new Types.ObjectId(rz.zoneId),
+            startDate: new Date(rz.startDate),
+            endDate: new Date(rz.endDate),
+            price: rz.price
           })),
           status: "draft",
           createdBy: new Types.ObjectId(createdBy)
@@ -324,83 +266,148 @@ export async function createContract(
       ],
       { session }
     );
-
     await session.commitTransaction();
 
-    const createdContract = contract[0];
-
-    // Return response DTO
-    return {
-      contract_id: createdContract._id.toString(),
-      contract_code: createdContract.contractCode,
-      customer_id: createdContract.customerId.toString(),
-      warehouse_id: createdContract.warehouseId.toString(),
-      rented_shelves: createdContract.rentedShelves.map((rs) => ({
-        shelf_id: rs.shelfId.toString(),
-        area: rs.area,
-        capacity: rs.capacity,
-        start_date: rs.startDate,
-        end_date: rs.endDate,
-        price: rs.price
-      })),
-      status: createdContract.status,
-      created_by: createdContract.createdBy.toString(),
-      created_at: createdContract.createdAt,
-      updated_at: createdContract.updatedAt
-    };
-  } catch (error: any) {
+    const populated = await Contract.findById(created._id)
+      .populate("customerId", "name email")
+      .populate("warehouseId", "name address")
+      .populate("createdBy", "name email")
+      .populate("rentedZones.zoneId", "zoneCode name");
+    return mapContractToResponse(populated!);
+  } catch (e: any) {
     await session.abortTransaction();
-    throw error;
+    throw e;
   } finally {
     session.endSession();
   }
 }
 
+const DEFAULT_PRICE_PER_ZONE = 100000;
+
 /**
- * Get contracts with role-based filtering
+ * DTO for customer request-draft: warehouse + date range. Zone is auto-assigned when manager approves.
  */
+export interface RequestDraftContractRequest {
+  warehouseId: string;
+  startDate: string | Date;
+  endDate: string | Date;
+  pricePerZone?: number;
+}
+
+export async function createDraftContractFromRequest(
+  data: RequestDraftContractRequest,
+  customerId: string
+): Promise<ContractResponse> {
+  await validateCustomer(customerId);
+  await validateWarehouse(data.warehouseId);
+
+  const startDate = new Date(data.startDate);
+  const endDate = new Date(data.endDate);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new Error("Invalid start or end date");
+  }
+  if (startDate >= endDate) {
+    throw new Error("End date must be after start date");
+  }
+  const startDay = new Date(startDate);
+  startDay.setUTCHours(0, 0, 0, 0);
+  const todayDay = new Date();
+  todayDay.setUTCHours(0, 0, 0, 0);
+  if (startDay < todayDay) {
+    throw new Error("Start date cannot be in the past");
+  }
+
+  return createDraftContractWithRequestOnly(data, customerId);
+}
+
+async function createDraftContractWithRequestOnly(
+  data: RequestDraftContractRequest,
+  customerId: string
+): Promise<ContractResponse> {
+  await validateCustomer(customerId);
+  await validateWarehouse(data.warehouseId);
+
+  const startDate = new Date(data.startDate);
+  const endDate = new Date(data.endDate);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new Error("Invalid start or end date");
+  }
+  if (startDate >= endDate) {
+    throw new Error("End date must be after start date");
+  }
+  const startDay = new Date(startDate);
+  startDay.setUTCHours(0, 0, 0, 0);
+  const todayDay = new Date();
+  todayDay.setUTCHours(0, 0, 0, 0);
+  if (startDay < todayDay) {
+    throw new Error("Start date cannot be in the past");
+  }
+
+  let contractCode = generateContractCode();
+  let attempts = 0;
+  while (attempts < 10) {
+    const existing = await Contract.findOne({ contractCode });
+    if (!existing) break;
+    contractCode = generateContractCode();
+    attempts++;
+  }
+  if (attempts >= 10) {
+    throw new Error("Failed to generate unique contract code");
+  }
+
+  const session = await Contract.startSession();
+  session.startTransaction();
+  try {
+    const [contract] = await Contract.create(
+      [
+        {
+          contractCode,
+          customerId: new Types.ObjectId(customerId),
+          warehouseId: new Types.ObjectId(data.warehouseId),
+          rentedZones: [],
+          requestedZoneId: undefined,
+          requestedStartDate: startDate,
+          requestedEndDate: endDate,
+          status: "draft",
+          createdBy: new Types.ObjectId(customerId)
+        }
+      ],
+      { session }
+    );
+    await session.commitTransaction();
+
+    const populated = await Contract.findById(contract._id)
+      .populate("customerId", "name email")
+      .populate("warehouseId", "name address")
+      .populate("createdBy", "name email")
+      .populate("requestedZoneId", "zoneCode name");
+    return mapContractToResponse(populated!);
+  } catch (e: any) {
+    await session.abortTransaction();
+    throw e;
+  } finally {
+    session.endSession();
+  }
+}
+
 export async function getContracts(
   userId: string,
   userRole: string
 ): Promise<ContractResponse[]> {
   const query: any = {};
-
-  // Customer can only see their own contracts
   if (userRole === "customer") {
     query.customerId = new Types.ObjectId(userId);
   }
-  // Manager and Admin can see all contracts
-
   const contracts = await Contract.find(query)
     .populate("customerId", "name email")
     .populate("warehouseId", "name address")
     .populate("createdBy", "name email")
-    .populate("rentedShelves.shelfId", "shelfCode tierCount width depth maxCapacity")
+    .populate("rentedZones.zoneId", "zoneCode name")
+    .populate("requestedZoneId", "zoneCode name")
     .sort({ createdAt: -1 });
-
-  return contracts.map((contract) => ({
-    contract_id: contract._id.toString(),
-    contract_code: contract.contractCode,
-    customer_id: contract.customerId.toString(),
-    warehouse_id: contract.warehouseId.toString(),
-    rented_shelves: contract.rentedShelves.map((rs) => ({
-      shelf_id: rs.shelfId.toString(),
-      area: rs.area,
-      capacity: rs.capacity,
-      start_date: rs.startDate,
-      end_date: rs.endDate,
-      price: rs.price
-    })),
-    status: contract.status,
-    created_by: contract.createdBy.toString(),
-    created_at: contract.createdAt,
-    updated_at: contract.updatedAt
-  }));
+  return contracts.map((c) => mapContractToResponse(c));
 }
 
-/**
- * Get contract by ID
- */
 export async function getContractById(
   contractId: string,
   userId: string,
@@ -409,45 +416,21 @@ export async function getContractById(
   if (!Types.ObjectId.isValid(contractId)) {
     throw new Error("Invalid contract ID");
   }
-
   const contract = await Contract.findById(contractId)
     .populate("customerId", "name email")
     .populate("warehouseId", "name address")
     .populate("createdBy", "name email")
-    .populate("rentedShelves.shelfId", "shelfCode tierCount width depth maxCapacity");
-
+    .populate("rentedZones.zoneId", "zoneCode name")
+    .populate("requestedZoneId", "zoneCode name");
   if (!contract) {
     throw new Error("Contract not found");
   }
-
-  // Customer can only view their own contracts
   if (userRole === "customer" && contract.customerId.toString() !== userId) {
     throw new Error("Access denied. You can only view your own contracts.");
   }
-
-  return {
-    contract_id: contract._id.toString(),
-    contract_code: contract.contractCode,
-    customer_id: contract.customerId.toString(),
-    warehouse_id: contract.warehouseId.toString(),
-    rented_shelves: contract.rentedShelves.map((rs) => ({
-      shelf_id: rs.shelfId.toString(),
-      area: rs.area,
-      capacity: rs.capacity,
-      start_date: rs.startDate,
-      end_date: rs.endDate,
-      price: rs.price
-    })),
-    status: contract.status,
-    created_by: contract.createdBy.toString(),
-    created_at: contract.createdAt,
-    updated_at: contract.updatedAt
-  };
+  return mapContractToResponse(contract);
 }
 
-/**
- * Update contract status
- */
 export async function updateContractStatus(
   contractId: string,
   newStatus: "draft" | "active" | "expired" | "terminated",
@@ -457,63 +440,92 @@ export async function updateContractStatus(
   if (!Types.ObjectId.isValid(contractId)) {
     throw new Error("Invalid contract ID");
   }
-
-  // Only manager can update contract status
   if (userRole !== "manager") {
     throw new Error("Only managers can update contract status");
   }
-
   const contract = await Contract.findById(contractId);
   if (!contract) {
     throw new Error("Contract not found");
   }
 
-  // Validate status transition
   const validTransitions: Record<string, string[]> = {
     draft: ["active", "terminated"],
     active: ["expired", "terminated"],
     expired: ["terminated"],
     terminated: []
   };
-
   if (!validTransitions[contract.status].includes(newStatus)) {
-    throw new Error(
-      `Invalid status transition from ${contract.status} to ${newStatus}`
-    );
+    throw new Error(`Invalid status transition from ${contract.status} to ${newStatus}`);
   }
 
-  // Use transaction for atomic update
   const session = await Contract.startSession();
   session.startTransaction();
 
   try {
-    // Update contract status
+    // When manager approves (draft -> active): auto-assign a zone (requested or first available in warehouse)
+    if (newStatus === "active" && (!contract.rentedZones || contract.rentedZones.length === 0)) {
+      const reqStart = contract.requestedStartDate;
+      const reqEnd = contract.requestedEndDate;
+      if (!reqStart || !reqEnd) {
+        throw new Error("Contract has no requested period; cannot activate.");
+      }
+      const startDate = new Date(reqStart);
+      const endDate = new Date(reqEnd);
+      if (startDate >= endDate) {
+        throw new Error("Requested start date must be before end date.");
+      }
+      const warehouseId = contract.warehouseId.toString();
+      let zoneIdToAssign: Types.ObjectId | null = null;
+      if (contract.requestedZoneId) {
+        const check = await checkZoneAvailability(contract.requestedZoneId.toString(), startDate, endDate, contractId);
+        if (check.available) {
+          zoneIdToAssign = contract.requestedZoneId;
+        } else {
+          const conflictCode = check.conflictingContract?.contractCode || "another contract";
+          throw new Error(
+            `Requested zone is not available: the period overlaps with active contract ${conflictCode}. Choose another period or approve without pre-selected zone.`
+          );
+        }
+      } else {
+        zoneIdToAssign = await findAvailableZoneInWarehouse(warehouseId, startDate, endDate, contractId);
+        if (!zoneIdToAssign) {
+          throw new Error(
+            "No zone available in this warehouse for the requested period (all zones overlap with other active contracts). Try a different period or warehouse."
+          );
+        }
+      }
+      const price = DEFAULT_PRICE_PER_ZONE;
+      contract.rentedZones = [
+        {
+          zoneId: zoneIdToAssign,
+          startDate,
+          endDate,
+          price
+        }
+      ];
+    }
+
     contract.status = newStatus;
     await contract.save({ session });
 
-    // Update shelf status based on contract status
     if (newStatus === "active") {
-      // Mark shelves as RENTED
-      for (const rentedShelf of contract.rentedShelves) {
-        await Shelf.findByIdAndUpdate(
-          rentedShelf.shelfId,
+      for (const rz of contract.rentedZones) {
+        await Shelf.updateMany(
+          { zoneId: rz.zoneId },
           { status: "RENTED" },
           { session }
         );
       }
     } else if (newStatus === "expired" || newStatus === "terminated") {
-      // Check if shelf is still rented by other active contracts
-      for (const rentedShelf of contract.rentedShelves) {
-        const otherActiveContracts = await Contract.countDocuments({
+      for (const rz of contract.rentedZones) {
+        const otherActive = await Contract.countDocuments({
           _id: { $ne: contract._id },
           status: "active",
-          "rentedShelves.shelfId": rentedShelf.shelfId
+          "rentedZones.zoneId": rz.zoneId
         });
-
-        // Only mark as AVAILABLE if no other active contract uses this shelf
-        if (otherActiveContracts === 0) {
-          await Shelf.findByIdAndUpdate(
-            rentedShelf.shelfId,
+        if (otherActive === 0) {
+          await Shelf.updateMany(
+            { zoneId: rz.zoneId },
             { status: "AVAILABLE" },
             { session }
           );
@@ -523,35 +535,16 @@ export async function updateContractStatus(
 
     await session.commitTransaction();
 
-    // Reload contract with populated fields
-    const updatedContract = await Contract.findById(contractId)
+    const updated = await Contract.findById(contractId)
       .populate("customerId", "name email")
       .populate("warehouseId", "name address")
       .populate("createdBy", "name email")
-      .populate("rentedShelves.shelfId", "shelfCode tierCount width depth maxCapacity");
-
-    return {
-      contract_id: updatedContract!._id.toString(),
-      contract_code: updatedContract!.contractCode,
-      customer_id: updatedContract!.customerId.toString(),
-      warehouse_id: updatedContract!.warehouseId.toString(),
-      rented_shelves: updatedContract!.rentedShelves.map((rs) => ({
-        shelf_id: rs.shelfId.toString(),
-        
-        area: rs.area,
-        capacity: rs.capacity,
-        start_date: rs.startDate,
-        end_date: rs.endDate,
-        price: rs.price
-      })),
-      status: updatedContract!.status,
-      created_by: updatedContract!.createdBy.toString(),
-      created_at: updatedContract!.createdAt,
-      updated_at: updatedContract!.updatedAt
-    };
-  } catch (error: any) {
+      .populate("rentedZones.zoneId", "zoneCode name")
+      .populate("requestedZoneId", "zoneCode name");
+    return mapContractToResponse(updated!);
+  } catch (e: any) {
     await session.abortTransaction();
-    throw error;
+    throw e;
   } finally {
     session.endSession();
   }

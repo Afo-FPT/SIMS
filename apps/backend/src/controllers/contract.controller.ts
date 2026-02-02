@@ -1,10 +1,12 @@
 import { Request, Response } from "express";
 import {
   createContract,
+  createDraftContractFromRequest,
   getContracts,
   getContractById,
   updateContractStatus,
-  CreateContractRequest
+  CreateContractRequest,
+  RequestDraftContractRequest
 } from "../services/contract.service";
 
 /**
@@ -20,32 +22,28 @@ export async function createContractController(req: Request, res: Response) {
     }
 
     // Extract request data
-    const { customerId, warehouseId, rentedShelves } = req.body;
+    const { customerId, warehouseId, rentedZones } = req.body;
 
-    // Validate request structure
-    if (!customerId || !warehouseId || !rentedShelves) {
+    if (!customerId || !warehouseId || !rentedZones) {
       return res.status(400).json({
-        message: "Missing required fields: customerId, warehouseId, rentedShelves"
+        message: "Missing required fields: customerId, warehouseId, rentedZones"
       });
     }
 
-    if (!Array.isArray(rentedShelves) || rentedShelves.length === 0) {
+    if (!Array.isArray(rentedZones) || rentedZones.length === 0) {
       return res.status(400).json({
-        message: "rentedShelves must be a non-empty array"
+        message: "rentedZones must be a non-empty array"
       });
     }
 
-    // Prepare DTO
     const createRequest: CreateContractRequest = {
       customerId,
       warehouseId,
-      rentedShelves: rentedShelves.map((rs: any) => ({
-        shelfId: rs.shelfId,
-        area: rs.area ? Number(rs.area) : undefined,
-        capacity: rs.capacity ? Number(rs.capacity) : undefined,
-        startDate: rs.startDate,
-        endDate: rs.endDate,
-        price: Number(rs.price)
+      rentedZones: rentedZones.map((rz: any) => ({
+        zoneId: rz.zoneId,
+        startDate: rz.startDate,
+        endDate: rz.endDate,
+        price: Number(rz.price)
       }))
     };
 
@@ -75,6 +73,57 @@ export async function createContractController(req: Request, res: Response) {
     }
 
     // Handle other errors
+    res.status(500).json({
+      message: error.message || "Internal server error"
+    });
+  }
+}
+
+/**
+ * Customer request draft contract: choose warehouse + date range.
+ * Zone is auto-assigned when manager approves (no overlap with other contracts).
+ * POST /api/contracts/request-draft
+ * Authorization: Customer only
+ */
+export async function requestDraftContractController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { warehouseId, startDate, endDate, pricePerZone } = req.body;
+
+    if (!warehouseId || !startDate || !endDate) {
+      return res.status(400).json({
+        message: "Missing required fields: warehouseId, startDate, endDate"
+      });
+    }
+
+    const payload: RequestDraftContractRequest = {
+      warehouseId,
+      startDate,
+      endDate,
+      pricePerZone: pricePerZone != null ? Number(pricePerZone) : undefined
+    };
+
+    const customerId = req.user.userId;
+    const contract = await createDraftContractFromRequest(payload, customerId);
+
+    res.status(201).json({
+      message: "Draft contract created; manager will approve to assign a zone automatically.",
+      data: contract
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("required") ||
+      error.message.includes("not found") ||
+      error.message.includes("Invalid") ||
+      error.message.includes("must be") ||
+      error.message.includes("cannot be") ||
+      error.message.includes("Not enough")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({
       message: error.message || "Internal server error"
     });

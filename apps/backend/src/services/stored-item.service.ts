@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import Contract from "../models/Contract";
+import Shelf from "../models/Shelf";
 import StoredItem from "../models/StoredItem";
 
 export interface StoredItemViewDTO {
@@ -45,15 +46,21 @@ export async function getMyStoredItems(
   if (contractId) {
     const contract = await validateContractOwnership(contractId, customerId);
     contractIds = [contract._id];
-    allowedShelfIds = contract.rentedShelves.map((rs) => rs.shelfId);
+    const zoneIds = (contract.rentedZones || []).map((rz) => rz.zoneId);
+    if (zoneIds.length > 0) {
+      const shelves = await Shelf.find({ zoneId: { $in: zoneIds } }).select("_id");
+      allowedShelfIds = shelves.map((s) => s._id);
+    }
   } else {
     const contracts = await Contract.find({ customerId: new Types.ObjectId(customerId) }).select(
-      "_id rentedShelves"
+      "_id rentedZones"
     );
     contractIds = contracts.map((c) => c._id);
-    // If querying across all contracts, we don't strictly need shelf filtering
-    // because StoredItem is already scoped by contractId; but we can still filter by rented shelves for safety.
-    allowedShelfIds = contracts.flatMap((c) => c.rentedShelves.map((rs) => rs.shelfId));
+    const zoneIds = contracts.flatMap((c) => (c.rentedZones || []).map((rz) => rz.zoneId));
+    if (zoneIds.length > 0) {
+      const shelves = await Shelf.find({ zoneId: { $in: zoneIds } }).select("_id");
+      allowedShelfIds = shelves.map((s) => s._id);
+    }
   }
 
   if (contractIds.length === 0) return [];

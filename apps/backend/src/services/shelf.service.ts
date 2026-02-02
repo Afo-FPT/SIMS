@@ -1,5 +1,6 @@
 import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
+import Zone from "../models/Zone";
 import StoredItem from "../models/StoredItem";
 import { Types } from "mongoose";
 
@@ -36,17 +37,26 @@ export interface ShelfResponse {
   updated_at: Date;
 }
 
-/**
- * Validate warehouse exists
- */
 async function validateWarehouseExists(warehouseId: string): Promise<void> {
   if (!Types.ObjectId.isValid(warehouseId)) {
     throw new Error("Invalid warehouse ID");
   }
-
   const warehouse = await Warehouse.findById(warehouseId);
   if (!warehouse) {
     throw new Error("Warehouse not found");
+  }
+}
+
+async function validateZoneExists(zoneId: string, warehouseId: string): Promise<void> {
+  if (!Types.ObjectId.isValid(zoneId)) {
+    throw new Error("Invalid zone ID");
+  }
+  const zone = await Zone.findById(zoneId);
+  if (!zone) {
+    throw new Error("Zone not found");
+  }
+  if (zone.warehouseId.toString() !== warehouseId) {
+    throw new Error("Zone does not belong to this warehouse");
   }
 }
 
@@ -111,55 +121,47 @@ function validateUniqueShelfCodesInRequest(shelves: CreateShelfItem[]): void {
 }
 
 /**
- * Check if shelf codes already exist in the warehouse
+ * Check if shelf codes already exist in the zone
  */
 async function validateShelfCodesNotExist(
-  warehouseId: string,
+  zoneId: string,
   shelfCodes: string[]
 ): Promise<void> {
   const existingShelves = await Shelf.find({
-    warehouseId: new Types.ObjectId(warehouseId),
+    zoneId: new Types.ObjectId(zoneId),
     shelfCode: { $in: shelfCodes.map(code => code.trim()) }
   });
 
   if (existingShelves.length > 0) {
     const existingCodes = existingShelves.map(s => s.shelfCode).join(", ");
     throw new Error(
-      `Shelf code(s) already exist in this warehouse: ${existingCodes}`
+      `Shelf code(s) already exist in this zone: ${existingCodes}`
     );
   }
 }
 
 /**
- * Create shelves for a warehouse (batch creation with transaction)
+ * Create shelves in a zone (batch creation with transaction)
  */
 export async function createShelves(
   warehouseId: string,
+  zoneId: string,
   data: CreateShelfRequest
 ): Promise<ShelfResponse[]> {
-  // Validate warehouse exists
   await validateWarehouseExists(warehouseId);
+  await validateZoneExists(zoneId, warehouseId);
 
-  // Validate request has shelves
   if (!data.shelves || !Array.isArray(data.shelves) || data.shelves.length === 0) {
     throw new Error("At least one shelf is required");
   }
 
-  // Validate each shelf item
   data.shelves.forEach((item, index) => {
     validateShelfItem(item, index);
   });
-
-  // Validate shelf codes are unique within the request
   validateUniqueShelfCodesInRequest(data.shelves);
-
-  // Prepare shelf codes for duplicate check
   const shelfCodes = data.shelves.map(s => s.shelfCode.trim());
+  await validateShelfCodesNotExist(zoneId, shelfCodes);
 
-  // Check if any shelf codes already exist in the warehouse
-  await validateShelfCodesNotExist(warehouseId, shelfCodes);
-
-  // Use transaction for atomic batch creation
   const session = await Shelf.startSession();
   session.startTransaction();
 
@@ -167,6 +169,7 @@ export async function createShelves(
     const createdShelves = await Shelf.insertMany(
       data.shelves.map(item => ({
         warehouseId: new Types.ObjectId(warehouseId),
+        zoneId: new Types.ObjectId(zoneId),
         shelfCode: item.shelfCode.trim(),
         tierCount: item.tierCount,
         width: item.width,

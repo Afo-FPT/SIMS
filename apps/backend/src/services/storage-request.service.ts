@@ -200,32 +200,25 @@ async function validateContractOwnership(
 }
 
 /**
- * Validate shelf belongs to contract
- * Contract has rentedShelves array, so we check if shelfId exists in that array
+ * Validate shelf belongs to contract (shelf's zone must be in contract's rentedZones)
  */
 async function validateShelfBelongsToContract(
   shelfId: string,
   contractId: string
 ): Promise<void> {
   const contract = await Contract.findById(contractId);
-  
   if (!contract) {
     throw new Error("Contract not found");
   }
 
   const shelf = await Shelf.findById(shelfId);
-  
   if (!shelf) {
     throw new Error("Shelf not found");
   }
 
-  // Check if shelfId exists in contract's rentedShelves array
-  const shelfExistsInContract = contract.rentedShelves.some(
-    (rentedShelf) => rentedShelf.shelfId.toString() === shelfId
-  );
-
-  if (!shelfExistsInContract) {
-    throw new Error("Shelf does not belong to the contract");
+  const zoneIds = (contract.rentedZones || []).map((rz) => rz.zoneId.toString());
+  if (!zoneIds.includes(shelf.zoneId.toString())) {
+    throw new Error("Shelf does not belong to the contract (shelf's zone is not rented by this contract)");
   }
 }
 
