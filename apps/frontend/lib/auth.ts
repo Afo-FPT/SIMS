@@ -143,3 +143,30 @@ export function isAuthenticated(): boolean {
   const authState = getAuthState();
   return authState.isAuthenticated && authState.isVerified;
 }
+
+/**
+ * Change password (authenticated user). Requires current password and new password.
+ */
+export async function apiChangePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ message: string }> {
+  const token = getAuthState().token;
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch(getApiUrl('/auth/change-password'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      currentPassword,
+      newPassword,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Change password failed');
+  return data;
+}

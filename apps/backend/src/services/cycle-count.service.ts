@@ -108,6 +108,15 @@ export interface CycleCountResponse {
   warehouse_name: string;
   created_at: Date;
   updated_at: Date;
+  /** For staff when status is ASSIGNED_TO_STAFF: list of items to count with system quantity */
+  target_items?: Array<{
+    stored_item_id: string;
+    shelf_id: string;
+    shelf_code: string;
+    item_name: string;
+    unit: string;
+    system_quantity: number;
+  }>;
 }
 
 /**
@@ -1060,6 +1069,39 @@ export async function getCycleCountById(
     });
   }
 
+  // For staff when status is ASSIGNED_TO_STAFF: return target items to count (stored items + shelf + system qty)
+  let target_items: CycleCountResponse["target_items"];
+  if (
+    userRole === "staff" &&
+    cycleCount.status === "ASSIGNED_TO_STAFF"
+  ) {
+    const targetIds =
+      Array.isArray((cycleCount as any).targetStoredItemIds) &&
+      (cycleCount as any).targetStoredItemIds.length > 0
+        ? (cycleCount as any).targetStoredItemIds
+        : null;
+
+    const storedItemsQuery = targetIds
+      ? StoredItem.find({ _id: { $in: targetIds }, contractId: cycleCount.contractId })
+      : StoredItem.find({ contractId: cycleCount.contractId });
+
+    const storedItems = await storedItemsQuery
+      .populate("shelfId", "shelfCode")
+      .lean();
+
+    target_items = storedItems.map((si: any) => {
+      const shelf = typeof si.shelfId === "object" ? si.shelfId : { _id: si.shelfId, shelfCode: "" };
+      return {
+        stored_item_id: si._id.toString(),
+        shelf_id: shelf._id.toString(),
+        shelf_code: shelf.shelfCode || "",
+        item_name: si.itemName,
+        unit: si.unit,
+        system_quantity: si.quantity
+      };
+    });
+  }
+
   return {
     cycle_count_id: cycleCount._id.toString(),
     contract_id: (cycleCount.contractId as any)._id?.toString() || cycleCount.contractId.toString(),
@@ -1104,6 +1146,7 @@ export async function getCycleCountById(
       assigned_at: a.assignedAt
     })),
     items,
+    target_items,
     inventory_adjusted: cycleCount.inventoryAdjusted ?? false,
     warehouse_id: warehouse ? (warehouse as any)._id.toString() : "",
     warehouse_name: warehouse ? (warehouse as any).name : "",

@@ -21,6 +21,11 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
               { id: 'USERS', label: 'Users', icon: 'people' },
               { id: 'LOGS', label: 'Logs', icon: 'description' },
             ]
+          },
+          {
+            section: 'Account', items: [
+              { id: 'SETTINGS', label: 'Settings', icon: 'settings' },
+            ]
           }
         ];
       case 'MANAGER':
@@ -35,7 +40,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
               { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
               { id: 'CONTRACTS', label: 'Contracts', icon: 'description' },
               { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
-              { id: 'INBOUND_REQUESTS', label: 'Inbound Requests', icon: 'inbox' },
             ]
           },
           {
@@ -49,6 +53,11 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             section: 'Reports', items: [
               { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
             ]
+          },
+          {
+            section: 'Account', items: [
+              { id: 'SETTINGS', label: 'Settings', icon: 'settings' },
+            ]
           }
         ];
       case 'STAFF':
@@ -57,10 +66,17 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             section: 'Work', items: [
               { id: 'DASHBOARD', label: 'Dashboard', icon: 'dashboard' },
               { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
+              { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
               { id: 'INBOUND_REQUESTS', label: 'Inbound Putaway', icon: 'inbox' },
               { id: 'OUTBOUND_REQUESTS', label: 'Outbound Picking', icon: 'outbox' },
               { id: 'HISTORY', label: 'History', icon: 'history' },
               { id: 'SCANNER', label: 'Scanner', icon: 'barcode_scanner' },
+              { id: 'REPORT_ISSUE', label: 'Report Issue', icon: 'report_problem' },
+            ]
+          },
+          {
+            section: 'Account', items: [
+              { id: 'SETTINGS', label: 'Settings', icon: 'settings' },
             ]
           }
         ];
@@ -81,7 +97,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           {
             section: 'Inventory', items: [
               { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
-              { id: 'INVENTORY_CHECKING', label: 'Inventory Checking', icon: 'fact_check' },
             ]
           },
           {

@@ -1,8 +1,6 @@
 import type { AdminStats, AdminUser, AdminLog, ListUsersParams, ListLogsParams } from '../../types/admin';
 import type { Role, UserStatus } from '../../types/auth';
-import { getAuthState } from '../auth';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+import { apiFetchRaw, getApiUrl } from '../api-client';
 
 interface BackendUser {
   _id: string;
@@ -18,32 +16,8 @@ interface BackendUsersResponse {
   data: BackendUser[];
 }
 
-function getApiUrl(path: string): string {
-  return `${API_BASE_URL}${path}`;
-}
-
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  const state = getAuthState();
-  return state.token;
-}
-
 async function fetchWithAuth(path: string, options: RequestInit = {}): Promise<Response> {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-    Authorization: `Bearer ${token}`,
-  };
-
-  return fetch(getApiUrl(path), {
-    ...options,
-    headers,
-  });
+  return apiFetchRaw(path, options);
 }
 
 function mapBackendRoleToFrontend(role: BackendUser['role']): Role {

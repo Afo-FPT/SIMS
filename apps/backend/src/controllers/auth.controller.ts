@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { registerUser, loginUser, requestPasswordReset, resetPassword } from "../services/auth.service";
+import { registerUser, loginUser, requestPasswordReset, resetPassword, changePassword } from "../services/auth.service";
 
 async function register(req: Request, res: Response) {
   try {
@@ -111,4 +111,37 @@ async function resetPasswordHandler(req: Request, res: Response) {
   }
 }
 
-export { register, login, logout, forgotPassword, resetPasswordHandler };
+async function changePasswordHandler(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        message: "Current password and new password are required"
+      });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: "New password must be at least 6 characters"
+      });
+    }
+    const userId = req.user.userId;
+    await changePassword(userId, currentPassword, newPassword);
+    res.json({
+      message: "Password changed successfully. Please login again with your new password"
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("incorrect") ||
+      error.message.includes("required") ||
+      error.message.includes("at least")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
+
+export { register, login, logout, forgotPassword, resetPasswordHandler, changePasswordHandler };

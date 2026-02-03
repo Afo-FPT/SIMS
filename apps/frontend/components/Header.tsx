@@ -1,6 +1,4 @@
-
 import React from 'react';
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Persona } from '../types';
 
 interface HeaderProps {
@@ -55,41 +53,6 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
             <span className="material-symbols-outlined text-[22px]">notifications</span>
             <span className="absolute top-2.5 right-2.5 size-2 bg-red-500 rounded-full border-2 border-white ring-2 ring-red-500/10"></span>
           </button>
-
-          <div className="h-6 w-px bg-slate-200 mx-1"></div>
-
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <button className="flex items-center gap-3 p-1.5 pl-3 rounded-2xl border border-slate-200/50 hover:bg-slate-50 transition-all outline-none">
-                <div className="text-right hidden sm:block">
-                  <p className="text-xs font-bold text-slate-900 leading-none mb-1">J. Sterling</p>
-                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Enterprise Plan</p>
-                </div>
-                <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold overflow-hidden border-2 border-white shadow-sm">
-                  <img src="https://picsum.photos/seed/user12/100/100" className="object-cover size-full" alt="avatar" />
-                </div>
-              </button>
-            </DropdownMenu.Trigger>
-
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content className="radix-dropdown-content min-w-[200px] bg-white rounded-2xl p-2 shadow-[0px_10px_38px_-10px_rgba(22,_23,_24,_0.35),_0px_10px_20px_-15px_rgba(22,_23,_24,_0.2)] border border-slate-100 z-50" sideOffset={8}>
-                <DropdownMenu.Label className="px-3 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Account Settings</DropdownMenu.Label>
-                <DropdownMenu.Item className="flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-primary/5 hover:text-primary rounded-xl outline-none cursor-pointer transition-colors">
-                  <span className="material-symbols-outlined text-lg">person</span>
-                  Edit Profile
-                </DropdownMenu.Item>
-                <DropdownMenu.Item className="flex items-center gap-3 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-primary/5 hover:text-primary rounded-xl outline-none cursor-pointer transition-colors">
-                  <span className="material-symbols-outlined text-lg">payments</span>
-                  Billing
-                </DropdownMenu.Item>
-                <DropdownMenu.Separator className="h-px bg-slate-100 my-1" />
-                <DropdownMenu.Item className="flex items-center gap-3 px-3 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-xl outline-none cursor-pointer transition-colors">
-                  <span className="material-symbols-outlined text-lg">logout</span>
-                  Sign Out
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
         </div>
       </div>
     </header>

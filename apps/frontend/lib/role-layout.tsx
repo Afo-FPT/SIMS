@@ -61,6 +61,8 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'HISTORY': 'history',
       'INBOUND_REQUESTS': 'inbound-requests',
       'OUTBOUND_REQUESTS': 'outbound-requests',
+      'CYCLE_COUNT': 'cycle-count',
+      'REPORT_ISSUE': 'report-issue',
     };
 
     const targetPath = pathMap[view] || view.toLowerCase();

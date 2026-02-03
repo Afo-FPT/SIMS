@@ -129,51 +129,59 @@ export default function ContractDetailPage() {
         </Link>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-6">
-        <div className="flex justify-between items-start">
+      <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-8">
+        {/* Summary */}
+        <div className="flex flex-wrap justify-between items-start gap-4">
           <div>
             <h1 className="text-2xl font-black text-slate-900">{contract.code}</h1>
             <p className="text-slate-500 mt-1">Contract detail</p>
+            {(contract as any).createdAt && (
+              <p className="text-xs text-slate-400 mt-2">
+                Created {formatDate((contract as any).createdAt)}
+              </p>
+            )}
           </div>
           <span
-            className={`inline-flex px-3 py-1.6 rounded-xl text-sm font-bold ${isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+            className={`inline-flex px-3 py-1.6 rounded-xl text-sm font-bold ${isActive ? 'bg-emerald-100 text-emerald-700' : isDraft ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
               }`}
           >
             {getStatusDisplay(contract.status)}
           </span>
         </div>
 
-        <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div className="flex justify-between md:block">
-            <dt className="text-slate-500">Zones</dt>
-            <dd className="font-bold text-slate-900">{getZonesRentedDisplay(contract)}</dd>
-          </div>
-          <div className="flex justify-between md:block">
-            <dt className="text-slate-500">Start date</dt>
-            <dd className="font-bold text-slate-900">{getDateRangeDisplay(contract)}</dd>
-          </div>
-          <div className="flex justify-between md:block">
-            <dt className="text-slate-500">End date</dt>
-            <dd className="font-bold text-slate-900">{getDateRangeDisplay(contract)}</dd>
-          </div>
-        </dl>
+        {/* Rental period */}
+        <section>
+          <h2 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-3">Rental period</h2>
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <dt className="text-slate-500">Period</dt>
+              <dd className="font-bold text-slate-900">{getDateRangeDisplay(contract)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        {/* Zones */}
+        <section>
+          <h2 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-3">Zones</h2>
+          <p className="font-bold text-slate-900">{getZonesRentedDisplay(contract)}</p>
+        </section>
 
         {isDraft && (
-          <div className="pt-6 border-t border-slate-100">
-            <p className="text-sm text-amber-700 font-bold mb-3">
+          <div className="pt-6 border-t border-slate-100 rounded-2xl bg-amber-50 border border-amber-100 p-6">
+            <p className="text-sm text-amber-800 font-bold">
               This contract is pending manager approval. A zone will be assigned automatically when the manager approves it.
             </p>
           </div>
         )}
 
         {isActive && (
-          <div className="pt-6 border-t border-slate-100">
-            <p className="text-sm text-emerald-700 font-bold">
-              Contract is active. You can now create service requests (Inbound / Outbound / Checking).
+          <div className="pt-6 border-t border-slate-100 rounded-2xl bg-emerald-50 border border-emerald-100 p-6">
+            <p className="text-sm text-emerald-800 font-bold mb-3">
+              Contract is active. You can create service requests (Inbound, Outbound, Inventory Checking) from Service Requests.
             </p>
             <Link
               href="/customer/service-requests"
-              className="inline-flex items-center gap-2 mt-3 text-primary font-bold hover:underline"
+              className="inline-flex items-center gap-2 text-primary font-bold hover:underline"
             >
               Go to Service Requests
               <span className="material-symbols-outlined text-lg">arrow_forward</span>

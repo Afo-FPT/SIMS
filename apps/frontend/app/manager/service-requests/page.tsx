@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { ServiceRequest } from '../../../lib/customer-types';
+import type { ServiceRequest, ServiceRequestType } from '../../../lib/customer-types';
 import type { CreateTaskFromServiceRequestPayload } from '../../../types/manager';
 import {
   listServiceRequests,
@@ -33,6 +33,7 @@ export default function ManagerServiceRequestsPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [taskPayload, setTaskPayload] = useState<CreateTaskFromServiceRequestPayload | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [requestType, setRequestType] = useState<ServiceRequestType>('Inbound');
 
   useEffect(() => {
     load();
@@ -129,6 +130,8 @@ export default function ManagerServiceRequestsPage() {
     }
   };
 
+  const filteredRequests = requests.filter((r) => r.type === requestType);
+
   return (
     <div className="space-y-8">
       <div>
@@ -136,12 +139,40 @@ export default function ManagerServiceRequestsPage() {
         <p className="text-slate-500 mt-1">Approve and convert to tasks</p>
       </div>
 
+      {/* Request type tabs */}
+      <div className="space-y-4">
+        <p className="text-sm font-bold text-slate-700">Request type</p>
+        <div className="flex gap-2 flex-wrap">
+          {(['Inbound', 'Outbound', 'Inventory Checking'] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setRequestType(type)}
+              className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all ${
+                requestType === type
+                  ? 'bg-primary/10 text-primary border border-primary/30'
+                  : 'bg-slate-100 text-slate-600 border border-transparent hover:bg-slate-200'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+        <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight pt-1">
+          {requestType.toUpperCase()}
+        </h2>
+      </div>
+
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
         <ErrorState title="Failed to load" message={error} onRetry={load} />
-      ) : requests.length === 0 ? (
-        <EmptyState icon="local_shipping" title="No service requests" message="No requests yet" />
+      ) : filteredRequests.length === 0 ? (
+        <EmptyState
+          icon="local_shipping"
+          title={`No ${requestType} requests`}
+          message={`No ${requestType.toLowerCase()} requests in this tab`}
+        />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <Table>
@@ -154,7 +185,7 @@ export default function ManagerServiceRequestsPage() {
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
-              {requests.map((r) => (
+              {filteredRequests.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell className="font-bold text-slate-900">{r.id}</TableCell>
                   <TableCell className="text-slate-700">{r.customerName || '—'}</TableCell>

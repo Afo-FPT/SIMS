@@ -148,3 +148,38 @@ export async function resetPassword(token: string, newPassword: string) {
 
   return { message: "Password reset successfully" };
 }
+
+/**
+ * Change password for authenticated user (current password + new password)
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+) {
+  if (!currentPassword || !newPassword) {
+    throw new Error("Current password and new password are required");
+  }
+  if (newPassword.length < 6) {
+    throw new Error("New password must be at least 6 characters");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  if (!user.isActive) {
+    throw new Error("Account is not activated");
+  }
+
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+  if (!isMatch) {
+    throw new Error("Current password is incorrect");
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  user.password = hashedPassword;
+  await user.save();
+
+  return { message: "Password changed successfully" };
+}

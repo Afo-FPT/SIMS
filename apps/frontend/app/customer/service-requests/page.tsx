@@ -69,6 +69,7 @@ export default function ServiceRequestsPage() {
   const [checkScope, setCheckScope] = useState<'Full inventory' | 'By SKU list'>('Full inventory');
   const [checkSkuList, setCheckSkuList] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [mainTab, setMainTab] = useState<'new' | 'list'>('new');
 
   // Load stored items for outbound when contract or type changes
   useEffect(() => {
@@ -285,7 +286,82 @@ export default function ServiceRequestsPage() {
         <p className="text-slate-500 mt-1">Inbound, Outbound & Inventory Checking</p>
       </div>
 
-      <form
+      {/* Main tabs: New request | Request list (theo dõi) */}
+      <div className="flex gap-2 border-b border-slate-200 pb-2">
+        <button
+          type="button"
+          onClick={() => setMainTab('new')}
+          className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all ${
+            mainTab === 'new'
+              ? 'bg-primary/10 text-primary border border-primary/30'
+              : 'bg-slate-100 text-slate-600 border border-transparent hover:bg-slate-200'
+          }`}
+        >
+          Tạo yêu cầu
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainTab('list')}
+          className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all ${
+            mainTab === 'list'
+              ? 'bg-primary/10 text-primary border border-primary/30'
+              : 'bg-slate-100 text-slate-600 border border-transparent hover:bg-slate-200'
+          }`}
+        >
+          Theo dõi đơn
+        </button>
+      </div>
+
+      {mainTab === 'list' ? (
+        <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+          <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách yêu cầu</h2>
+          <p className="text-sm text-slate-500 px-6 pb-4">Theo dõi trạng thái các yêu cầu đã gửi</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">ID</th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Type</th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Preferred</th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                    <td className="px-6 py-4 font-bold text-slate-900">{r.id}</td>
+                    <td className="px-6 py-4 text-slate-700">{r.type}</td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {r.preferredDate} {r.preferredTime ?? ''}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
+                          r.status === 'Completed'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : r.status === 'Processing'
+                              ? 'bg-blue-100 text-blue-700'
+                              : r.status === 'Rejected'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {requests.length === 0 && (
+            <div className="p-12 text-center text-slate-500">
+              Chưa có yêu cầu nào. Chuyển sang tab &quot;Tạo yêu cầu&quot; để gửi.
+            </div>
+          )}
+        </section>
+      ) : (
+        <form
         onSubmit={handleSubmit}
         className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-6"
       >
@@ -650,54 +726,7 @@ export default function ServiceRequestsPage() {
           Submit request
         </button>
       </form>
-
-      {/* Request list */}
-      <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 p-6 pb-0">Request list</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-200">
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
-                  ID
-                </th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
-                  Type
-                </th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
-                  Preferred
-                </th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                  <td className="px-6 py-4 font-bold text-slate-900">{r.id}</td>
-                  <td className="px-6 py-4 text-slate-700">{r.type}</td>
-                  <td className="px-6 py-4 text-slate-700">
-                    {r.preferredDate} {r.preferredTime ?? ''}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${r.status === 'Completed'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : r.status === 'Processing'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                    >
-                      {r.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      )}
     </div>
   );
 }

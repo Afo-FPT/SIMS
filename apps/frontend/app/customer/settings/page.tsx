@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useToastHelpers } from '../../../lib/toast';
+import { ChangePasswordForm } from '../../../components/ChangePasswordForm';
 
 type VerifyStatus = 'unverified' | 'pending' | 'verified';
 
@@ -129,6 +130,11 @@ export default function CustomerSettingsPage() {
           {saved ? 'Saved' : 'Save'}
         </button>
       </form>
+
+      <div>
+        <h2 className="text-lg font-black text-slate-900 mb-4">Change password</h2>
+        <ChangePasswordForm />
+      </div>
     </div>
   );
 }

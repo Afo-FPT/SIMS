@@ -1,34 +1,12 @@
 import type { Contract } from '../customer-types';
-import { getAuthState } from '../auth';
+import { apiFetchRaw, apiJson } from '../api-client';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-
-function getApiUrl(path: string): string {
-  return `${API_BASE_URL}${path}`;
-}
-
-function getAuthToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  const state = getAuthState();
-  return state.token;
-}
-
-async function fetchWithAuth(path: string, options: RequestInit = {}): Promise<Response> {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
+async function safeJson(res: Response): Promise<any> {
+  try {
+    return await res.json();
+  } catch {
+    return {};
   }
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-    Authorization: `Bearer ${token}`,
-  };
-
-  return fetch(getApiUrl(path), {
-    ...options,
-    headers,
-  });
 }
 
 /**
@@ -89,16 +67,7 @@ function mapBackendContractToContract(c: BackendContractResponse): Contract {
  * Get all contracts for the current customer
  */
 export async function getCustomerContracts(): Promise<Contract[]> {
-  const res = await fetchWithAuth('/contracts', {
-    method: 'GET',
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || 'Failed to load contracts');
-  }
-
-  const contracts = data.data || data;
+  const contracts = await apiJson<any>('/contracts', { method: 'GET' });
   if (Array.isArray(contracts)) {
     return contracts.map(mapBackendContractToContract);
   }
@@ -109,19 +78,12 @@ export async function getCustomerContracts(): Promise<Contract[]> {
  * Get contract by ID for customer
  */
 export async function getCustomerContractById(contractId: string): Promise<Contract | null> {
-  const res = await fetchWithAuth(`/contracts/${contractId}`, {
-    method: 'GET',
-  });
-
+  const res = await apiFetchRaw(`/contracts/${contractId}`, { method: 'GET' });
+  if (res.status === 404) return null;
+  const data = await safeJson(res);
   if (!res.ok) {
-    if (res.status === 404) {
-      return null;
-    }
-    const data = await res.json();
-    throw new Error(data.message || 'Failed to load contract');
+    throw new Error(data?.message || 'Failed to load contract');
   }
-
-  const data = await res.json();
   const contract = data.data || data;
   return mapBackendContractToContract(contract);
 }
