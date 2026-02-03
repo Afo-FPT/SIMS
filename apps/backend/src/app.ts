@@ -13,6 +13,7 @@ import storedItemsRoutes from "./routes/stored-items.routes";
 import shelfRoutes from "./routes/shelf.routes";
 import stockHistoryRoutes from "./routes/stock-history.routes";
 import rentRequestRoutes from "./routes/rent-request.routes";
+import cycleCountRoutes from "./routes/cycle-count.routes";
 
 
 const app = express();
@@ -32,6 +33,7 @@ app.use("/api/stored-items", storedItemsRoutes);
 app.use("/api/shelves", shelfRoutes);
 app.use("/api/stock-history", stockHistoryRoutes);
 app.use("/api/rent-requests", rentRequestRoutes);
+app.use("/api/cycle-counts", cycleCountRoutes);
 
 
 

@@ -364,7 +364,7 @@ Content-Type: application/json
 
 {
   "name": "Manager Test",
-  "email": "manager@test.com",
+  "email": "manager@simsai.com",
   "password": "Test123",
   "role": "manager"
 }
@@ -382,7 +382,7 @@ POST http://localhost:3001/api/auth/login
 Content-Type: application/json
 
 {
-  "email": "manager@test.com",
+  "email": "manager@simsai.com",
   "password": "Test123"
 }
 ```
@@ -560,13 +560,13 @@ if (pm.response.code === 200) {
 
 ## ✅ 6. CHECKLIST TEST
 
-- [ ] Admin account được tạo tự động khi server start
-- [ ] Đăng ký user mới (manager) thành công
-- [ ] Đăng ký user mới (staff) thành công
-- [ ] Đăng ký với role admin bị từ chối
-- [ ] Đăng nhập admin thành công
+- [ ] Admin account được tạo tự động khi server start checked
+- [ ] Đăng ký user mới (manager) thành công checked
+- [ ] Đăng ký user mới (staff) thành công checked
+- [ ] Đăng ký với role admin bị từ chối checked
+- [ ] Đăng nhập admin thành công check
 - [ ] Đăng nhập user chưa kích hoạt bị từ chối
-- [ ] Admin kích hoạt user thành công
+- [ ] Admin kích hoạt user thành công 
 - [ ] User đã kích hoạt đăng nhập thành công
 - [ ] Admin xem danh sách users
 - [ ] Admin xem chi tiết user

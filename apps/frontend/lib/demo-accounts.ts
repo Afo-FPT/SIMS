@@ -15,32 +15,32 @@ export interface DemoAccount {
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
-    email: 'admin@swsms.ai',
-    password: 'admin123',
+    email: 'admin@sims.ai',
+    password: '123456',
     role: 'ADMIN',
     name: 'John Doe',
     avatar: 'https://picsum.photos/seed/admin/100/100',
     title: 'System Architect'
   },
   {
-    email: 'manager@swsms.ai',
-    password: 'manager123',
+    email: 'manager@simsai.com',
+    password: 'Test123',
     role: 'MANAGER',
     name: 'Sarah Miller',
     avatar: 'https://picsum.photos/seed/manager/100/100',
     title: 'Regional Ops Manager'
   },
   {
-    email: 'staff@swsms.ai',
-    password: 'staff123',
+    email: 'staff@simsai.com',
+    password: 'Test123',
     role: 'STAFF',
     name: 'Mike Sterling',
     avatar: 'https://picsum.photos/seed/staff/100/100',
     title: 'Warehouse Lead'
   },
   {
-    email: 'customer@swsms.ai',
-    password: 'customer123',
+    email: 'customer@simsai.com',
+    password: 'Test123',
     role: 'CUSTOMER',
     name: 'Alex Sterling',
     avatar: 'https://picsum.photos/seed/customer/100/100',
