@@ -4,7 +4,7 @@ import {
   searchAndFilterWarehousesController,
   updateWarehouseStatusController
 } from "../controllers/warehouse.controller";
-import { createShelvesController } from "../controllers/shelf.controller";
+import { createShelvesController, listShelvesByWarehouseController } from "../controllers/shelf.controller";
 import zoneRoutes from "./zone.routes";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
@@ -50,6 +50,18 @@ router.patch(
  * /api/warehouses/:warehouseId/zones - list/create zones in warehouse
  */
 router.use("/:warehouseId/zones", zoneRoutes);
+
+/**
+ * GET /api/warehouses/:warehouseId/shelves
+ * List shelves in a warehouse
+ * Authorization: Manager, Staff, Admin
+ */
+router.get(
+  "/:warehouseId/shelves",
+  authenticate,
+  authorizeRoles("manager", "staff", "admin"),
+  listShelvesByWarehouseController
+);
 
 /**
  * POST /api/warehouses/:warehouseId/shelves

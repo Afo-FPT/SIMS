@@ -46,6 +46,82 @@ export interface ShelfViewDTO {
   status: "AVAILABLE" | "RENTED" | "MAINTENANCE";
 }
 
+export interface WarehouseShelfViewDTO extends ShelfViewDTO {
+  warehouse_id: string;
+  contract_id?: string;
+  contract_code?: string;
+}
+
+export async function listShelvesByWarehouse(
+  warehouseId: string
+): Promise<WarehouseShelfViewDTO[]> {
+  if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouse ID");
+
+  // Ensure warehouse exists
+  const wh = await Warehouse.findById(warehouseId).select("_id");
+  if (!wh) throw new Error("Warehouse not found");
+
+  const zones = await Zone.find({ warehouseId: new Types.ObjectId(warehouseId) })
+    .select("_id zoneCode")
+    .lean();
+  if (zones.length === 0) return [];
+
+  const zoneIds = zones.map((z: any) => z._id);
+  const zoneCodeById = new Map(zones.map((z: any) => [z._id.toString(), z.zoneCode]));
+
+  const shelves = await Shelf.find({ zoneId: { $in: zoneIds } })
+    .select("_id shelfCode status zoneId")
+    .sort({ shelfCode: 1 })
+    .lean();
+
+  // Determine "current" active contract for each zone (if any) at now
+  const now = new Date();
+  const activeContracts = await Contract.find({
+    status: "active",
+    rentedZones: {
+      $elemMatch: {
+        zoneId: { $in: zoneIds },
+        startDate: { $lte: now },
+        endDate: { $gte: now }
+      }
+    }
+  })
+    .select("_id contractCode rentedZones")
+    .lean();
+
+  const contractByZoneId = new Map<string, { contract_id: string; contract_code: string }>();
+  for (const c of activeContracts as any[]) {
+    for (const rz of c.rentedZones || []) {
+      const zid = rz.zoneId?.toString?.() ?? rz.zoneId;
+      if (!zid) continue;
+      // Only map zones that match and are active "now"
+      const start = new Date(rz.startDate);
+      const end = new Date(rz.endDate);
+      if (start <= now && now <= end) {
+        contractByZoneId.set(String(zid), {
+          contract_id: c._id.toString(),
+          contract_code: c.contractCode
+        });
+      }
+    }
+  }
+
+  return shelves.map((s: any) => {
+    const zid = s.zoneId?.toString?.() ?? s.zoneId;
+    const assigned = zid ? contractByZoneId.get(String(zid)) : undefined;
+    return {
+      warehouse_id: warehouseId,
+      shelf_id: s._id.toString(),
+      shelf_code: s.shelfCode,
+      zone_id: zid?.toString?.() ?? String(zid),
+      zone_code: zid ? zoneCodeById.get(String(zid)) : undefined,
+      status: s.status,
+      contract_id: assigned?.contract_id,
+      contract_code: assigned?.contract_code
+    } satisfies WarehouseShelfViewDTO;
+  });
+}
+
 export async function listShelvesForContract(
   contractId: string,
   userId: string,

@@ -4,7 +4,8 @@ import {
   CreateShelfRequest,
   getRackUtilization,
   updateRackStatus,
-  listShelvesForContract
+  listShelvesForContract,
+  listShelvesByWarehouse
 } from "../services/shelf.service";
 
 /**
@@ -181,6 +182,28 @@ export async function listContractShelvesController(req: Request, res: Response)
   } catch (error: any) {
     const msg = error?.message || "Internal server error";
     if (msg.includes("Invalid") || msg.includes("not found") || msg.includes("Access denied")) {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: msg });
+  }
+}
+
+/**
+ * GET /api/warehouses/:warehouseId/shelves
+ * List shelves in a warehouse (via zones)
+ * Authorization: Manager, Staff, Admin
+ */
+export async function listShelvesByWarehouseController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { warehouseId } = req.params;
+    const data = await listShelvesByWarehouse(warehouseId);
+    return res.json({ message: "Warehouse shelves retrieved successfully", data });
+  } catch (error: any) {
+    const msg = error?.message || "Internal server error";
+    if (msg.includes("Invalid") || msg.includes("not found")) {
       return res.status(400).json({ message: msg });
     }
     return res.status(500).json({ message: msg });

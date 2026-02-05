@@ -126,7 +126,19 @@ export default function ServiceRequestsPage() {
     }
     if (type === 'Outbound') {
       const withQty = outboundItems.filter((r) => r.storedItemId && r.quantity > 0);
-      if (withQty.length === 0) e.items = 'Add at least one item (select stored item + quantity)';
+      if (withQty.length === 0) {
+        e.items = 'Add at least one item (select stored item + quantity)';
+      } else {
+        // Validate each outbound row does not exceed available quantity in stock
+        for (const row of withQty) {
+          const stored = storedItemOptions.find((s) => s.stored_item_id === row.storedItemId);
+          if (!stored) continue;
+          if (row.quantity > stored.quantity) {
+            e.items = `Requested quantity for '${stored.item_name}' exceeds available stock (${stored.quantity} ${stored.unit}).`;
+            break;
+          }
+        }
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;

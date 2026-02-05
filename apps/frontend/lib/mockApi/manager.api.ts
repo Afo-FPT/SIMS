@@ -535,11 +535,20 @@ export async function rejectInventoryAdjustment(id: string): Promise<AdjustmentR
 }
 
 export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf[]> {
-  // TODO: Replace with real backend shelves listing API when available
-  // Currently still using mock shelves data (no warehouse association in mock)
-  await delay(400 + Math.random() * 300);
-  if (shouldError()) throw new Error('Failed to fetch shelves');
-  return [...MOCK_SHELVES];
+  const res = await fetchWithAuth(`/warehouses/${warehouseId}/shelves`, { method: 'GET' });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Failed to fetch shelves');
+  }
+  const list = Array.isArray(data.data) ? data.data : [];
+  return list.map((s: any) => ({
+    id: s.shelf_id ?? s.id,
+    code: s.shelf_code ?? s.code ?? '',
+    zone: s.zone_code ?? s.zone ?? '',
+    status: s.contract_code ? 'Occupied' : (s.status === 'RENTED' ? 'Occupied' : 'Available'),
+    contractId: s.contract_id ?? undefined,
+    contractCode: s.contract_code ?? undefined,
+  })) as Shelf[];
 }
 
 export async function assignShelf(contractId: string, shelfId: string): Promise<Shelf> {
