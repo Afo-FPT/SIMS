@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type {
   ServiceRequest,
   ServiceRequestType,
@@ -8,11 +8,19 @@ import type {
   PickupDelivery,
   Contract,
 } from '../../../lib/customer-types';
-import { createInboundStorageRequest, createOutboundStorageRequest } from '../../../lib/storage-requests.api';
+import {
+  createInboundStorageRequest,
+  createOutboundStorageRequest,
+  listStorageRequests,
+  getStorageRequestById,
+  type StorageRequestView,
+} from '../../../lib/storage-requests.api';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { MOCK_SERVICE_REQUESTS, MOCK_INVENTORY } from '../../../lib/customer-mock';
 import { useToastHelpers } from '../../../lib/toast';
 import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
+import { Modal } from '../../../components/ui/Modal';
+import { Button } from '../../../components/ui/Button';
 
 const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
   { id: 'Inbound', label: 'Inbound' },
@@ -59,7 +67,7 @@ export default function ServiceRequestsPage() {
   const [preferredTime, setPreferredTime] = useState('');
   const [notes, setNotes] = useState('');
   const [inboundRef, setInboundRef] = useState('');
-  const [inboundItems, setInboundItems] = useState<(ServiceRequestItem & { quantityPerUnit?: number })[]>([]);
+  const [inboundItems, setInboundItems] = useState<(ServiceRequestItem & { quantityPerUnit?: number; useNewSku?: boolean; unit?: string })[]>([]);
   const [expectedArrival, setExpectedArrival] = useState('');
   const [outboundRef, setOutboundRef] = useState('');
   const [outboundItems, setOutboundItems] = useState<{ storedItemId: string; sku: string; quantity: number }[]>([]);
@@ -71,29 +79,117 @@ export default function ServiceRequestsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [mainTab, setMainTab] = useState<'new' | 'list'>('new');
 
-  // Load stored items for outbound when contract or type changes
+  // Theo dõi đơn: danh sách từ API
+  const [trackingRequests, setTrackingRequests] = useState<StorageRequestView[]>([]);
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
+  const [detailRequest, setDetailRequest] = useState<StorageRequestView | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
-    if (type !== 'Outbound' || !contractId) return;
+    if ((type !== 'Outbound' && type !== 'Inbound') || !contractId) return;
     let cancelled = false;
     listMyStoredItems(contractId)
       .then((data) => {
         if (!cancelled) setStoredItemOptions(data);
       })
       .catch((err) => {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load stored items for outbound');
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load stored items');
       });
     return () => {
       cancelled = true;
     };
-  }, [type, contractId, toast]);
+  }, [type, contractId]);
+
+  const loadTrackingRequests = async () => {
+    try {
+      setTrackingLoading(true);
+      setTrackingError(null);
+      const data = await listStorageRequests();
+      setTrackingRequests(data);
+    } catch (err) {
+      setTrackingError(err instanceof Error ? err.message : 'Không tải được danh sách đơn');
+      toast.error('Không tải được danh sách yêu cầu');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mainTab === 'list' && hasActive) {
+      loadTrackingRequests();
+    }
+  }, [mainTab, hasActive]);
+
+  useEffect(() => {
+    if (!detailRequestId) {
+      setDetailRequest(null);
+      setDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailRequest(null);
+    const timeoutId = setTimeout(() => {
+      if (!cancelled) {
+        setDetailLoading(false);
+        setDetailRequest(null);
+        toast.error('Tải chi tiết đơn quá lâu. Vui lòng thử lại.');
+      }
+    }, 12000);
+    getStorageRequestById(detailRequestId)
+      .then((data) => {
+        if (!cancelled) setDetailRequest(data ?? null);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setDetailRequest(null);
+          toast.error(err instanceof Error ? err.message : 'Không tải được chi tiết đơn');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+        clearTimeout(timeoutId);
+      });
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [detailRequestId]);
+
+  const statusLabel: Record<string, string> = {
+    PENDING: 'Chờ xử lý',
+    APPROVED: 'Đã duyệt',
+    DONE_BY_STAFF: 'Đã thực hiện',
+    COMPLETED: 'Hoàn thành',
+    REJECTED: 'Từ chối',
+  };
+  const formatDate = (s: string) => {
+    try {
+      return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      return s;
+    }
+  };
 
   const addInboundRow = () => {
-    setInboundItems((prev) => [...prev, { sku: '', name: '', quantity: 0, note: '', quantityPerUnit: undefined }]);
+    setInboundItems((prev) => [...prev, { sku: '', name: '', quantity: 0, note: '', quantityPerUnit: undefined, useNewSku: false, unit: 'pcs' }]);
   };
+
+  // Unique existing SKU names from stored items (for Inbound dropdown)
+  const existingInboundSkus = useMemo(() => {
+    const names = [...new Set(storedItemOptions.map((s) => s.item_name).filter(Boolean))];
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [storedItemOptions]);
   const removeInboundRow = (i: number) => {
     setInboundItems((prev) => prev.filter((_, j) => j !== i));
   };
-  const updateInboundRow = (i: number, f: Partial<ServiceRequestItem>) => {
+  const updateInboundRow = (
+    i: number,
+    f: Partial<ServiceRequestItem & { quantityPerUnit?: number; useNewSku?: boolean; unit?: string }>
+  ) => {
     setInboundItems((prev) => prev.map((r, j) => (j === i ? { ...r, ...f } : r)));
   };
 
@@ -162,18 +258,17 @@ export default function ServiceRequestsPage() {
     };
     if (type === 'Inbound') {
       const items = inboundItems.filter((r) => r.sku && r.quantity > 0);
-      createInboundStorageRequest({
+        createInboundStorageRequest({
         contractId,
         items: items.map((it) => ({
           itemName: it.name || it.sku,
           quantity: Number(it.quantity),
-          unit: 'pcs',
+          unit: it.unit || 'pcs',
           quantityPerUnit: (it as any).quantityPerUnit != null ? Number((it as any).quantityPerUnit) : undefined,
         })),
       })
         .then(() => {
-          toast.success('Inbound request submitted. Manager will approve, then staff will putaway into shelves in your rented zone.');
-          // keep local list for UI
+          toast.success('Inbound request submitted. Staff will putaway into shelves in your rented zone.');
           setRequests((prev) => [
             ...prev,
             {
@@ -186,6 +281,7 @@ export default function ServiceRequestsPage() {
           setInboundItems([]);
           setInboundRef('');
           setExpectedArrival('');
+          loadTrackingRequests();
         })
         .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit inbound request'));
     } else if (type === 'Outbound') {
@@ -221,6 +317,7 @@ export default function ServiceRequestsPage() {
           ]);
           setOutboundItems([]);
           setOutboundRef('');
+          loadTrackingRequests();
         })
         .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request'));
     } else {
@@ -328,45 +425,64 @@ export default function ServiceRequestsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách yêu cầu</h2>
           <p className="text-sm text-slate-500 px-6 pb-4">Theo dõi trạng thái các yêu cầu đã gửi</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">ID</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Type</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Preferred</th>
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((r) => (
-                  <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                    <td className="px-6 py-4 font-bold text-slate-900">{r.id}</td>
-                    <td className="px-6 py-4 text-slate-700">{r.type}</td>
-                    <td className="px-6 py-4 text-slate-700">
-                      {r.preferredDate} {r.preferredTime ?? ''}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
-                          r.status === 'Completed'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : r.status === 'Processing'
-                              ? 'bg-blue-100 text-blue-700'
-                              : r.status === 'Rejected'
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                    </td>
+          {trackingLoading ? (
+            <div className="p-12 text-center text-slate-500">Đang tải…</div>
+          ) : trackingError ? (
+            <div className="p-12 text-center">
+              <p className="text-red-600 mb-4">{trackingError}</p>
+              <Button variant="outline" onClick={loadTrackingRequests}>Thử lại</Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-slate-200">
+                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã đơn</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Loại</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Ngày tạo</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {requests.length === 0 && (
+                </thead>
+                <tbody>
+                  {trackingRequests.map((r) => (
+                    <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                      <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
+                      <td className="px-6 py-4 text-slate-700">
+                        {r.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
+                      </td>
+                      <td className="px-6 py-4 text-slate-700">{formatDate(r.created_at)}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
+                            r.status === 'COMPLETED'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : r.status === 'DONE_BY_STAFF' || r.status === 'APPROVED'
+                                ? 'bg-blue-100 text-blue-700'
+                                : r.status === 'REJECTED'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {statusLabel[r.status] ?? r.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          type="button"
+                          onClick={() => setDetailRequestId(r.request_id)}
+                          className="text-sm font-bold text-primary hover:underline"
+                        >
+                          Xem chi tiết
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {!trackingLoading && !trackingError && trackingRequests.length === 0 && (
             <div className="p-12 text-center text-slate-500">
               Chưa có yêu cầu nào. Chuyển sang tab &quot;Tạo yêu cầu&quot; để gửi.
             </div>
@@ -461,7 +577,7 @@ export default function ServiceRequestsPage() {
                       <th className="px-4 py-3 font-bold text-slate-700">Name</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty / unit</th>
-                      <th className="px-4 py-3 font-bold text-slate-700">Note</th>
+                      <th className="px-4 py-3 font-bold text-slate-700">Unit</th>
                       <th className="px-4 py-3 w-12" />
                     </tr>
                   </thead>
@@ -469,11 +585,44 @@ export default function ServiceRequestsPage() {
                     {inboundItems.map((r, i) => (
                       <tr key={i} className="border-b border-slate-100">
                         <td className="px-4 py-2">
-                          <input
-                            value={r.sku}
-                            onChange={(e) => updateInboundRow(i, { sku: e.target.value })}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
-                          />
+                          {r.useNewSku ? (
+                            <div className="flex flex-col gap-1">
+                              <input
+                                value={r.sku}
+                                onChange={(e) => updateInboundRow(i, { sku: e.target.value })}
+                                placeholder="Nhập SKU / tên hàng mới"
+                                className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateInboundRow(i, { useNewSku: false, sku: '', name: '' })}
+                                className="text-xs text-primary hover:underline text-left"
+                              >
+                                Chọn từ danh sách có sẵn
+                              </button>
+                            </div>
+                          ) : (
+                            <select
+                              value={r.sku || ''}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '__new__') {
+                                  updateInboundRow(i, { useNewSku: true, sku: '', name: '' });
+                                } else {
+                                  updateInboundRow(i, { sku: v, name: v });
+                                }
+                              }}
+                              className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                            >
+                              <option value="">— Chọn SKU có sẵn hoặc tạo mới —</option>
+                              {existingInboundSkus.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                              <option value="__new__">➕ Tạo SKU mới</option>
+                            </select>
+                          )}
                         </td>
                         <td className="px-4 py-2">
                           <input
@@ -509,11 +658,22 @@ export default function ServiceRequestsPage() {
                           />
                         </td>
                         <td className="px-4 py-2">
-                          <input
-                            value={r.note ?? ''}
-                            onChange={(e) => updateInboundRow(i, { note: e.target.value })}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
-                          />
+                          <select
+                            value={r.unit ?? 'pcs'}
+                            onChange={(e) => updateInboundRow(i, { unit: e.target.value })}
+                            className="w-full min-w-[6rem] px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                          >
+                            <option value="pcs">pcs</option>
+                            <option value="box">box</option>
+                            <option value="carton">carton</option>
+                            <option value="pallet">pallet</option>
+                            <option value="kg">kg</option>
+                            <option value="g">g</option>
+                            <option value="liter">liter</option>
+                            <option value="meter">meter</option>
+                            <option value="set">set</option>
+                            <option value="pack">pack</option>
+                          </select>
                         </td>
                         <td className="px-4 py-2">
                           <button
@@ -739,6 +899,115 @@ export default function ServiceRequestsPage() {
         </button>
       </form>
       )}
+
+      {/* Modal xem chi tiết đơn */}
+      <Modal
+        open={!!detailRequestId}
+        onOpenChange={(open) => { if (!open) setDetailRequestId(null); }}
+        title="Chi tiết đơn"
+        size="lg"
+      >
+        {detailLoading ? (
+          <div className="py-12 text-center text-slate-500">
+            <span className="material-symbols-outlined text-4xl animate-pulse text-slate-400">hourglass_empty</span>
+            <p className="mt-2">Đang tải chi tiết đơn…</p>
+          </div>
+        ) : detailRequest ? (
+          <div className="space-y-6">
+            {/* Thông tin chung */}
+            <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                <span className="text-slate-500">Mã đơn:</span>
+                <span className="font-bold text-slate-900">{detailRequest.request_id}</span>
+                <span className="text-slate-400">|</span>
+                <span className="text-slate-500">Loại:</span>
+                <span className="font-medium text-slate-800">
+                  {detailRequest.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
+                </span>
+                <span className="text-slate-400">|</span>
+                <span className="text-slate-500">Hợp đồng:</span>
+                <span className="font-medium text-slate-800">{detailRequest.contract_id}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+                <span className="text-slate-500">Trạng thái:</span>
+                <span
+                  className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
+                    detailRequest.status === 'COMPLETED'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : detailRequest.status === 'DONE_BY_STAFF' || detailRequest.status === 'APPROVED'
+                        ? 'bg-blue-100 text-blue-700'
+                        : detailRequest.status === 'REJECTED'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {statusLabel[detailRequest.status] ?? detailRequest.status}
+                </span>
+                <span className="text-slate-400">|</span>
+                <span className="text-slate-500">Ngày tạo:</span>
+                <span>{formatDate(detailRequest.created_at)}</span>
+                {detailRequest.updated_at && (
+                  <>
+                    <span className="text-slate-400">|</span>
+                    <span className="text-slate-500">Cập nhật:</span>
+                    <span>{formatDate(detailRequest.updated_at)}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Chi tiết hàng */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-700 mb-2">Chi tiết hàng ({detailRequest.items.length} mặt hàng)</h3>
+              {detailRequest.items.length === 0 ? (
+                <p className="text-slate-500 py-4 text-sm">Không có mặt hàng nào trong đơn.</p>
+              ) : (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">STT</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Tên hàng</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Đơn vị</th>
+                        {detailRequest.request_type === 'IN' && (
+                          <th className="px-4 py-3 text-right font-bold text-slate-600">Qty/unit</th>
+                        )}
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">SL yêu cầu</th>
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">SL thực tế</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Kệ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailRequest.items.map((it, idx) => (
+                        <tr key={it.request_detail_id} className="border-t border-slate-100 hover:bg-slate-50/50">
+                          <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
+                          <td className="px-4 py-3 font-medium text-slate-900">{it.item_name}</td>
+                          <td className="px-4 py-3 text-slate-700">{it.unit}</td>
+                          {detailRequest.request_type === 'IN' && (
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              {it.quantity_per_unit != null ? it.quantity_per_unit : '—'}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 text-right font-medium">{it.quantity_requested}</td>
+                          <td className="px-4 py-3 text-right">
+                            {it.quantity_actual != null ? it.quantity_actual : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{it.shelf_code ?? it.shelf_id ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="py-12 text-center text-slate-500">
+            <span className="material-symbols-outlined text-4xl text-slate-300">inbox</span>
+            <p className="mt-2">Không có dữ liệu đơn.</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
