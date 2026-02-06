@@ -268,7 +268,7 @@ export default function ServiceRequestsPage() {
         })),
       })
         .then(() => {
-          toast.success('Inbound request submitted. Staff will putaway into shelves in your rented zone.');
+          toast.success('Gửi yêu cầu inbound thành công!', 5000);
           setRequests((prev) => [
             ...prev,
             {
@@ -304,7 +304,7 @@ export default function ServiceRequestsPage() {
         items,
       })
         .then(() => {
-          toast.success('Outbound request submitted. Staff will pick from shelves and dispatch.');
+          toast.success('Gửi yêu cầu outbound thành công!', 5000);
           setRequests((prev) => [
             ...prev,
             {
@@ -329,7 +329,7 @@ export default function ServiceRequestsPage() {
           skuList: checkScope === 'By SKU list' ? checkSkuList : undefined,
         } as ServiceRequest,
       ]);
-      toast.success(`${type} request ${base.id} submitted successfully`);
+      toast.success('Gửi yêu cầu thành công!', 5000);
     }
   };
 

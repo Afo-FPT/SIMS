@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -60,13 +61,32 @@ export function useToastHelpers() {
 }
 
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
-  return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const container = (
+    <div
+      className="fixed top-4 right-4 flex flex-col gap-2 pointer-events-none"
+      style={{
+        zIndex: 99999,
+        isolation: 'isolate',
+        position: 'fixed',
+        top: '1rem',
+        right: '1rem',
+      }}
+      aria-live="polite"
+    >
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} removeToast={removeToast} />
       ))}
     </div>
   );
+
+  if (typeof window === 'undefined' || !mounted) return null;
+  return createPortal(container, document.body);
 }
 
 function ToastItem({ toast, removeToast }: { toast: Toast; removeToast: (id: string) => void }) {
@@ -95,7 +115,12 @@ function ToastItem({ toast, removeToast }: { toast: Toast; removeToast: (id: str
 
   return (
     <div
-      className={`min-w-[300px] max-w-md px-4 py-3 rounded-2xl shadow-xl border-2 pointer-events-auto animate-in slide-in-from-right fade-in duration-300 ${colors[toast.type]}`}
+      className={`min-w-[300px] max-w-md px-4 py-3 rounded-2xl shadow-xl border-2 pointer-events-auto ${colors[toast.type]}`}
+      style={{
+        animation: 'toastSlideIn 0.3s ease-out forwards',
+        zIndex: 100000,
+        position: 'relative',
+      }}
     >
       <div className="flex items-start gap-3">
         <span className="material-symbols-outlined text-xl shrink-0">{icons[toast.type]}</span>
