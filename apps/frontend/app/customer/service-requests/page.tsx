@@ -21,6 +21,11 @@ import { useToastHelpers } from '../../../lib/toast';
 import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
+import {
+  type CycleCountResponse,
+  createCycleCount,
+  getCycleCounts as getCycleCountsApi,
+} from '../../../lib/cycle-count.api';
 
 const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
   { id: 'Inbound', label: 'Inbound' },
@@ -87,6 +92,11 @@ export default function ServiceRequestsPage() {
   const [detailRequest, setDetailRequest] = useState<StorageRequestView | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Theo dõi cycle count (Inventory Checking thực tế)
+  const [cycleCounts, setCycleCounts] = useState<CycleCountResponse[]>([]);
+  const [cycleLoading, setCycleLoading] = useState(false);
+  const [cycleError, setCycleError] = useState<string | null>(null);
+
   // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
     if ((type !== 'Outbound' && type !== 'Inbound') || !contractId) return;
@@ -117,9 +127,24 @@ export default function ServiceRequestsPage() {
     }
   };
 
+  const loadCycleCounts = async () => {
+    try {
+      setCycleLoading(true);
+      setCycleError(null);
+      const data = await getCycleCountsApi();
+      setCycleCounts(data);
+    } catch (err) {
+      setCycleError(err instanceof Error ? err.message : 'Không tải được danh sách kiểm kê');
+      toast.error('Không tải được danh sách kiểm kê');
+    } finally {
+      setCycleLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (mainTab === 'list' && hasActive) {
       loadTrackingRequests();
+      loadCycleCounts();
     }
   }, [mainTab, hasActive]);
 
@@ -321,15 +346,26 @@ export default function ServiceRequestsPage() {
         })
         .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request'));
     } else {
-      setRequests((prev) => [
-        ...prev,
-        {
-          ...base,
-          scope: checkScope,
-          skuList: checkScope === 'By SKU list' ? checkSkuList : undefined,
-        } as ServiceRequest,
-      ]);
-      toast.success('Gửi yêu cầu thành công!', 5000);
+      // Inventory Checking → tạo Cycle Count thực tế cho hợp đồng
+      createCycleCount({
+        contractId,
+        // Hiện tại FE chưa map theo SKU list → luôn kiểm kê full inventory cho contract
+        note: notes || undefined,
+        preferredDate: preferredDate ? new Date(preferredDate).toISOString() : undefined,
+      })
+        .then(() => {
+          toast.success('Gửi yêu cầu kiểm kê (Cycle Count) thành công!', 5000);
+          // Reset chỉ các field chung
+          setNotes('');
+          setCheckScope('Full inventory');
+          setCheckSkuList([]);
+          loadCycleCounts();
+        })
+        .catch((err) =>
+          toast.error(
+            err instanceof Error ? err.message : 'Failed to submit inventory checking request'
+          )
+        );
     }
   };
 
@@ -422,72 +458,129 @@ export default function ServiceRequestsPage() {
       </div>
 
       {mainTab === 'list' ? (
-        <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách yêu cầu</h2>
-          <p className="text-sm text-slate-500 px-6 pb-4">Theo dõi trạng thái các yêu cầu đã gửi</p>
-          {trackingLoading ? (
-            <div className="p-12 text-center text-slate-500">Đang tải…</div>
-          ) : trackingError ? (
-            <div className="p-12 text-center">
-              <p className="text-red-600 mb-4">{trackingError}</p>
-              <Button variant="outline" onClick={loadTrackingRequests}>Thử lại</Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã đơn</th>
-                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Loại</th>
-                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Ngày tạo</th>
-                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
-                    <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trackingRequests.map((r) => (
-                    <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                      <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
-                      <td className="px-6 py-4 text-slate-700">
-                        {r.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
-                      </td>
-                      <td className="px-6 py-4 text-slate-700">{formatDate(r.created_at)}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
-                            r.status === 'COMPLETED'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : r.status === 'DONE_BY_STAFF' || r.status === 'APPROVED'
-                                ? 'bg-blue-100 text-blue-700'
-                                : r.status === 'REJECTED'
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {statusLabel[r.status] ?? r.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          type="button"
-                          onClick={() => setDetailRequestId(r.request_id)}
-                          className="text-sm font-bold text-primary hover:underline"
-                        >
-                          Xem chi tiết
-                        </button>
-                      </td>
+        <>
+          <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách yêu cầu Inbound/Outbound</h2>
+            <p className="text-sm text-slate-500 px-6 pb-4">Theo dõi trạng thái các yêu cầu nhập/xuất kho</p>
+            {trackingLoading ? (
+              <div className="p-12 text-center text-slate-500">Đang tải…</div>
+            ) : trackingError ? (
+              <div className="p-12 text-center">
+                <p className="text-red-600 mb-4">{trackingError}</p>
+                <Button variant="outline" onClick={loadTrackingRequests}>Thử lại</Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã đơn</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Loại</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Ngày tạo</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {!trackingLoading && !trackingError && trackingRequests.length === 0 && (
-            <div className="p-12 text-center text-slate-500">
-              Chưa có yêu cầu nào. Chuyển sang tab &quot;Tạo yêu cầu&quot; để gửi.
-            </div>
-          )}
-        </section>
+                  </thead>
+                  <tbody>
+                    {trackingRequests.map((r) => (
+                      <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                        <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
+                        <td className="px-6 py-4 text-slate-700">
+                          {r.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
+                        </td>
+                        <td className="px-6 py-4 text-slate-700">{formatDate(r.created_at)}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              r.status === 'COMPLETED'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : r.status === 'DONE_BY_STAFF' || r.status === 'APPROVED'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : r.status === 'REJECTED'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {statusLabel[r.status] ?? r.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setDetailRequestId(r.request_id)}
+                            className="text-sm font-bold text-primary hover:underline"
+                          >
+                            Xem chi tiết
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {!trackingLoading && !trackingError && trackingRequests.length === 0 && (
+              <div className="p-12 text-center text-slate-500">
+                Chưa có yêu cầu nào. Chuyển sang tab &quot;Tạo yêu cầu&quot; để gửi.
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách Cycle Count (Inventory Checking)</h2>
+            <p className="text-sm text-slate-500 px-6 pb-4">
+              Theo dõi các phiên kiểm kê tồn kho đã yêu cầu
+            </p>
+            {cycleLoading ? (
+              <div className="p-12 text-center text-slate-500">Đang tải…</div>
+            ) : cycleError ? (
+              <div className="p-12 text-center">
+                <p className="text-red-600 mb-4">{cycleError}</p>
+                <Button variant="outline" onClick={loadCycleCounts}>Thử lại</Button>
+              </div>
+            ) : cycleCounts.length === 0 ? (
+              <div className="p-12 text-center text-slate-500">
+                Chưa có phiên kiểm kê nào.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã / Contract</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Kho</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Hạn kiểm</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cycleCounts.map((cc) => (
+                      <tr key={cc.cycle_count_id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                        <td className="px-6 py-4 font-bold text-slate-900">{cc.contract_code}</td>
+                        <td className="px-6 py-4 text-slate-700">{cc.warehouse_name || '—'}</td>
+                        <td className="px-6 py-4 text-slate-700">{cc.status}</td>
+                        <td className="px-6 py-4 text-slate-700">
+                          {cc.counting_deadline
+                            ? formatDate(cc.counting_deadline)
+                            : '—'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <a
+                            href={`/customer/cycle-count/${cc.cycle_count_id}`}
+                            className="text-sm font-bold text-primary hover:underline"
+                          >
+                            Xem chi tiết
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
       ) : (
         <form
         onSubmit={handleSubmit}

@@ -7,7 +7,8 @@ import {
   activateUserAccount,
   deactivateUserAccount,
   updateUserAccount,
-  deleteUserAccount
+  deleteUserAccount,
+  getStaffUsersForManager
 } from "../controllers/user.controller";
 
 const router = express.Router();
@@ -21,6 +22,14 @@ router.get(
   authenticate,
   authorizeRoles("admin"),
   getUsers
+);
+
+// Danh sách staff cho manager/admin (dùng assign cycle count, tasks, ...)
+router.get(
+  "/staff",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getStaffUsersForManager
 );
 
 router.get(

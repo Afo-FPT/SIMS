@@ -68,7 +68,7 @@ hoặc
 ```json
 {
   "email": "admin@sims.ai",
-  "password": "Admin@123"
+  "password": "123456"
 }
 ```
 

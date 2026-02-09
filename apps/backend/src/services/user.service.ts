@@ -11,6 +11,15 @@ export async function getAllUsers() {
 }
 
 /**
+ * Lấy danh sách staff đang active (dùng cho manager assign)
+ */
+export async function getActiveStaffUsers() {
+  return User.find({ role: "staff", isActive: true })
+    .select("_id name email role isActive")
+    .sort({ name: 1 });
+}
+
+/**
  * Lấy thông tin user theo ID
  */
 export async function getUserById(userId: string) {

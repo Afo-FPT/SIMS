@@ -121,6 +121,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'service-requests': 'SERVICE_REQUESTS',
     'inventory': 'INVENTORY',
     'inventory-checking': 'INVENTORY_CHECKING',
+    'cycle-count': 'CYCLE_COUNT',
     'tasks': 'TASKS',
     'warehouses': 'WAREHOUSES',
     'reports': 'REPORTS',
@@ -143,6 +144,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
   let activeView = reverseMap[lastPart] || 'DASHBOARD';
   if (pathname.includes('/contracts')) activeView = 'CONTRACTS';
   else if (pathname.includes('/tasks')) activeView = 'TASKS';
+  else if (pathname.includes('/cycle-count')) activeView = 'CYCLE_COUNT';
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 font-sans">

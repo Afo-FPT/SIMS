@@ -15,6 +15,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
       case 'SERVICE_REQUESTS': return 'Service Requests';
       case 'INVENTORY': return persona === 'CUSTOMER' ? 'My Inventory' : persona === 'MANAGER' ? 'Inventory' : 'Global Inventory';
       case 'INVENTORY_CHECKING': return 'Inventory Checking';
+      case 'CYCLE_COUNT': return 'Cycle Count';
       case 'SETTINGS': return 'Settings';
       case 'USERS': return persona === 'ADMIN' ? 'Users' : 'User Control';
       case 'LOGS': return persona === 'ADMIN' ? 'Logs' : 'Audit Logs';

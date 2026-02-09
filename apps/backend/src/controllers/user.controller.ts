@@ -6,7 +6,8 @@ import {
   activateUser,
   deactivateUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  getActiveStaffUsers
 } from "../services/user.service";
 
 /**
@@ -133,5 +134,23 @@ export const deleteUserAccount = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+/**
+ * Lấy danh sách staff (role=staff, isActive=true) cho manager/admin
+ */
+export const getStaffUsersForManager = async (req: Request, res: Response) => {
+  try {
+    const staff = await getActiveStaffUsers();
+    res.json({
+      data: staff.map((u) => ({
+        user_id: u._id.toString(),
+        name: u.name,
+        email: u.email
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
