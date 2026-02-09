@@ -10,6 +10,12 @@ export interface IStorageRequestDetail extends Document {
   quantityPerUnit?: number;
   quantityRequested: number;
   quantityActual?: number;
+  /** Staff-reported: quantity damaged/lost */
+  damageQuantity?: number;
+  /** Staff-reported: reason code for loss/damage */
+  lossReason?: string;
+  /** Staff-reported: free-text notes */
+  lossNotes?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,7 +55,10 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
     quantityActual: {
       type: Number,
       min: 0
-    }
+    },
+    damageQuantity: { type: Number, min: 0 },
+    lossReason: { type: String, trim: true },
+    lossNotes: { type: String, trim: true }
   },
   {
     timestamps: true

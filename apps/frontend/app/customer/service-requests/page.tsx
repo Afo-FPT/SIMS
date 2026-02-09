@@ -1133,6 +1133,63 @@ export default function ServiceRequestsPage() {
                 </div>
               )}
             </div>
+
+            {/* Thông báo hao hụt */}
+            {(() => {
+              const lossItems = detailRequest.items.filter((it) => {
+                const req = it.quantity_requested;
+                const actual = it.quantity_actual ?? 0;
+                const damage = it.damage_quantity ?? 0;
+                return actual < req || damage > 0;
+              });
+              if (lossItems.length === 0) return null;
+              const lossReasonLabel: Record<string, string> = {
+                damage: 'Hư hỏng trong quá trình vận chuyển',
+                damage_storage: 'Hư hỏng do bảo quản',
+                shortage: 'Thiếu hụt khi nhận hàng',
+                quality: 'Không đạt chất lượng',
+                expired: 'Hết hạn sử dụng',
+                damage_picking: 'Hư hỏng khi lấy hàng',
+                location_error: 'Không tìm thấy vị trí',
+                other: 'Khác',
+              };
+              return (
+                <div className="border border-amber-200 rounded-xl bg-amber-50/50 p-4">
+                  <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-lg">warning</span>
+                    Thông báo hao hụt
+                  </h3>
+                  <ul className="space-y-3">
+                    {lossItems.map((it) => {
+                      const req = it.quantity_requested;
+                      const actual = it.quantity_actual ?? 0;
+                      const damage = it.damage_quantity ?? 0;
+                      const short = Math.max(0, req - actual);
+                      const reasonText = it.loss_reason ? (lossReasonLabel[it.loss_reason] ?? it.loss_reason) : null;
+                      return (
+                        <li key={it.request_detail_id} className="text-sm border-b border-amber-100 pb-3 last:border-0 last:pb-0">
+                          <p className="font-bold text-slate-900">{it.item_name}</p>
+                          <div className="mt-1 space-y-0.5 text-slate-700">
+                            {short > 0 && (
+                              <p><span className="text-amber-700 font-medium">Thiếu:</span> {short} {it.unit} (yêu cầu {req}, thực tế {actual})</p>
+                            )}
+                            {damage > 0 && (
+                              <p><span className="text-amber-700 font-medium">Hư hỏng / không đủ:</span> {damage} {it.unit}</p>
+                            )}
+                            {reasonText && (
+                              <p><span className="text-slate-600 font-medium">Lý do:</span> {reasonText}</p>
+                            )}
+                            {it.loss_notes && (
+                              <p><span className="text-slate-600 font-medium">Ghi chú:</span> {it.loss_notes}</p>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="py-12 text-center text-slate-500">

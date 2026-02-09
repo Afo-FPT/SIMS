@@ -8,6 +8,10 @@ export interface StaffCompleteRequestItemDTO {
   quantityActual: number;
   /** For IN requests: staff must choose shelf for putaway */
   shelfId?: string;
+  /** Optional: quantity damaged/lost (for customer visibility) */
+  damageQuantity?: number;
+  lossReason?: string;
+  lossNotes?: string;
 }
 
 export interface StaffCompleteStorageRequestDTO {
@@ -240,6 +244,15 @@ export async function staffCompleteStorageRequest(
       }
 
       detail.quantityActual = it.quantityActual;
+      if (it.damageQuantity != null && !isNaN(it.damageQuantity) && it.damageQuantity >= 0) {
+        (detail as any).damageQuantity = it.damageQuantity;
+      }
+      if (it.lossReason != null && typeof it.lossReason === "string") {
+        (detail as any).lossReason = it.lossReason.trim() || undefined;
+      }
+      if (it.lossNotes != null && typeof it.lossNotes === "string") {
+        (detail as any).lossNotes = it.lossNotes.trim() || undefined;
+      }
       await detail.save({ session });
 
       if (it.quantityActual <= 0) continue;

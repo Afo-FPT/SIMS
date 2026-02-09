@@ -61,6 +61,9 @@ export interface StorageRequestView {
     quantity_per_unit?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    damage_quantity?: number;
+    loss_reason?: string;
+    loss_notes?: string;
   }>;
 }
 
@@ -113,7 +116,14 @@ export async function listContractShelves(contractId: string): Promise<ContractS
 
 export async function staffCompleteStorageRequest(payload: {
   requestId: string;
-  items: Array<{ requestDetailId: string; quantityActual: number; shelfId?: string }>;
+  items: Array<{
+    requestDetailId: string;
+    quantityActual: number;
+    shelfId?: string;
+    damageQuantity?: number;
+    lossReason?: string;
+    lossNotes?: string;
+  }>;
 }) {
   return await apiJson(`/staff/storage-requests/${payload.requestId}/complete`, {
     method: 'PATCH',

@@ -32,6 +32,9 @@ export interface StorageRequestViewDTO {
     quantity_per_unit?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    damage_quantity?: number;
+    loss_reason?: string;
+    loss_notes?: string;
   }>;
 }
 
@@ -125,7 +128,10 @@ export async function listStorageRequests(
           unit: d.unit || "pcs",
           quantity_per_unit: d.quantityPerUnit,
           quantity_requested: d.quantityRequested,
-          quantity_actual: d.quantityActual
+          quantity_actual: d.quantityActual,
+          damage_quantity: d.damageQuantity,
+          loss_reason: d.lossReason,
+          loss_notes: d.lossNotes
         };
       })
     } satisfies StorageRequestViewDTO;
@@ -198,7 +204,10 @@ export async function getStorageRequestById(
         unit: d.unit || "pcs",
         quantity_per_unit: d.quantityPerUnit,
         quantity_requested: d.quantityRequested,
-        quantity_actual: d.quantityActual
+        quantity_actual: d.quantityActual,
+        damage_quantity: d.damageQuantity,
+        loss_reason: d.lossReason,
+        loss_notes: d.lossNotes
       };
     })
   };

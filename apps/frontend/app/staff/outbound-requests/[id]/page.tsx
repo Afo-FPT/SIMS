@@ -79,10 +79,28 @@ export default function StaffOutboundDetailPage() {
 
   const handleComplete = async () => {
     if (!req) return;
-    for (const r of rows) {
-      const q = Number(r.quantityActual);
-      if (isNaN(q) || q < 0) {
-        toast.warning('Quantity actual must be a number >= 0 for all items');
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const item = req.items[i];
+      const actual = Number(r.quantityActual);
+      if (isNaN(actual) || actual < 0) {
+        toast.warning('Số lượng đã lấy phải là số >= 0 cho tất cả mặt hàng');
+        return;
+      }
+      const requested = item.quantity_requested;
+      const shortage = requested - actual;
+      const damage = Number(r.damageQuantity) || 0;
+      if (shortage > 0) {
+        if (damage !== shortage) {
+          toast.warning(
+            `"${item.item_name}": Chênh lệch thiếu ${shortage} ${item.unit}. Số lượng hư hỏng phải bằng ${shortage} ${item.unit}.`
+          );
+          return;
+        }
+      } else if (damage > 0 && damage > actual) {
+        toast.warning(
+          `"${item.item_name}": Số lượng hư hỏng không được vượt quá số lượng đã lấy (${actual} ${item.unit}).`
+        );
         return;
       }
     }
@@ -93,6 +111,9 @@ export default function StaffOutboundDetailPage() {
         items: rows.map((r) => ({
           requestDetailId: r.requestDetailId,
           quantityActual: Number(r.quantityActual || 0),
+          damageQuantity: r.damageQuantity ? Number(r.damageQuantity) : undefined,
+          lossReason: r.lossReason || undefined,
+          lossNotes: r.notes || undefined,
         })),
       });
       toast.success('Outbound picking completed. Stock decreased.');
@@ -200,7 +221,15 @@ export default function StaffOutboundDetailPage() {
                         step="0.01"
                         max={it.quantity_requested}
                         value={row?.quantityActual ?? ''}
-                        onChange={(e) => updateRow(idx, { quantityActual: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const requested = it.quantity_requested;
+                          const shortage = requested - (Number(val) || 0);
+                          const patch: { quantityActual: string; damageQuantity?: string } = { quantityActual: val };
+                          if (shortage > 0) patch.damageQuantity = String(shortage);
+                          else patch.damageQuantity = '';
+                          updateRow(idx, patch);
+                        }}
                         placeholder="0"
                         className="w-24 text-right"
                       />
@@ -253,15 +282,17 @@ export default function StaffOutboundDetailPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Số lượng hư hỏng/không lấy được</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Số lượng hư hỏng/không lấy được {hasShortage && <span className="text-amber-600">(phải = {requested - actual} {it.unit})</span>}
+                    </label>
                     <Input
                       type="number"
                       min="0"
-                      max={requested - actual}
+                      max={hasShortage ? requested - actual : requested}
                       step="0.01"
                       value={row?.damageQuantity ?? ''}
                       onChange={(e) => updateRow(idx, { damageQuantity: e.target.value })}
-                      placeholder="0"
+                      placeholder={hasShortage ? String(requested - actual) : '0'}
                       className="w-full"
                     />
                   </div>
