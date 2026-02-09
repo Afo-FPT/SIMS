@@ -5,7 +5,8 @@ import {
   InboundRequestItem,
   createOutboundRequest,
   CreateOutboundRequestDTO,
-  OutboundRequestItem
+  OutboundRequestItem,
+  assignStorageRequest
 } from "../services/storage-request.service";
 
 /**
@@ -23,21 +24,18 @@ export async function createInboundRequestController(
     }
 
     // Extract request data
-    const { contractId, items } = req.body;
+    const { contractId, reference, items } = req.body;
 
-    // Validate contractId
     if (!contractId) {
       return res.status(400).json({ message: "Contract ID is required" });
     }
 
-    // Validate items array
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
         message: "Items array is required and must not be empty"
       });
     }
 
-    // Transform items to DTO format (customer does NOT choose shelf; staff will putaway later)
     const itemsDTO: InboundRequestItem[] = items.map((item: any) => ({
       itemName: item.itemName,
       quantity: Number(item.quantity),
@@ -45,9 +43,9 @@ export async function createInboundRequestController(
       quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined
     }));
 
-    // Prepare DTO
     const createRequest: CreateInboundRequestDTO = {
       contractId,
+      reference: reference != null ? String(reference).trim() : undefined,
       items: itemsDTO
     };
 
@@ -101,21 +99,18 @@ export async function createOutboundRequestController(
     }
 
     // Extract request data
-    const { contractId, items } = req.body;
+    const { contractId, reference, items } = req.body;
 
-    // Validate contractId
     if (!contractId) {
       return res.status(400).json({ message: "Contract ID is required" });
     }
 
-    // Validate items array
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
         message: "Items array is required and must not be empty"
       });
     }
 
-    // Transform items to DTO format
     const itemsDTO: OutboundRequestItem[] = items.map((item: any) => ({
       shelfId: item.shelfId,
       itemName: item.itemName,
@@ -123,28 +118,23 @@ export async function createOutboundRequestController(
       unit: item.unit || "pcs"
     }));
 
-    // Prepare DTO
     const createRequest: CreateOutboundRequestDTO = {
       contractId,
+      reference: reference != null ? String(reference).trim() : undefined,
       items: itemsDTO
     };
 
-    // Get customer ID from authenticated user
     const customerId = req.user.userId;
-
-    // Create outbound request using service
     const outboundRequest = await createOutboundRequest(
       createRequest,
       customerId
     );
 
-    // Return success response
     res.status(201).json({
       message: "Outbound request created successfully",
       data: outboundRequest
     });
   } catch (error: any) {
-    // Handle validation errors
     if (
       error.message.includes("required") ||
       error.message.includes("must be") ||
@@ -156,10 +146,37 @@ export async function createOutboundRequestController(
     ) {
       return res.status(400).json({ message: error.message });
     }
+    return res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
 
-    // Handle other errors
-    res.status(500).json({
-      message: error.message || "Internal server error"
-    });
+/**
+ * Assign a PENDING storage request to staff (manager only)
+ * PATCH /storage-requests/:id/assign  body: { staffIds: string[] }
+ */
+export async function assignStorageRequestController(req: Request, res: Response) {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+    const { staffIds } = req.body;
+    if (!staffIds || !Array.isArray(staffIds)) {
+      return res.status(400).json({ message: "staffIds array is required" });
+    }
+
+    const data = await assignStorageRequest(id, staffIds, req.user.userId);
+    return res.json({ message: "Request assigned to staff successfully", data });
+  } catch (error: any) {
+    const msg = error?.message || "Internal server error";
+    if (
+      msg.includes("Invalid") ||
+      msg.includes("required") ||
+      msg.includes("not found") ||
+      msg.includes("Only PENDING") ||
+      msg.includes("not an active staff")
+    ) {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: msg });
   }
 }

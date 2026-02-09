@@ -18,7 +18,7 @@ export async function staffCompleteStorageRequestController(req: Request, res: R
     const { items } = req.body;
 
     const dto: StaffCompleteStorageRequestDTO = { items };
-    const data = await staffCompleteStorageRequest(id, dto);
+    const data = await staffCompleteStorageRequest(id, dto, req.user!.userId);
 
     return res.json({
       message: "Storage request completed by staff successfully",
@@ -35,7 +35,8 @@ export async function staffCompleteStorageRequestController(req: Request, res: R
       msg.includes("Only") ||
       msg.includes("does not belong") ||
       msg.includes("Not enough") ||
-      msg.includes("has no items")
+      msg.includes("has no items") ||
+      msg.includes("not assigned")
     ) {
       return res.status(400).json({ message: msg });
     }

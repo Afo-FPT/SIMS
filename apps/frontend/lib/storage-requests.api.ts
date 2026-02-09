@@ -9,6 +9,8 @@ export interface CreateInboundItemPayload {
 
 export async function createInboundStorageRequest(payload: {
   contractId: string;
+  /** Customer-provided inbound reference (e.g. IN-2025-0025) */
+  reference?: string;
   items: CreateInboundItemPayload[];
 }) {
   return await apiJson('/storage-requests/inbound', {
@@ -26,6 +28,8 @@ export interface CreateOutboundItemPayload {
 
 export async function createOutboundStorageRequest(payload: {
   contractId: string;
+  /** Customer-provided outbound reference (e.g. OUT-2025-0012) */
+  reference?: string;
   items: CreateOutboundItemPayload[];
 }) {
   return await apiJson('/storage-requests/outbound', {
@@ -37,6 +41,10 @@ export async function createOutboundStorageRequest(payload: {
 export interface StorageRequestView {
   request_id: string;
   contract_id: string;
+  /** Contract code for display (Contract code) */
+  contract_code?: string;
+  /** Customer-provided inbound/outbound reference */
+  reference?: string;
   customer_id: string;
   request_type: 'IN' | 'OUT';
   status: 'PENDING' | 'APPROVED' | 'DONE_BY_STAFF' | 'COMPLETED' | 'REJECTED';
@@ -68,6 +76,20 @@ export async function listStorageRequests(params: { requestType?: 'IN' | 'OUT'; 
 
 export async function getStorageRequestById(id: string): Promise<StorageRequestView> {
   return await apiJson<StorageRequestView>(`/storage-requests/${id}`, { method: 'GET' });
+}
+
+/**
+ * Manager assigns a PENDING storage request to one or more staff.
+ * PATCH /storage-requests/:id/assign  body: { staffIds: string[] }
+ */
+export async function assignStorageRequest(requestId: string, staffIds: string[]) {
+  return await apiJson<{ request_id: string; status: string; assigned_staff_ids: string[] }>(
+    `/storage-requests/${requestId}/assign`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ staffIds }),
+    }
+  );
 }
 
 export async function approveInboundRequest(id: string, payload: { decision: 'APPROVED' | 'REJECTED'; note?: string }) {

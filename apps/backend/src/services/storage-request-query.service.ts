@@ -10,6 +10,10 @@ export interface ListStorageRequestsQuery {
 export interface StorageRequestViewDTO {
   request_id: string;
   contract_id: string;
+  /** Contract code (e.g. from Contract.contractCode) for display */
+  contract_code?: string;
+  /** Customer-provided reference (inbound/outbound reference) */
+  reference?: string;
   customer_id: string;
   request_type: "IN" | "OUT";
   status: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
@@ -49,11 +53,22 @@ export async function listStorageRequests(
   if (userRole === "customer") {
     q.customerId = new Types.ObjectId(userId);
   }
+  if (userRole === "staff") {
+    q.assignedStaffIds = new Types.ObjectId(userId);
+    if (!query.status) q.status = "APPROVED";
+  }
   if (query.requestType) q.requestType = query.requestType;
   if (query.status) q.status = query.status;
 
   const requests = await StorageRequest.find(q).sort({ createdAt: -1 }).lean();
   if (requests.length === 0) return [];
+
+  const contractIds = [...new Set(requests.map((r: any) => r.contractId.toString()))];
+  const Contract = (await import("../models/Contract")).default;
+  const contracts = await Contract.find({ _id: { $in: contractIds.map((id) => new Types.ObjectId(id)) } })
+    .select("_id contractCode")
+    .lean();
+  const contractCodeById = new Map(contracts.map((c: any) => [c._id.toString(), c.contractCode]));
 
   const requestIds = requests.map((r: any) => r._id);
   const details = await StorageRequestDetail.find({ requestId: { $in: requestIds } })
@@ -88,6 +103,8 @@ export async function listStorageRequests(
     return {
       request_id: r._id.toString(),
       contract_id: r.contractId.toString(),
+      contract_code: contractCodeById.get(r.contractId.toString()),
+      reference: r.reference,
       customer_id: r.customerId.toString(),
       request_type: r.requestType,
       status: r.status,
@@ -126,9 +143,20 @@ export async function getStorageRequestById(
   const req = await StorageRequest.findById(requestId).lean();
   if (!req) throw new Error("Storage request not found");
 
-  if (userRole === "customer" && req.customerId.toString() !== userId) {
+  if (userRole === "customer" && (req as any).customerId.toString() !== userId) {
     throw new Error("Access denied. You can only view your own requests.");
   }
+  if (userRole === "staff") {
+    const assigned = (req as any).assignedStaffIds || [];
+    const assignedIds = assigned.map((id: any) => id.toString());
+    if (assignedIds.length > 0 && !assignedIds.includes(userId)) {
+      throw new Error("Access denied. This request is not assigned to you.");
+    }
+  }
+
+  const Contract = (await import("../models/Contract")).default;
+  const contract = await Contract.findById((req as any).contractId).select("contractCode").lean();
+  const contract_code = contract ? (contract as any).contractCode : undefined;
 
   const details = await StorageRequestDetail.find({ requestId: req._id })
     .populate("shelfId", "shelfCode zoneId")
@@ -147,10 +175,12 @@ export async function getStorageRequestById(
 
   return {
     request_id: req._id.toString(),
-    contract_id: req.contractId.toString(),
-    customer_id: req.customerId.toString(),
-    request_type: req.requestType,
-    status: req.status,
+    contract_id: (req as any).contractId.toString(),
+    contract_code,
+    reference: (req as any).reference,
+    customer_id: (req as any).customerId.toString(),
+    request_type: (req as any).requestType,
+    status: (req as any).status,
     approved_by: (req as any).approvedBy?.toString?.(),
     approved_at: (req as any).approvedAt,
     created_at: (req as any).createdAt,

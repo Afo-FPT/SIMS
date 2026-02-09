@@ -128,9 +128,9 @@ export default function StaffOutboundDetailPage() {
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 mb-2">Pick & Dispatch {req.request_id}</h1>
+            <h1 className="text-2xl font-black text-slate-900 mb-2">Pick & Dispatch {req.reference ?? req.request_id}</h1>
             <div className="space-y-1 text-sm">
-              <p><span className="font-bold text-slate-600">Contract:</span> {req.contract_id}</p>
+              <p><span className="font-bold text-slate-600">Contract code:</span> {req.contract_code ?? req.contract_id}</p>
               <p><span className="font-bold text-slate-600">Customer:</span> {req.customer_id}</p>
               <p><span className="font-bold text-slate-600">Ngày tạo:</span> {formatDate(req.created_at)}</p>
               <p><span className="font-bold text-slate-600">Trạng thái:</span> 

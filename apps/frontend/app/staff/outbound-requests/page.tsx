@@ -52,8 +52,8 @@ export default function StaffOutboundRequestsPage() {
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <Table>
             <TableHead>
-              <TableHeader>Request ID</TableHeader>
-              <TableHeader>Contract</TableHeader>
+              <TableHeader>Outbound reference</TableHeader>
+              <TableHeader>Contract code</TableHeader>
               <TableHeader>Items</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Action</TableHeader>
@@ -61,8 +61,8 @@ export default function StaffOutboundRequestsPage() {
             <TableBody>
               {items.map((r) => (
                 <TableRow key={r.request_id}>
-                  <TableCell className="font-bold text-slate-900">{r.request_id}</TableCell>
-                  <TableCell className="text-slate-700">{r.contract_id}</TableCell>
+                  <TableCell className="font-bold text-slate-900">{r.reference ?? r.request_id}</TableCell>
+                  <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell><Badge variant="info">{r.status}</Badge></TableCell>
                   <TableCell>

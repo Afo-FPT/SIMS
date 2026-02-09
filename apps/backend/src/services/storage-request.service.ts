@@ -19,6 +19,8 @@ export interface InboundRequestItem {
  */
 export interface CreateInboundRequestDTO {
   contractId: string;
+  /** Customer-provided inbound reference (e.g. IN-2025-0025) */
+  reference?: string;
   items: InboundRequestItem[];
 }
 
@@ -37,6 +39,8 @@ export interface OutboundRequestItem {
  */
 export interface CreateOutboundRequestDTO {
   contractId: string;
+  /** Customer-provided outbound reference (e.g. OUT-2025-0012) */
+  reference?: string;
   items: OutboundRequestItem[];
 }
 
@@ -240,13 +244,12 @@ export async function createInboundRequest(
   // Validate contract ownership
   await validateContractOwnership(data.contractId, customerId);
 
-  // Start transaction-like operations (create request first, then details)
   const request = await StorageRequest.create({
     contractId: new Types.ObjectId(data.contractId),
     customerId: new Types.ObjectId(customerId),
     requestType: "IN",
-    // Bỏ bước manager duyệt: tạo thẳng ở trạng thái APPROVED
-    status: "APPROVED"
+    reference: data.reference?.trim() || undefined,
+    status: "PENDING"
   });
 
   // Create request details
@@ -308,13 +311,12 @@ export async function createOutboundRequest(
     await validateShelfBelongsToContract(item.shelfId, data.contractId);
   }
 
-  // Start transaction-like operations (create request first, then details)
   const request = await StorageRequest.create({
     contractId: new Types.ObjectId(data.contractId),
     customerId: new Types.ObjectId(customerId),
     requestType: "OUT",
-    // Bỏ bước manager duyệt cho outbound: tạo thẳng ở trạng thái APPROVED
-    status: "APPROVED"
+    reference: data.reference?.trim() || undefined,
+    status: "PENDING"
   });
 
   // Create request details
@@ -348,5 +350,56 @@ export async function createOutboundRequest(
     requestType: request.requestType as "OUT",
     items: itemsResponse,
     createdAt: request.createdAt
+  };
+}
+
+/**
+ * Manager assigns a PENDING storage request to one or more staff.
+ * Sets status to APPROVED, approvedBy, approvedAt, assignedStaffIds.
+ */
+export async function assignStorageRequest(
+  requestId: string,
+  staffIds: string[],
+  managerId: string
+): Promise<{ request_id: string; status: string; assigned_staff_ids: string[] }> {
+  if (!Types.ObjectId.isValid(requestId)) throw new Error("Invalid request id");
+  if (!Types.ObjectId.isValid(managerId)) throw new Error("Invalid manager id");
+  if (!staffIds || !Array.isArray(staffIds) || staffIds.length === 0) {
+    throw new Error("staffIds is required and must be a non-empty array");
+  }
+
+  const request = await StorageRequest.findById(requestId);
+  if (!request) throw new Error("Storage request not found");
+  if (request.status !== "PENDING") {
+    throw new Error("Only PENDING requests can be assigned. Current status: " + request.status);
+  }
+
+  const User = (await import("../models/User")).default;
+  const objectIds = staffIds.map((id) => {
+    if (!Types.ObjectId.isValid(id)) throw new Error("Invalid staff id: " + id);
+    return new Types.ObjectId(id);
+  });
+  const staffUsers = await User.find({
+    _id: { $in: objectIds },
+    role: "staff",
+    isActive: true
+  })
+    .select("_id")
+    .lean();
+  const foundIds = new Set(staffUsers.map((u: any) => u._id.toString()));
+  for (const id of staffIds) {
+    if (!foundIds.has(id)) throw new Error("User is not an active staff: " + id);
+  }
+
+  request.status = "APPROVED";
+  request.approvedBy = new Types.ObjectId(managerId);
+  request.approvedAt = new Date();
+  request.assignedStaffIds = objectIds;
+  await request.save();
+
+  return {
+    request_id: request._id.toString(),
+    status: request.status,
+    assigned_staff_ids: (request.assignedStaffIds || []).map((id) => id.toString())
   };
 }

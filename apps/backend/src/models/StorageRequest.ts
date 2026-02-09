@@ -4,7 +4,11 @@ export interface IStorageRequest extends Document {
   contractId: Types.ObjectId;
   customerId: Types.ObjectId;
   requestType: "IN" | "OUT";
+  /** Customer-provided reference (e.g. IN-2025-0025, OUT-2025-0012) */
+  reference?: string;
   status: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
+  /** Set by manager when approving: staff who can see and complete this request */
+  assignedStaffIds?: Types.ObjectId[];
   approvedBy?: Types.ObjectId;
   approvedAt?: Date;
   customerConfirmedAt?: Date;
@@ -29,11 +33,13 @@ const StorageRequestSchema = new Schema<IStorageRequest>(
       enum: ["IN", "OUT"],
       required: true
     },
+    reference: { type: String, trim: true },
     status: {
       type: String,
       enum: ["PENDING", "APPROVED", "DONE_BY_STAFF", "COMPLETED", "REJECTED"],
       default: "PENDING"
     },
+    assignedStaffIds: [{ type: Schema.Types.ObjectId, ref: "User" }],
     approvedBy: {
       type: Schema.Types.ObjectId,
       ref: "User"
@@ -54,6 +60,7 @@ StorageRequestSchema.index({ contractId: 1 });
 StorageRequestSchema.index({ customerId: 1 });
 StorageRequestSchema.index({ status: 1 });
 StorageRequestSchema.index({ requestType: 1 });
+StorageRequestSchema.index({ assignedStaffIds: 1 });
 
 const StorageRequest = mongoose.model<IStorageRequest>("StorageRequest", StorageRequestSchema);
 

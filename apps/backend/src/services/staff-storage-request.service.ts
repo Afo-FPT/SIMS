@@ -143,10 +143,12 @@ async function decreaseStoredQuantity(params: {
  * - OUT: decreases StoredItem quantities (must not go negative)
  * - Marks request status: APPROVED -> DONE_BY_STAFF
  * - Writes quantityActual to each StorageRequestDetail
+ * - If request has assignedStaffIds, only those staff can complete.
  */
 export async function staffCompleteStorageRequest(
   requestId: string,
-  dto: StaffCompleteStorageRequestDTO
+  dto: StaffCompleteStorageRequestDTO,
+  staffUserId?: string
 ): Promise<StaffCompleteStorageRequestResponseDTO> {
   if (!Types.ObjectId.isValid(requestId)) {
     throw new Error("Invalid request id");
@@ -163,6 +165,13 @@ export async function staffCompleteStorageRequest(
     }
     if (request.status !== "APPROVED") {
       throw new Error("Only APPROVED requests can be completed by staff");
+    }
+    const assignedIds = (request as any).assignedStaffIds || [];
+    if (assignedIds.length > 0 && staffUserId) {
+      const allowed = assignedIds.some((id: any) => id.toString() === staffUserId);
+      if (!allowed) {
+        throw new Error("You are not assigned to this request");
+      }
     }
 
     const details = await StorageRequestDetail.find({ requestId: request._id }).session(

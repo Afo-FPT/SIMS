@@ -1,7 +1,8 @@
 import { Router } from "express";
 import {
   createInboundRequestController,
-  createOutboundRequestController
+  createOutboundRequestController,
+  assignStorageRequestController
 } from "../controllers/storage-request.controller";
 import {
   listStorageRequestsController,
@@ -51,13 +52,25 @@ router.post(
 /**
  * GET /api/storage-requests/:id
  * Get request detail
- * Authorization: Customer (own), Manager/Staff/Admin (any)
+ * Authorization: Customer (own), Manager/Staff/Admin (any), Staff (only if assigned)
  */
 router.get(
   "/:id",
   authenticate,
   authorizeRoles("customer", "manager", "staff", "admin"),
   getStorageRequestByIdController
+);
+
+/**
+ * PATCH /api/storage-requests/:id/assign
+ * Manager assigns PENDING request to staff. Body: { staffIds: string[] }
+ * Authorization: Manager only
+ */
+router.patch(
+  "/:id/assign",
+  authenticate,
+  authorizeRoles("manager"),
+  assignStorageRequestController
 );
 
 /**

@@ -16,7 +16,7 @@ import {
   type StorageRequestView,
 } from '../../../lib/storage-requests.api';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
-import { MOCK_SERVICE_REQUESTS, MOCK_INVENTORY } from '../../../lib/customer-mock';
+import { MOCK_SERVICE_REQUESTS } from '../../../lib/customer-mock';
 import { useToastHelpers } from '../../../lib/toast';
 import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
 import { Modal } from '../../../components/ui/Modal';
@@ -80,7 +80,11 @@ export default function ServiceRequestsPage() {
   const [pickupDelivery, setPickupDelivery] = useState<PickupDelivery>('Pickup');
   const [destination, setDestination] = useState('');
   const [checkScope, setCheckScope] = useState<'Full inventory' | 'By SKU list'>('Full inventory');
+  /** When "By SKU list": list of stored_item_id selected for cycle count */
   const [checkSkuList, setCheckSkuList] = useState<string[]>([]);
+  /** Stored items of current contract for Inventory Checking "By SKU list" (from BE) */
+  const [cycleCountStoredItems, setCycleCountStoredItems] = useState<StoredItemOption[]>([]);
+  const [cycleCountStoredItemsLoading, setCycleCountStoredItemsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [mainTab, setMainTab] = useState<'new' | 'list'>('new');
 
@@ -107,6 +111,29 @@ export default function ServiceRequestsPage() {
       })
       .catch((err) => {
         if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load stored items');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [type, contractId]);
+
+  // Load stored items for Inventory Checking "By SKU list" (SKUs của contract từ BE)
+  useEffect(() => {
+    if (type !== 'Inventory Checking' || !contractId) {
+      setCycleCountStoredItems([]);
+      return;
+    }
+    let cancelled = false;
+    setCycleCountStoredItemsLoading(true);
+    listMyStoredItems(contractId)
+      .then((data) => {
+        if (!cancelled) setCycleCountStoredItems(data);
+      })
+      .catch((err) => {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Không tải được stored items');
+      })
+      .finally(() => {
+        if (!cancelled) setCycleCountStoredItemsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -231,9 +258,9 @@ export default function ServiceRequestsPage() {
     setOutboundItems((prev) => prev.map((r, j) => (j === i ? { ...r, ...f } : r)));
   };
 
-  const toggleCheckSku = (sku: string) => {
+  const toggleCheckStoredItem = (storedItemId: string) => {
     setCheckSkuList((prev) =>
-      prev.includes(sku) ? prev.filter((s) => s !== sku) : [...prev, sku]
+      prev.includes(storedItemId) ? prev.filter((id) => id !== storedItemId) : [...prev, storedItemId]
     );
   };
 
@@ -285,6 +312,7 @@ export default function ServiceRequestsPage() {
       const items = inboundItems.filter((r) => r.sku && r.quantity > 0);
         createInboundStorageRequest({
         contractId,
+        reference: inboundRef.trim() || undefined,
         items: items.map((it) => ({
           itemName: it.name || it.sku,
           quantity: Number(it.quantity),
@@ -326,6 +354,7 @@ export default function ServiceRequestsPage() {
 
       createOutboundStorageRequest({
         contractId,
+        reference: outboundRef.trim() || undefined,
         items,
       })
         .then(() => {
@@ -347,9 +376,11 @@ export default function ServiceRequestsPage() {
         .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request'));
     } else {
       // Inventory Checking → tạo Cycle Count thực tế cho hợp đồng
+      const storedItemIds =
+        checkScope === 'By SKU list' && checkSkuList.length > 0 ? checkSkuList : undefined;
       createCycleCount({
         contractId,
-        // Hiện tại FE chưa map theo SKU list → luôn kiểm kê full inventory cho contract
+        storedItemIds,
         note: notes || undefined,
         preferredDate: preferredDate ? new Date(preferredDate).toISOString() : undefined,
       })
@@ -952,23 +983,32 @@ export default function ServiceRequestsPage() {
             {checkScope === 'By SKU list' && (
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Select SKUs
+                  Chọn mặt hàng (stored items của hợp đồng)
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {MOCK_INVENTORY.map((i) => (
-                    <button
-                      key={i.sku}
-                      type="button"
-                      onClick={() => toggleCheckSku(i.sku)}
-                      className={`px-3 py-1.5 rounded-xl text-sm font-bold ${checkSkuList.includes(i.sku)
-                          ? 'bg-primary text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                    >
-                      {i.sku}
-                    </button>
-                  ))}
-                </div>
+                {cycleCountStoredItemsLoading ? (
+                  <p className="text-sm text-slate-500">Đang tải danh sách từ kho…</p>
+                ) : cycleCountStoredItems.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    Hợp đồng này chưa có stored item. Chọn Full inventory hoặc thêm hàng vào kho trước.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {cycleCountStoredItems.map((item) => (
+                      <button
+                        key={item.stored_item_id}
+                        type="button"
+                        onClick={() => toggleCheckStoredItem(item.stored_item_id)}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-bold ${checkSkuList.includes(item.stored_item_id)
+                            ? 'bg-primary text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                      >
+                        {item.item_name}
+                        {item.shelf_code ? ` (${item.shelf_code})` : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

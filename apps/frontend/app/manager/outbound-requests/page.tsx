@@ -8,7 +8,6 @@ import {
 } from '../../../lib/storage-requests.api';
 import { listStaffUsers, type StaffUserOption } from '../../../lib/staff-users.api';
 import { useToastHelpers } from '../../../lib/toast';
-import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import {
   Table,
@@ -23,7 +22,7 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
-export default function ManagerInboundRequestsPage() {
+export default function ManagerOutboundRequestsPage() {
   const toast = useToastHelpers();
   const [items, setItems] = useState<StorageRequestView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,10 +38,10 @@ export default function ManagerInboundRequestsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await listStorageRequests({ requestType: 'IN', status: 'PENDING' });
+      const data = await listStorageRequests({ requestType: 'OUT', status: 'PENDING' });
       setItems(data);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load inbound requests';
+      const msg = e instanceof Error ? e.message : 'Failed to load outbound requests';
       setError(msg);
       toast.error(msg);
     } finally {
@@ -75,7 +74,7 @@ export default function ManagerInboundRequestsPage() {
     try {
       setActionLoadingId(assigning.request_id);
       await assignStorageRequest(assigning.request_id, assignStaffIds);
-      toast.success('Đã gán staff cho yêu cầu nhập hàng');
+      toast.success('Đã gán staff cho yêu cầu xuất hàng');
       setAssigning(null);
       setAssignStaffIds([]);
       await load();
@@ -89,9 +88,9 @@ export default function ManagerInboundRequestsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Inbound Requests</h1>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Outbound Requests</h1>
         <p className="text-slate-500 mt-1">
-          Yêu cầu nhập hàng chờ gán staff. Gán xong staff mới thấy task và thực hiện putaway.
+          Yêu cầu xuất hàng chờ gán staff. Gán xong staff mới thấy task và thực hiện pick & dispatch.
         </p>
       </div>
 
@@ -103,13 +102,13 @@ export default function ManagerInboundRequestsPage() {
         <EmptyState
           icon="inbox"
           title="Không có yêu cầu chờ gán"
-          message="Chưa có yêu cầu nhập hàng PENDING nào."
+          message="Chưa có yêu cầu xuất hàng PENDING nào."
         />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <Table>
             <TableHead>
-              <TableHeader>Inbound reference</TableHeader>
+              <TableHeader>Outbound reference</TableHeader>
               <TableHeader>Contract code</TableHeader>
               <TableHeader>Items</TableHeader>
               <TableHeader>Created</TableHeader>
@@ -146,7 +145,6 @@ export default function ManagerInboundRequestsPage() {
         </div>
       )}
 
-      {/* Assign staff modal */}
       {assigning && (
         <Modal
           open={!!assigning}
@@ -158,8 +156,8 @@ export default function ManagerInboundRequestsPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Chọn một hoặc nhiều staff để giao thực hiện putaway cho yêu cầu này. Chỉ staff được
-              chọn mới thấy task trong danh sách của họ.
+              Chọn một hoặc nhiều staff để giao thực hiện pick & dispatch. Chỉ staff được chọn mới
+              thấy task trong danh sách của họ.
             </p>
             <div className="space-y-2 relative">
               <p className="text-xs font-bold text-slate-600">Chọn staff</p>
