@@ -56,7 +56,7 @@ export default function ManagerOutboundRequestsPage() {
       setStaffUsers(users);
     } catch (err) {
       setStaffError(err instanceof Error ? err.message : 'Failed to load staff');
-      toast.error('Không tải được danh sách staff');
+      toast.error('Failed to load staff list');
     }
   };
 
@@ -68,18 +68,18 @@ export default function ManagerOutboundRequestsPage() {
   const handleAssign = async () => {
     if (!assigning) return;
     if (assignStaffIds.length === 0) {
-      toast.warning('Vui lòng chọn ít nhất một staff');
+      toast.warning('Please select at least one staff member');
       return;
     }
     try {
       setActionLoadingId(assigning.request_id);
       await assignStorageRequest(assigning.request_id, assignStaffIds);
-      toast.success('Đã gán staff cho yêu cầu xuất hàng');
+      toast.success('Staff assigned to outbound request');
       setAssigning(null);
       setAssignStaffIds([]);
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gán staff thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to assign staff');
     } finally {
       setActionLoadingId(null);
     }
@@ -90,7 +90,7 @@ export default function ManagerOutboundRequestsPage() {
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Outbound Requests</h1>
         <p className="text-slate-500 mt-1">
-          Yêu cầu xuất hàng chờ gán staff. Gán xong staff mới thấy task và thực hiện pick & dispatch.
+          Outbound requests waiting for staff assignment. Once assigned, staff will see the task and perform pick & dispatch.
         </p>
       </div>
 
@@ -101,8 +101,8 @@ export default function ManagerOutboundRequestsPage() {
       ) : items.length === 0 ? (
         <EmptyState
           icon="inbox"
-          title="Không có yêu cầu chờ gán"
-          message="Chưa có yêu cầu xuất hàng PENDING nào."
+          title="No pending assignments"
+          message="There are no PENDING outbound requests."
         />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -123,7 +123,7 @@ export default function ManagerOutboundRequestsPage() {
                   <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(r.created_at).toLocaleString('vi-VN')}
+                    {new Date(r.created_at).toLocaleString('en-US')}
                   </TableCell>
                   <TableCell>
                     <Button
@@ -135,7 +135,7 @@ export default function ManagerOutboundRequestsPage() {
                       }}
                       disabled={actionLoadingId === r.request_id}
                     >
-                      Gán staff
+                      Assign staff
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -151,16 +151,15 @@ export default function ManagerOutboundRequestsPage() {
           onOpenChange={(open) => {
             if (!open) setAssigning(null);
           }}
-          title={`Gán staff – ${assigning.reference ?? assigning.request_id}`}
+          title={`Assign staff – ${assigning.reference ?? assigning.request_id}`}
           size="md"
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Chọn một hoặc nhiều staff để giao thực hiện pick & dispatch. Chỉ staff được chọn mới
-              thấy task trong danh sách của họ.
+              Select one or more staff members to perform pick & dispatch. Only selected staff will see the task.
             </p>
             <div className="space-y-2 relative">
-              <p className="text-xs font-bold text-slate-600">Chọn staff</p>
+              <p className="text-xs font-bold text-slate-600">Select staff</p>
               {staffError && <p className="text-xs text-red-500 mb-1">{staffError}</p>}
               <button
                 type="button"
@@ -168,8 +167,8 @@ export default function ManagerOutboundRequestsPage() {
                 className="w-full px-3 py-2 rounded-2xl border border-slate-200 text-sm text-left bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               >
                 {assignStaffIds.length > 0
-                  ? `Đã chọn ${assignStaffIds.length} staff`
-                  : 'Chọn nhân viên'}
+                  ? `Selected ${assignStaffIds.length} staff`
+                  : 'Choose staff'}
               </button>
               {openStaffDropdown && (
                 <div className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-md">
@@ -199,10 +198,10 @@ export default function ManagerOutboundRequestsPage() {
             </div>
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="ghost" onClick={() => setAssigning(null)}>
-                Hủy
+                Cancel
               </Button>
               <Button onClick={handleAssign} disabled={assignStaffIds.length === 0}>
-                Gán
+                Assign
               </Button>
             </div>
           </div>

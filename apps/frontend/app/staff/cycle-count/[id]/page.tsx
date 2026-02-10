@@ -69,7 +69,7 @@ export default function StaffCycleCountDetailPage() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
-      toast.error('Không tải được chi tiết kiểm kê');
+      toast.error('Failed to load cycle count details');
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ export default function StaffCycleCountDetailPage() {
     );
     if (invalid) {
       toast.warning(
-        'Vui lòng nhập số lượng đã kiểm cho tất cả dòng. Nếu có chênh lệch, bắt buộc ghi chú báo lỗi cho khách hàng.'
+        'Please enter counted quantity for all rows. If there is a discrepancy, a note is required.'
       );
       return;
     }
@@ -104,10 +104,10 @@ export default function StaffCycleCountDetailPage() {
         countedQuantity: r.countedQuantity,
         note: r.note.trim() || undefined,
       })));
-      toast.success('Đã nộp kết quả kiểm kê');
+      toast.success('Cycle count results submitted');
       router.push('/staff/cycle-count');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Nộp kết quả thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit results');
     } finally {
       setSubmitting(false);
     }
@@ -125,7 +125,7 @@ export default function StaffCycleCountDetailPage() {
     return (
       <div className="space-y-8">
         <ErrorState
-          title="Không tải được phiên kiểm kê"
+          title="Failed to load cycle count"
           message={error || 'Not found'}
           onRetry={load}
         />
@@ -145,7 +145,7 @@ export default function StaffCycleCountDetailPage() {
           className="text-slate-500 hover:text-primary font-bold flex items-center gap-1"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
-          Quay lại
+          Back
         </Link>
       </div>
 
@@ -153,7 +153,7 @@ export default function StaffCycleCountDetailPage() {
         <div className="flex items-start justify-between mb-6">
           <div>
             <h1 className="text-2xl font-black text-slate-900">
-              Kiểm kê – {data.contract_code}
+              Cycle count – {data.contract_code}
             </h1>
             <p className="text-slate-500 mt-1">{data.customer_name}</p>
           </div>
@@ -172,20 +172,20 @@ export default function StaffCycleCountDetailPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-slate-500 mb-1">Kho</p>
+            <p className="text-slate-500 mb-1">Warehouse</p>
             <p className="font-bold text-slate-900">{data.warehouse_name || '—'}</p>
           </div>
           <div>
-            <p className="text-slate-500 mb-1">Hạn kiểm kê</p>
+            <p className="text-slate-500 mb-1">Deadline</p>
             <p className="font-bold text-slate-900">
               {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('vi-VN')
+                ? new Date(data.counting_deadline).toLocaleString('en-US')
                 : '—'}
             </p>
           </div>
           {data.note && (
             <div className="md:col-span-2">
-              <p className="text-slate-500 mb-1">Ghi chú yêu cầu</p>
+              <p className="text-slate-500 mb-1">Request note</p>
               <p className="text-slate-700">{data.note}</p>
             </div>
           )}
@@ -194,7 +194,7 @@ export default function StaffCycleCountDetailPage() {
         {canSubmit && (
           <div className="mt-6 pt-6 border-t border-slate-100">
             <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Đang nộp...' : 'Nộp kết quả kiểm kê'}
+              {submitting ? 'Submitting...' : 'Submit results'}
             </Button>
           </div>
         )}
@@ -203,16 +203,16 @@ export default function StaffCycleCountDetailPage() {
       {canSubmit && rows.length > 0 && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">
-            Danh sách hàng cần kiểm – nhập số lượng thực tế và ghi chú báo lỗi (nếu có chênh lệch)
+            Items to count — enter counted quantity and notes (required if discrepancy)
           </h2>
           <Table>
             <TableHead>
-              <TableHeader>Kệ</TableHeader>
-              <TableHeader>Tên hàng</TableHeader>
-              <TableHeader>Đơn vị</TableHeader>
-              <TableHeader>Số lượng hệ thống</TableHeader>
-              <TableHeader>Số lượng đếm thực tế</TableHeader>
-              <TableHeader>Ghi chú báo lỗi (bắt buộc nếu chênh lệch)</TableHeader>
+              <TableHeader>Shelf</TableHeader>
+              <TableHeader>Item</TableHeader>
+              <TableHeader>Unit</TableHeader>
+              <TableHeader>System qty</TableHeader>
+              <TableHeader>Counted qty</TableHeader>
+              <TableHeader>Note (required if discrepancy)</TableHeader>
             </TableHead>
             <TableBody>
               {rows.map((r, i) => {
@@ -247,8 +247,8 @@ export default function StaffCycleCountDetailPage() {
                         onChange={(e) => updateRow(i, 'note', e.target.value)}
                         placeholder={
                           hasDiscrepancy
-                            ? 'Bắt buộc ghi chú khi có chênh lệch'
-                            : 'Ghi chú (tùy chọn)'
+                            ? 'Note required when discrepancy exists'
+                            : 'Note (optional)'
                         }
                         className={`w-full max-w-xs px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-primary/20 ${
                           hasDiscrepancy && !r.note.trim()
@@ -268,16 +268,16 @@ export default function StaffCycleCountDetailPage() {
       {hasItems && !canSubmit && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">
-            Kết quả đã nộp
+            Submitted results
           </h2>
           <Table>
             <TableHead>
-              <TableHeader>Kệ</TableHeader>
-              <TableHeader>Tên hàng</TableHeader>
-              <TableHeader>SL hệ thống</TableHeader>
-              <TableHeader>SL đếm</TableHeader>
-              <TableHeader>Chênh lệch</TableHeader>
-              <TableHeader>Ghi chú</TableHeader>
+              <TableHeader>Shelf</TableHeader>
+              <TableHeader>Item</TableHeader>
+              <TableHeader>System qty</TableHeader>
+              <TableHeader>Counted qty</TableHeader>
+              <TableHeader>Discrepancy</TableHeader>
+              <TableHeader>Note</TableHeader>
             </TableHead>
             <TableBody>
               {data.items!.map((item) => (
@@ -306,7 +306,7 @@ export default function StaffCycleCountDetailPage() {
       )}
 
       {!canSubmit && !hasItems && data.target_items && data.target_items.length === 0 && (
-        <p className="text-slate-500">Chưa có danh sách hàng kiểm kê.</p>
+        <p className="text-slate-500">No items to count.</p>
       )}
     </div>
   );

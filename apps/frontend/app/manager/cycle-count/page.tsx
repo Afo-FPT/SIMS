@@ -32,13 +32,13 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING_MANAGER_APPROVAL: 'Chờ duyệt',
-  ASSIGNED_TO_STAFF: 'Đã giao cho staff',
-  STAFF_SUBMITTED: 'Staff đã nộp',
-  ADJUSTMENT_REQUESTED: 'Customer yêu cầu điều chỉnh',
-  CONFIRMED: 'Đã xác nhận',
-  RECOUNT_REQUIRED: 'Yêu cầu kiểm lại',
-  REJECTED: 'Từ chối',
+  PENDING_MANAGER_APPROVAL: 'Pending approval',
+  ASSIGNED_TO_STAFF: 'Assigned to staff',
+  STAFF_SUBMITTED: 'Submitted by staff',
+  ADJUSTMENT_REQUESTED: 'Adjustment requested by customer',
+  CONFIRMED: 'Confirmed',
+  RECOUNT_REQUIRED: 'Recount required',
+  REJECTED: 'Rejected',
 };
 
 type StatusFilter =
@@ -83,7 +83,7 @@ export default function ManagerCycleCountPage() {
       setList(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cycle counts');
-      toast.error('Không tải được danh sách cycle count');
+      toast.error('Failed to load cycle count list');
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,7 @@ export default function ManagerCycleCountPage() {
       setStaffUsers(users);
     } catch (err) {
       setStaffError(err instanceof Error ? err.message : 'Failed to load staff users');
-      toast.error('Không tải được danh sách staff');
+      toast.error('Failed to load staff list');
     }
   };
 
@@ -104,10 +104,10 @@ export default function ManagerCycleCountPage() {
     try {
       setActionLoadingId(cc.cycle_count_id);
       await approveCycleCount(cc.cycle_count_id);
-      toast.success('Đã duyệt cycle count');
+      toast.success('Cycle count approved');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Duyệt thất bại');
+      toast.error(err instanceof Error ? err.message : 'Approval failed');
     } finally {
       setActionLoadingId(null);
     }
@@ -118,12 +118,12 @@ export default function ManagerCycleCountPage() {
     try {
       setActionLoadingId(rejecting.cycle_count_id);
       await rejectCycleCount(rejecting.cycle_count_id, rejectReason || 'Rejected by manager');
-      toast.success('Đã từ chối cycle count');
+      toast.success('Cycle count rejected');
       setRejecting(null);
       setRejectReason('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Từ chối thất bại');
+      toast.error(err instanceof Error ? err.message : 'Rejection failed');
     } finally {
       setActionLoadingId(null);
     }
@@ -133,7 +133,7 @@ export default function ManagerCycleCountPage() {
     if (!assigning) return;
     const ids = assignStaffIds;
     if (ids.length === 0 || !assignDeadline) {
-      toast.warning('Vui lòng chọn staff và deadline hợp lệ');
+      toast.warning('Please select staff and a valid deadline');
       return;
     }
     try {
@@ -142,13 +142,13 @@ export default function ManagerCycleCountPage() {
         staffIds: ids,
         countingDeadline: new Date(assignDeadline).toISOString(),
       });
-      toast.success('Đã gán staff cho cycle count');
+      toast.success('Staff assigned to cycle count');
       setAssigning(null);
       setAssignStaffIds([]);
       setAssignDeadline('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gán staff thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to assign staff');
     } finally {
       setActionLoadingId(null);
     }
@@ -158,10 +158,10 @@ export default function ManagerCycleCountPage() {
     try {
       setActionLoadingId(cc.cycle_count_id);
       await requestRecount(cc.cycle_count_id);
-      toast.success('Đã yêu cầu kiểm lại');
+      toast.success('Recount requested');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Yêu cầu kiểm lại thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to request recount');
     } finally {
       setActionLoadingId(null);
     }
@@ -171,10 +171,10 @@ export default function ManagerCycleCountPage() {
     try {
       setActionLoadingId(cc.cycle_count_id);
       await applyCycleCountAdjustment(cc.cycle_count_id);
-      toast.success('Đã áp dụng điều chỉnh tồn kho');
+      toast.success('Inventory adjustment applied');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Áp dụng điều chỉnh thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to apply adjustment');
     } finally {
       setActionLoadingId(null);
     }
@@ -190,7 +190,7 @@ export default function ManagerCycleCountPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
           <p className="text-slate-500 mt-1">
-            Quản lý yêu cầu kiểm kê (approve, assign staff, điều chỉnh tồn kho)
+            Manage cycle count requests (approve, assign staff, adjust inventory)
           </p>
         </div>
         <TableSkeleton rows={5} cols={7} />
@@ -204,7 +204,7 @@ export default function ManagerCycleCountPage() {
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
           <p className="text-slate-500 mt-1">
-            Quản lý yêu cầu kiểm kê (approve, assign staff, điều chỉnh tồn kho)
+            Manage cycle count requests (approve, assign staff, adjust inventory)
           </p>
         </div>
         <ErrorState title="Failed to load" message={error} onRetry={load} />
@@ -217,25 +217,25 @@ export default function ManagerCycleCountPage() {
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
         <p className="text-slate-500 mt-1">
-          Quản lý các phiên kiểm kê tồn kho theo hợp đồng
+          Manage contract inventory cycle counts
         </p>
       </div>
 
       <div className="flex flex-wrap gap-4 items-end">
         <div>
-          <label className="block text-xs font-bold text-slate-600 mb-1">Trạng thái</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
             className="px-4 py-2.5 rounded-2xl border border-slate-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
           >
-            <option value="">Tất cả</option>
-            <option value="PENDING_MANAGER_APPROVAL">Chờ duyệt</option>
-            <option value="ASSIGNED_TO_STAFF">Đã giao staff</option>
-            <option value="STAFF_SUBMITTED">Staff đã nộp</option>
-            <option value="ADJUSTMENT_REQUESTED">Yêu cầu điều chỉnh</option>
-            <option value="CONFIRMED">Đã xác nhận</option>
-            <option value="REJECTED">Từ chối</option>
+            <option value="">All</option>
+            <option value="PENDING_MANAGER_APPROVAL">Pending approval</option>
+            <option value="ASSIGNED_TO_STAFF">Assigned to staff</option>
+            <option value="STAFF_SUBMITTED">Submitted by staff</option>
+            <option value="ADJUSTMENT_REQUESTED">Adjustment requested</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="REJECTED">Rejected</option>
           </select>
         </div>
       </div>
@@ -243,8 +243,8 @@ export default function ManagerCycleCountPage() {
       {filtered.length === 0 ? (
         <EmptyState
           icon="fact_check"
-          title="Không có cycle count"
-          message="Chưa có yêu cầu kiểm kê nào phù hợp bộ lọc."
+          title="No cycle counts"
+          message="No cycle counts match the current filter."
         />
       ) : (
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -288,11 +288,11 @@ export default function ManagerCycleCountPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(cc.requested_at).toLocaleString('vi-VN')}
+                    {new Date(cc.requested_at).toLocaleString('en-US')}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
                     {cc.counting_deadline
-                      ? new Date(cc.counting_deadline).toLocaleString('vi-VN')
+                      ? new Date(cc.counting_deadline).toLocaleString('en-US')
                       : '—'}
                   </TableCell>
                   <TableCell>
@@ -377,24 +377,24 @@ export default function ManagerCycleCountPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Bạn có chắc muốn từ chối yêu cầu kiểm kê này? Vui lòng nhập lý do (bắt buộc).
+              Are you sure you want to reject this cycle count request? Please provide a reason (required).
             </p>
             <Input
-              label="Lý do"
+              label="Reason"
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Nhập lý do từ chối"
+              placeholder="Enter rejection reason"
             />
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="ghost" onClick={() => setRejecting(null)}>
-                Hủy
+                Cancel
               </Button>
               <Button
                 variant="danger"
                 onClick={handleReject}
                 disabled={!rejectReason.trim()}
               >
-                Từ chối
+                Reject
               </Button>
             </div>
           </div>
@@ -413,16 +413,16 @@ export default function ManagerCycleCountPage() {
         >
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Chọn danh sách nhân viên được giao kiểm kê cho phiên này.
+              Select staff members to assign to this cycle count.
             </p>
             <div className="space-y-2 relative">
-              <p className="text-xs font-bold text-slate-600">Chọn staff</p>
+              <p className="text-xs font-bold text-slate-600">Select staff</p>
 
               {staffError && (
                 <p className="text-xs text-red-500 mb-1">{staffError}</p>
               )}
 
-              {/* Button mở dropdown */}
+              {/* Button to open dropdown */}
               <button
                 type="button"
                 onClick={() => setOpenStaffDropdown(!openStaffDropdown)}
@@ -430,8 +430,8 @@ export default function ManagerCycleCountPage() {
                focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               >
                 {assignStaffIds.length > 0
-                  ? `Đã chọn ${assignStaffIds.length} staff`
-                  : "Chọn nhân viên"}
+                  ? `Selected ${assignStaffIds.length} staff`
+                  : "Choose staff"}
               </button>
 
               {/* Dropdown */}
@@ -466,7 +466,7 @@ export default function ManagerCycleCountPage() {
               )}
 
               <p className="text-[11px] text-slate-500">
-                Click để mở danh sách, tick chọn nhiều nhân viên.
+                Click to open the list and select multiple staff members.
               </p>
             </div>
 
@@ -478,9 +478,9 @@ export default function ManagerCycleCountPage() {
             />
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="ghost" onClick={() => setAssigning(null)}>
-                Hủy
+                Cancel
               </Button>
-              <Button onClick={handleAssign}>Lưu</Button>
+              <Button onClick={handleAssign}>Save</Button>
             </div>
           </div>
         </Modal>

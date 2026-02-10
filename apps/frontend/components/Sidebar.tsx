@@ -44,8 +44,8 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           },
           {
             section: 'Operations', items: [
-              { id: 'INBOUND_REQUESTS', label: 'Gán task Inbound', icon: 'inbox' },
-              { id: 'OUTBOUND_REQUESTS', label: 'Gán task Outbound', icon: 'outbox' },
+              { id: 'INBOUND_REQUESTS', label: 'Assign Inbound Tasks', icon: 'inbox' },
+              { id: 'OUTBOUND_REQUESTS', label: 'Assign Outbound Tasks', icon: 'outbox' },
               { id: 'TASKS', label: 'Tasks', icon: 'assignment_turned_in' },
               { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
               { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
@@ -157,29 +157,30 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
       </nav>
 
       {user && (
-        <div className="p-6 border-t border-slate-50">
-          <div className="bg-slate-950 text-white rounded-3xl p-5 shadow-2xl shadow-slate-900/40 relative overflow-hidden group">
-            <div className="relative z-10">
-              <div className="flex items-center gap-4 mb-5">
-                <div className="relative">
-                  <img
-                    alt={user.name}
-                    className="size-11 rounded-2xl object-cover border-2 border-white/10 shadow-sm transition-transform group-hover:scale-105"
-                    src={user.avatar}
-                  />
-                  <span className="absolute -bottom-1 -right-1 size-3 bg-emerald-500 rounded-full border-2 border-slate-950"></span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-black truncate">{user.name}</p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">{user.title}</p>
-                </div>
+        <div className="px-5 pb-5 pt-4 border-t border-slate-50">
+          <div className="bg-primary text-white rounded-2xl px-4 py-3 shadow-lg shadow-primary/30 relative overflow-hidden group">
+            <div className="relative z-10 flex items-center gap-3">
+              <div className="relative shrink-0">
+                <img
+                  alt={user.name}
+                  className="size-9 rounded-2xl object-cover border-2 border-white/10 shadow-sm transition-transform group-hover:scale-105"
+                  src={user.avatar}
+                />
+                <span className="absolute -bottom-1 -right-1 size-2.5 bg-emerald-500 rounded-full border-2 border-primary"></span>
               </div>
-              <div className="flex gap-2">
-                <button className="flex-1 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors">Profile</button>
-                <button onClick={onLogout} className="size-10 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl flex items-center justify-center transition-all">
-                  <span className="material-symbols-outlined text-[18px]">logout</span>
-                </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black truncate">{user.name}</p>
+                <p className="text-[9px] text-primary-light/90 bg-white/10 px-2 py-0.5 rounded-full font-bold uppercase tracking-[0.18em] truncate">
+                  {user.title}
+                </p>
               </div>
+              <button
+                onClick={onLogout}
+                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[9px] font-black uppercase tracking-[0.18em] transition-colors shrink-0"
+              >
+                <span className="material-symbols-outlined text-[16px]">logout</span>
+                <span>Out</span>
+              </button>
             </div>
           </div>
         </div>

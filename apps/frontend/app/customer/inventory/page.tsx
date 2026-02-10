@@ -62,7 +62,7 @@ export default function CustomerInventoryPage() {
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Failed to load inventory');
-          showToast('error', 'Không tải được danh sách hàng tồn kho', 5000);
+          showToast('error', 'Failed to load inventory', 5000);
         }
       } finally {
         if (!cancelled) {
@@ -106,14 +106,14 @@ export default function CustomerInventoryPage() {
   }
 
   if (error) {
-    return <ErrorState title="Lỗi tải dữ liệu" message={error} onRetry={() => window.location.reload()} />;
+    return <ErrorState title="Failed to load data" message={error} onRetry={() => window.location.reload()} />;
   }
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tồn kho</h1>
-        <p className="text-slate-500 mt-1">Xem hàng tồn kho theo hợp đồng</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Inventory</h1>
+        <p className="text-slate-500 mt-1">View inventory by contract</p>
       </div>
 
       {/* Filters */}
@@ -126,7 +126,7 @@ export default function CustomerInventoryPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm kiếm SKU hoặc tên hàng"
+            placeholder="Search SKU or item name"
             className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
           />
         </div>
@@ -134,9 +134,9 @@ export default function CustomerInventoryPage() {
           value={contractFilter}
           onChange={(e) => setContractFilter(e.target.value as any)}
           className="px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          title="Chọn hợp đồng"
+          title="Select contract"
         >
-          <option value="ALL">Tất cả hợp đồng</option>
+          <option value="ALL">All contracts</option>
           {contracts.map((c) => (
             <option key={c.id} value={c.id}>
               {c.code}
@@ -148,7 +148,7 @@ export default function CustomerInventoryPage() {
           onChange={(e) => setLocationFilter(e.target.value)}
           className="px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
         >
-          <option value="">Tất cả vị trí</option>
+          <option value="">All locations</option>
           {locations.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -162,7 +162,7 @@ export default function CustomerInventoryPage() {
             onChange={(e) => setLowStockOnly(e.target.checked)}
             className="rounded border-slate-300"
           />
-          <span className="text-sm font-medium">Chỉ hiển thị hàng sắp hết</span>
+          <span className="text-sm font-medium">Low stock only</span>
         </label>
       </div>
 
@@ -172,16 +172,16 @@ export default function CustomerInventoryPage() {
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">SKU/Tên hàng</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">SKU / Item</th>
                 {showContractColumn && (
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Hợp đồng</th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Contract</th>
                 )}
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Số lượng</th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Kệ</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Quantity</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Shelf</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
-                  Cập nhật lần cuối
+                  Last updated
                 </th>
-                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -189,8 +189,8 @@ export default function CustomerInventoryPage() {
                 <tr>
                   <td colSpan={showContractColumn ? 6 : 5} className="px-6 py-12 text-center text-slate-500">
                     {inventory.length === 0
-                      ? 'Chưa có hàng tồn kho. Hàng sẽ hiển thị sau khi staff hoàn tất putaway (DONE_BY_STAFF).'
-                      : 'Không tìm thấy hàng phù hợp với bộ lọc.'}
+                      ? 'No inventory yet. Items appear after staff completes putaway (DONE_BY_STAFF).'
+                      : 'No items match the current filters.'}
                   </td>
                 </tr>
               ) : (
@@ -218,7 +218,7 @@ export default function CustomerInventoryPage() {
                     </td>
                     <td className="px-6 py-4 text-slate-700">{i.shelf || '—'}</td>
                     <td className="px-6 py-4 text-slate-500 text-sm">
-                      {new Date(i.lastUpdated).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                      {new Date(i.lastUpdated).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
                     </td>
                     <td className="px-6 py-4">
                       <button
@@ -226,7 +226,7 @@ export default function CustomerInventoryPage() {
                         onClick={() => setDetail(i)}
                         className="text-sm font-bold text-primary hover:underline"
                       >
-                        Xem chi tiết
+                        View details
                       </button>
                     </td>
                   </tr>
@@ -254,7 +254,7 @@ export default function CustomerInventoryPage() {
               {detail.quantity} {detail.unit} • {detail.shelf}
             </p>
             <h4 className="text-sm font-bold text-slate-700 uppercase mb-3">
-              Lịch sử
+              History
             </h4>
             <ul className="space-y-3">
               {(detail.history ?? []).map((h, i) => (
@@ -272,7 +272,7 @@ export default function CustomerInventoryPage() {
                 </li>
               ))}
               {(!detail.history || detail.history.length === 0) && (
-                <li className="text-sm text-slate-500">Chưa có lịch sử.</li>
+                <li className="text-sm text-slate-500">No history yet.</li>
               )}
             </ul>
             <button

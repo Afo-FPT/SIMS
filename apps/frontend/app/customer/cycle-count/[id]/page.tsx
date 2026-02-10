@@ -25,13 +25,13 @@ import { ErrorState } from '../../../../components/ui/ErrorState';
 import { Modal } from '../../../../components/ui/Modal';
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING_MANAGER_APPROVAL: 'Chờ manager duyệt',
-  ASSIGNED_TO_STAFF: 'Đang chờ nhân viên kiểm kê',
-  STAFF_SUBMITTED: 'Nhân viên đã nộp kết quả',
-  ADJUSTMENT_REQUESTED: 'Đã yêu cầu điều chỉnh tồn kho',
-  CONFIRMED: 'Đã xác nhận',
-  RECOUNT_REQUIRED: 'Yêu cầu kiểm lại',
-  REJECTED: 'Bị từ chối',
+  PENDING_MANAGER_APPROVAL: 'Pending manager approval',
+  ASSIGNED_TO_STAFF: 'Waiting for staff count',
+  STAFF_SUBMITTED: 'Staff submitted results',
+  ADJUSTMENT_REQUESTED: 'Adjustment requested',
+  CONFIRMED: 'Confirmed',
+  RECOUNT_REQUIRED: 'Recount required',
+  REJECTED: 'Rejected',
 };
 
 export default function CustomerCycleCountDetailPage() {
@@ -60,7 +60,7 @@ export default function CustomerCycleCountDetailPage() {
       setData(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
-      toast.error('Không tải được chi tiết kiểm kê');
+      toast.error('Failed to load cycle count details');
     } finally {
       setLoading(false);
     }
@@ -71,10 +71,10 @@ export default function CustomerCycleCountDetailPage() {
     try {
       setConfirming(true);
       await confirmCycleCount(id);
-      toast.success('Đã xác nhận kết quả kiểm kê (không điều chỉnh tồn kho)');
+      toast.success('Cycle count confirmed (no inventory adjustment)');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Xác nhận thất bại');
+      toast.error(err instanceof Error ? err.message : 'Confirm failed');
     } finally {
       setConfirming(false);
     }
@@ -85,12 +85,12 @@ export default function CustomerCycleCountDetailPage() {
     try {
       setAdjusting(true);
       await requestInventoryAdjustment(id, adjustReason);
-      toast.success('Đã gửi yêu cầu điều chỉnh tồn kho');
+      toast.success('Inventory adjustment request submitted');
       setAdjustModalOpen(false);
       setAdjustReason('');
       await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gửi yêu cầu điều chỉnh thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit adjustment request');
     } finally {
       setAdjusting(false);
     }
@@ -108,7 +108,7 @@ export default function CustomerCycleCountDetailPage() {
     return (
       <div className="space-y-8">
         <ErrorState
-          title="Không tải được phiên kiểm kê"
+          title="Failed to load cycle count"
           message={error || 'Not found'}
           onRetry={load}
         />
@@ -129,7 +129,7 @@ export default function CustomerCycleCountDetailPage() {
           className="text-slate-500 hover:text-primary font-bold flex items-center gap-1"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
-          Quay lại Service Requests
+          Back to Service Requests
         </Link>
       </div>
 
@@ -140,7 +140,7 @@ export default function CustomerCycleCountDetailPage() {
               Cycle Count – {data.contract_code}
             </h1>
             <p className="text-slate-500 mt-1">
-              Kho: <span className="font-bold">{data.warehouse_name || '—'}</span>
+              Warehouse: <span className="font-bold">{data.warehouse_name || '—'}</span>
             </p>
           </div>
           <Badge
@@ -166,38 +166,38 @@ export default function CustomerCycleCountDetailPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-slate-500 mb-1">Ngày yêu cầu</p>
+            <p className="text-slate-500 mb-1">Requested at</p>
             <p className="font-bold text-slate-900">
-              {new Date(data.requested_at).toLocaleString('vi-VN')}
+              {new Date(data.requested_at).toLocaleString('en-US')}
             </p>
           </div>
           <div>
-            <p className="text-slate-500 mb-1">Hạn kiểm kê (deadline cho staff)</p>
+            <p className="text-slate-500 mb-1">Counting deadline</p>
             <p className="font-bold text-slate-900">
               {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('vi-VN')
+                ? new Date(data.counting_deadline).toLocaleString('en-US')
                 : '—'}
             </p>
           </div>
           {data.preferred_date && (
             <div>
-              <p className="text-slate-500 mb-1">Thời gian mong muốn</p>
-              <p className="font-bold text-slate-900">
-                {new Date(data.preferred_date).toLocaleString('vi-VN')}
+            <p className="text-slate-500 mb-1">Preferred time</p>
+            <p className="font-bold text-slate-900">
+                {new Date(data.preferred_date).toLocaleString('en-US')}
               </p>
             </div>
           )}
           {data.confirmed_at && (
             <div>
-              <p className="text-slate-500 mb-1">Thời gian xác nhận</p>
-              <p className="font-bold text-slate-900">
-                {new Date(data.confirmed_at).toLocaleString('vi-VN')}
+            <p className="text-slate-500 mb-1">Confirmed at</p>
+            <p className="font-bold text-slate-900">
+                {new Date(data.confirmed_at).toLocaleString('en-US')}
               </p>
             </div>
           )}
           {data.note && (
             <div className="md:col-span-2">
-              <p className="text-slate-500 mb-1">Ghi chú yêu cầu</p>
+              <p className="text-slate-500 mb-1">Request note</p>
               <p className="text-slate-700">{data.note}</p>
             </div>
           )}
@@ -206,18 +206,18 @@ export default function CustomerCycleCountDetailPage() {
         {canCustomerAct && (
           <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap gap-3">
             <Button onClick={handleConfirm} disabled={confirming}>
-              {confirming ? 'Đang xác nhận...' : 'Xác nhận kết quả (không điều chỉnh tồn kho)'}
+              {confirming ? 'Confirming...' : 'Confirm result (no inventory adjustment)'}
             </Button>
             <Button
               variant="secondary"
               onClick={() => setAdjustModalOpen(true)}
               disabled={adjusting || !hasDiscrepancy}
             >
-              Yêu cầu điều chỉnh tồn kho
+              Request inventory adjustment
             </Button>
             {!hasDiscrepancy && (
               <p className="text-xs text-slate-500">
-                Không có chênh lệch nên không thể yêu cầu điều chỉnh.
+                No discrepancy; adjustment request not available.
               </p>
             )}
           </div>
@@ -225,15 +225,15 @@ export default function CustomerCycleCountDetailPage() {
 
         {data.status === 'ADJUSTMENT_REQUESTED' && (
           <div className="mt-6 pt-4 border-t border-slate-100 text-sm text-slate-600">
-            Đã gửi yêu cầu điều chỉnh tồn kho. Đang chờ manager áp dụng.
+            Adjustment request sent. Waiting for manager to apply.
           </div>
         )}
         {data.status === 'CONFIRMED' && (
           <div className="mt-6 pt-4 border-t border-slate-100 text-sm text-slate-600">
-            Phiên kiểm kê đã được xác nhận.
+            Cycle count has been confirmed.
             {data.inventory_adjusted
-              ? ' Hệ thống tồn kho đã được cập nhật theo kết quả kiểm kê.'
-              : ' Không có điều chỉnh tồn kho được áp dụng.'}
+              ? ' Inventory has been updated per count results.'
+              : ' No inventory adjustment was applied.'}
           </div>
         )}
       </section>
@@ -241,17 +241,17 @@ export default function CustomerCycleCountDetailPage() {
       {hasItems && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">
-            Kết quả kiểm kê chi tiết
+            Count results
           </h2>
           <Table>
             <TableHead>
-              <TableHeader>Kệ</TableHeader>
-              <TableHeader>Tên hàng</TableHeader>
-              <TableHeader>Đơn vị</TableHeader>
-              <TableHeader>SL hệ thống</TableHeader>
-              <TableHeader>SL đếm</TableHeader>
-              <TableHeader>Chênh lệch</TableHeader>
-              <TableHeader>Ghi chú</TableHeader>
+              <TableHeader>Shelf</TableHeader>
+              <TableHeader>Item</TableHeader>
+              <TableHeader>Unit</TableHeader>
+              <TableHeader>System qty</TableHeader>
+              <TableHeader>Counted qty</TableHeader>
+              <TableHeader>Discrepancy</TableHeader>
+              <TableHeader>Note</TableHeader>
             </TableHead>
             <TableBody>
               {data.items!.map((item) => {
@@ -283,39 +283,38 @@ export default function CustomerCycleCountDetailPage() {
 
       {!hasItems && (
         <p className="text-slate-500 text-sm">
-          Chưa có kết quả kiểm kê chi tiết (nhân viên chưa nộp hoặc phiên bị từ chối).
+          No count results yet (staff has not submitted or session was rejected).
         </p>
       )}
 
       <Modal
         open={adjustModalOpen}
         onOpenChange={setAdjustModalOpen}
-        title="Yêu cầu điều chỉnh tồn kho"
+        title="Request inventory adjustment"
         size="md"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Bạn muốn yêu cầu cập nhật tồn kho theo chênh lệch đã phát hiện. Vui lòng mô tả
-            lý do (tuỳ chọn).
+            Request to update inventory per the discrepancy found. Optionally describe the reason.
           </p>
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
-              Lý do (tùy chọn)
+              Reason (optional)
             </label>
             <textarea
               rows={4}
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
-              placeholder="Ví dụ: Điều chỉnh theo kiểm kê tháng 1, lệch do sai số nhập liệu..."
+              placeholder="e.g. Adjust per January count, variance due to data entry..."
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setAdjustModalOpen(false)}>
-              Hủy
+              Cancel
             </Button>
             <Button onClick={handleRequestAdjustment} disabled={adjusting}>
-              {adjusting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+              {adjusting ? 'Sending...' : 'Submit request'}
             </Button>
           </div>
         </div>

@@ -10,12 +10,12 @@ import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
 
 const REPORT_TYPES: { value: string; label: string }[] = [
-  { value: '', label: '-- Chọn loại (tùy chọn) --' },
-  { value: 'damage', label: 'Hư hỏng / Damage' },
-  { value: 'safety', label: 'An toàn / Safety' },
-  { value: 'equipment', label: 'Thiết bị / Equipment' },
-  { value: 'inventory', label: 'Tồn kho / Inventory' },
-  { value: 'other', label: 'Khác / Other' },
+  { value: '', label: '-- Select type (optional) --' },
+  { value: 'damage', label: 'Damage' },
+  { value: 'safety', label: 'Safety' },
+  { value: 'equipment', label: 'Equipment' },
+  { value: 'inventory', label: 'Inventory' },
+  { value: 'other', label: 'Other' },
 ];
 
 export default function StaffReportIssuePage() {
@@ -28,17 +28,17 @@ export default function StaffReportIssuePage() {
     e.preventDefault();
     const trimmed = note.trim();
     if (!trimmed) {
-      toast.warning('Ghi chú là bắt buộc. Vui lòng mô tả vấn đề về kho.');
+      toast.warning('Note is required. Please describe the warehouse issue.');
       return;
     }
     try {
       setSubmitting(true);
       await createWarehouseIssueReport({ note: trimmed, type });
-      toast.success('Đã gửi báo cáo sự cố.');
+      toast.success('Issue report submitted.');
       setNote('');
       setType(undefined);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gửi báo cáo thất bại');
+      toast.error(err instanceof Error ? err.message : 'Failed to submit report');
     } finally {
       setSubmitting(false);
     }
@@ -48,10 +48,10 @@ export default function StaffReportIssuePage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-          Báo cáo sự cố kho
+          Warehouse issue report
         </h1>
         <p className="text-slate-500 mt-1">
-          Báo cáo khi có vấn đề về kho. Ghi chú là bắt buộc.
+          Report any warehouse issues. Note is required.
         </p>
       </div>
 
@@ -61,7 +61,7 @@ export default function StaffReportIssuePage() {
       >
         <div className="space-y-6">
           <Select
-            label="Loại sự cố (tùy chọn)"
+            label="Issue type (optional)"
             options={REPORT_TYPES}
             value={type ?? ''}
             onChange={(e) =>
@@ -75,24 +75,24 @@ export default function StaffReportIssuePage() {
 
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
-              Ghi chú / Mô tả vấn đề <span className="text-red-500">*</span>
+              Note / description <span className="text-red-500">*</span>
             </label>
             <textarea
               required
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={5}
-              placeholder="Mô tả chi tiết vấn đề về kho (bắt buộc)..."
+              placeholder="Describe the warehouse issue (required)..."
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Bắt buộc phải có ghi chú để báo cáo sự cố.
+              A note is required to submit a report.
             </p>
           </div>
 
           <div className="flex gap-3 pt-2">
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Đang gửi...' : 'Gửi báo cáo'}
+              {submitting ? 'Submitting...' : 'Submit report'}
             </Button>
           </div>
         </div>

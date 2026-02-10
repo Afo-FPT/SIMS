@@ -88,7 +88,7 @@ export default function StaffInboundPutawayDetailPage() {
 
   const formatDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(s).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
     } catch {
       return s;
     }
@@ -101,12 +101,12 @@ export default function StaffInboundPutawayDetailPage() {
       const r = rows[i];
       const item = req.items[i];
       if (!r.shelfId) {
-        toast.warning('Vui lòng chọn kệ cho tất cả mặt hàng');
+        toast.warning('Please select a shelf for all items');
         return;
       }
       const actual = Number(r.quantityActual);
       if (isNaN(actual) || actual < 0) {
-        toast.warning('Số lượng thực tế phải là số >= 0 cho tất cả mặt hàng');
+        toast.warning('Actual quantity must be a number >= 0 for all items');
         return;
       }
       const requested = item.quantity_requested;
@@ -115,13 +115,13 @@ export default function StaffInboundPutawayDetailPage() {
       if (shortage > 0) {
         if (damage !== shortage) {
           toast.warning(
-            `"${item.item_name}": Chênh lệch thiếu ${shortage} ${item.unit}. Số lượng hư hỏng phải bằng ${shortage} ${item.unit}.`
+            `"${item.item_name}": Short by ${shortage} ${item.unit}. Damaged quantity must equal ${shortage} ${item.unit}.`
           );
           return;
         }
       } else if (damage > 0 && damage > actual) {
         toast.warning(
-          `"${item.item_name}": Số lượng hư hỏng không được vượt quá số lượng thực tế (${actual} ${item.unit}).`
+          `"${item.item_name}": Damaged quantity cannot exceed actual quantity (${actual} ${item.unit}).`
         );
         return;
       }
@@ -176,8 +176,8 @@ export default function StaffInboundPutawayDetailPage() {
             <div className="space-y-1 text-sm">
               <p><span className="font-bold text-slate-600">Contract code:</span> {req.contract_code ?? req.contract_id}</p>
               <p><span className="font-bold text-slate-600">Customer:</span> {req.customer_id}</p>
-              <p><span className="font-bold text-slate-600">Ngày tạo:</span> {formatDate(req.created_at)}</p>
-              <p><span className="font-bold text-slate-600">Trạng thái:</span> 
+              <p><span className="font-bold text-slate-600">Created at:</span> {formatDate(req.created_at)}</p>
+              <p><span className="font-bold text-slate-600">Status:</span> 
                 <span className={`ml-2 px-2 py-0.5 rounded-lg text-xs font-bold ${
                   req.status === 'APPROVED' ? 'bg-blue-100 text-blue-700' :
                   req.status === 'DONE_BY_STAFF' ? 'bg-emerald-100 text-emerald-700' :
@@ -190,7 +190,7 @@ export default function StaffInboundPutawayDetailPage() {
           </div>
           <div className="flex items-start justify-end">
             <div className="bg-slate-50 rounded-xl p-4 text-sm">
-              <p className="font-bold text-slate-700 mb-2">Tổng số mặt hàng</p>
+              <p className="font-bold text-slate-700 mb-2">Total items</p>
               <p className="text-2xl font-black text-slate-900">{req.items.length}</p>
             </div>
           </div>
@@ -199,17 +199,17 @@ export default function StaffInboundPutawayDetailPage() {
 
       {/* Items Table */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-bold text-slate-900">Chi tiết hàng hóa</h2>
+        <h2 className="text-lg font-bold text-slate-900">Item details</h2>
         <div className="border border-slate-200 rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50">
                 <th className="px-4 py-3 text-left font-bold text-slate-700">STT</th>
-                <th className="px-4 py-3 text-left font-bold text-slate-700">Tên hàng</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Yêu cầu</th>
-                <th className="px-4 py-3 text-left font-bold text-slate-700">Kệ</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Thực tế</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Chênh lệch</th>
+                <th className="px-4 py-3 text-left font-bold text-slate-700">Item</th>
+                <th className="px-4 py-3 text-right font-bold text-slate-700">Requested</th>
+                <th className="px-4 py-3 text-left font-bold text-slate-700">Shelf</th>
+                <th className="px-4 py-3 text-right font-bold text-slate-700">Actual</th>
+                <th className="px-4 py-3 text-right font-bold text-slate-700">Discrepancy</th>
               </tr>
             </thead>
             <tbody>
@@ -223,7 +223,7 @@ export default function StaffInboundPutawayDetailPage() {
                       <div>
                         <p className="font-medium text-slate-900">{it.item_name}</p>
                         {it.quantity_per_unit && (
-                          <p className="text-xs text-slate-500">{it.quantity_per_unit} {it.unit}/đơn vị</p>
+                          <p className="text-xs text-slate-500">{it.quantity_per_unit} {it.unit}/unit</p>
                         )}
                       </div>
                     </td>
@@ -278,8 +278,8 @@ export default function StaffInboundPutawayDetailPage() {
 
       {/* Damage/Loss Reporting */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-bold text-slate-900">Báo cáo hao hụt hàng</h2>
-        <p className="text-sm text-slate-600">Ghi nhận các trường hợp hàng hư hỏng, thiếu hụt hoặc không đạt chất lượng</p>
+        <h2 className="text-lg font-bold text-slate-900">Loss / damage report</h2>
+        <p className="text-sm text-slate-600">Record damaged, missing, or failed-quality items</p>
         <div className="space-y-4">
           {req.items.map((it, idx) => {
             const row = rows[idx];
@@ -292,18 +292,18 @@ export default function StaffInboundPutawayDetailPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-bold text-slate-900">{it.item_name}</p>
-                    <p className="text-xs text-slate-500">Yêu cầu: {requested} {it.unit} | Thực tế: {actual} {it.unit}</p>
+                    <p className="text-xs text-slate-500">Requested: {requested} {it.unit} | Actual: {actual} {it.unit}</p>
                   </div>
                   {hasShortage && (
                     <span className="px-2 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-bold">
-                      Thiếu {requested - actual} {it.unit}
+                      Short by {requested - actual} {it.unit}
                     </span>
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Số lượng hư hỏng {hasShortage && <span className="text-amber-600">(phải = {requested - actual} {it.unit})</span>}
+                      Damaged quantity {hasShortage && <span className="text-amber-600">(must equal {requested - actual} {it.unit})</span>}
                     </label>
                     <Input
                       type="number"
@@ -317,29 +317,29 @@ export default function StaffInboundPutawayDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Lý do hao hụt</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Loss reason</label>
                     <Select
                       value={row?.lossReason || ''}
                       onChange={(e) => updateRow(idx, { lossReason: e.target.value })}
                       options={[
-                        { value: '', label: '— Chọn lý do —' },
-                        { value: 'damage', label: 'Hư hỏng trong quá trình vận chuyển' },
-                        { value: 'damage_storage', label: 'Hư hỏng do bảo quản' },
-                        { value: 'shortage', label: 'Thiếu hụt khi nhận hàng' },
-                        { value: 'quality', label: 'Không đạt chất lượng' },
-                        { value: 'expired', label: 'Hết hạn sử dụng' },
-                        { value: 'other', label: 'Khác' },
+                        { value: '', label: '-- Select reason --' },
+                        { value: 'damage', label: 'Damaged during transport' },
+                        { value: 'damage_storage', label: 'Damaged during storage' },
+                        { value: 'shortage', label: 'Shortage on receiving' },
+                        { value: 'quality', label: 'Quality issue' },
+                        { value: 'expired', label: 'Expired' },
+                        { value: 'other', label: 'Other' },
                       ]}
                       className="w-full"
                     />
                   </div>
                 </div>
                 <div className="mt-3">
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Ghi chú</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Notes</label>
                   <textarea
                     value={row?.notes ?? ''}
                     onChange={(e) => updateRow(idx, { notes: e.target.value })}
-                    placeholder="Mô tả chi tiết về tình trạng hàng hóa..."
+                    placeholder="Describe the item condition..."
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 text-sm resize-none"
                     rows={2}
                   />
@@ -352,22 +352,22 @@ export default function StaffInboundPutawayDetailPage() {
 
       {/* Summary */}
       <div className="bg-slate-50 rounded-3xl border border-slate-200 p-6">
-        <h3 className="text-sm font-bold text-slate-700 mb-3">Tóm tắt</h3>
+        <h3 className="text-sm font-bold text-slate-700 mb-3">Summary</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>
-            <p className="text-slate-600">Tổng số lượng yêu cầu</p>
+            <p className="text-slate-600">Total requested</p>
             <p className="text-xl font-black text-slate-900">
               {req.items.reduce((sum, it) => sum + it.quantity_requested, 0)} {req.items[0]?.unit || ''}
             </p>
           </div>
           <div>
-            <p className="text-slate-600">Tổng số lượng thực tế</p>
+            <p className="text-slate-600">Total actual</p>
             <p className="text-xl font-black text-slate-900">
               {rows.reduce((sum, r, idx) => sum + (Number(r.quantityActual) || 0), 0)} {req.items[0]?.unit || ''}
             </p>
           </div>
           <div>
-            <p className="text-slate-600">Tổng số lượng hư hỏng</p>
+            <p className="text-slate-600">Total damaged</p>
             <p className="text-xl font-black text-red-600">
               {rows.reduce((sum, r) => sum + (Number(r.damageQuantity) || 0), 0)} {req.items[0]?.unit || ''}
             </p>
@@ -377,8 +377,8 @@ export default function StaffInboundPutawayDetailPage() {
 
       {/* Actions */}
       <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>Hủy</Button>
-        <Button onClick={handleComplete} isLoading={saving}>Hoàn tất putaway</Button>
+        <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>Cancel</Button>
+        <Button onClick={handleComplete} isLoading={saving}>Complete putaway</Button>
       </div>
     </div>
   );

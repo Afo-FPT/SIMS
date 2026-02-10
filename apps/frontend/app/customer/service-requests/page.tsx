@@ -130,7 +130,7 @@ export default function ServiceRequestsPage() {
         if (!cancelled) setCycleCountStoredItems(data);
       })
       .catch((err) => {
-        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Không tải được stored items');
+        if (!cancelled) toast.error(err instanceof Error ? err.message : 'Failed to load stored items');
       })
       .finally(() => {
         if (!cancelled) setCycleCountStoredItemsLoading(false);
@@ -147,8 +147,8 @@ export default function ServiceRequestsPage() {
       const data = await listStorageRequests();
       setTrackingRequests(data);
     } catch (err) {
-      setTrackingError(err instanceof Error ? err.message : 'Không tải được danh sách đơn');
-      toast.error('Không tải được danh sách yêu cầu');
+      setTrackingError(err instanceof Error ? err.message : 'Failed to load request list');
+      toast.error('Failed to load request list');
     } finally {
       setTrackingLoading(false);
     }
@@ -161,8 +161,8 @@ export default function ServiceRequestsPage() {
       const data = await getCycleCountsApi();
       setCycleCounts(data);
     } catch (err) {
-      setCycleError(err instanceof Error ? err.message : 'Không tải được danh sách kiểm kê');
-      toast.error('Không tải được danh sách kiểm kê');
+      setCycleError(err instanceof Error ? err.message : 'Failed to load cycle counts');
+      toast.error('Failed to load cycle counts');
     } finally {
       setCycleLoading(false);
     }
@@ -188,7 +188,7 @@ export default function ServiceRequestsPage() {
       if (!cancelled) {
         setDetailLoading(false);
         setDetailRequest(null);
-        toast.error('Tải chi tiết đơn quá lâu. Vui lòng thử lại.');
+        toast.error('Request detail took too long. Please try again.');
       }
     }, 12000);
     getStorageRequestById(detailRequestId)
@@ -198,7 +198,7 @@ export default function ServiceRequestsPage() {
       .catch((err) => {
         if (!cancelled) {
           setDetailRequest(null);
-          toast.error(err instanceof Error ? err.message : 'Không tải được chi tiết đơn');
+          toast.error(err instanceof Error ? err.message : 'Failed to load request details');
         }
       })
       .finally(() => {
@@ -212,15 +212,15 @@ export default function ServiceRequestsPage() {
   }, [detailRequestId]);
 
   const statusLabel: Record<string, string> = {
-    PENDING: 'Chờ xử lý',
-    APPROVED: 'Đã duyệt',
-    DONE_BY_STAFF: 'Đã thực hiện',
-    COMPLETED: 'Hoàn thành',
-    REJECTED: 'Từ chối',
+    PENDING: 'Pending',
+    APPROVED: 'Approved',
+    DONE_BY_STAFF: 'In progress',
+    COMPLETED: 'Completed',
+    REJECTED: 'Rejected',
   };
   const formatDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(s).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
     } catch {
       return s;
     }
@@ -321,7 +321,7 @@ export default function ServiceRequestsPage() {
         })),
       })
         .then(() => {
-          toast.success('Gửi yêu cầu inbound thành công!', 5000);
+          toast.success('Inbound request submitted successfully!', 5000);
           setRequests((prev) => [
             ...prev,
             {
@@ -358,7 +358,7 @@ export default function ServiceRequestsPage() {
         items,
       })
         .then(() => {
-          toast.success('Gửi yêu cầu outbound thành công!', 5000);
+          toast.success('Outbound request submitted successfully!', 5000);
           setRequests((prev) => [
             ...prev,
             {
@@ -385,7 +385,7 @@ export default function ServiceRequestsPage() {
         preferredDate: preferredDate ? new Date(preferredDate).toISOString() : undefined,
       })
         .then(() => {
-          toast.success('Gửi yêu cầu kiểm kê (Cycle Count) thành công!', 5000);
+          toast.success('Cycle count request submitted successfully!', 5000);
           // Reset chỉ các field chung
           setNotes('');
           setCheckScope('Full inventory');
@@ -473,7 +473,7 @@ export default function ServiceRequestsPage() {
               : 'bg-slate-100 text-slate-600 border border-transparent hover:bg-slate-200'
           }`}
         >
-          Tạo yêu cầu
+          New request
         </button>
         <button
           type="button"
@@ -484,32 +484,32 @@ export default function ServiceRequestsPage() {
               : 'bg-slate-100 text-slate-600 border border-transparent hover:bg-slate-200'
           }`}
         >
-          Theo dõi đơn
+          Track requests
         </button>
       </div>
 
       {mainTab === 'list' ? (
         <>
           <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách yêu cầu Inbound/Outbound</h2>
-            <p className="text-sm text-slate-500 px-6 pb-4">Theo dõi trạng thái các yêu cầu nhập/xuất kho</p>
+            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Inbound / Outbound requests</h2>
+            <p className="text-sm text-slate-500 px-6 pb-4">Track status of inbound/outbound requests</p>
             {trackingLoading ? (
-              <div className="p-12 text-center text-slate-500">Đang tải…</div>
+              <div className="p-12 text-center text-slate-500">Loading…</div>
             ) : trackingError ? (
               <div className="p-12 text-center">
                 <p className="text-red-600 mb-4">{trackingError}</p>
-                <Button variant="outline" onClick={loadTrackingRequests}>Thử lại</Button>
+                <Button variant="outline" onClick={loadTrackingRequests}>Retry</Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-200">
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã đơn</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Loại</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Ngày tạo</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Request ID</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Type</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Created</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -517,7 +517,7 @@ export default function ServiceRequestsPage() {
                       <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
                         <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
                         <td className="px-6 py-4 text-slate-700">
-                          {r.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
+                          {r.request_type === 'IN' ? 'Inbound' : 'Outbound'}
                         </td>
                         <td className="px-6 py-4 text-slate-700">{formatDate(r.created_at)}</td>
                         <td className="px-6 py-4">
@@ -541,7 +541,7 @@ export default function ServiceRequestsPage() {
                             onClick={() => setDetailRequestId(r.request_id)}
                             className="text-sm font-bold text-primary hover:underline"
                           >
-                            Xem chi tiết
+                            View details
                           </button>
                         </td>
                       </tr>
@@ -552,37 +552,37 @@ export default function ServiceRequestsPage() {
             )}
             {!trackingLoading && !trackingError && trackingRequests.length === 0 && (
               <div className="p-12 text-center text-slate-500">
-                Chưa có yêu cầu nào. Chuyển sang tab &quot;Tạo yêu cầu&quot; để gửi.
+                No requests yet. Switch to &quot;New request&quot; to submit.
               </div>
             )}
           </section>
 
           <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Danh sách Cycle Count (Inventory Checking)</h2>
+            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Cycle Count (Inventory Checking)</h2>
             <p className="text-sm text-slate-500 px-6 pb-4">
-              Theo dõi các phiên kiểm kê tồn kho đã yêu cầu
+              Track requested inventory cycle counts
             </p>
             {cycleLoading ? (
-              <div className="p-12 text-center text-slate-500">Đang tải…</div>
+              <div className="p-12 text-center text-slate-500">Loading…</div>
             ) : cycleError ? (
               <div className="p-12 text-center">
                 <p className="text-red-600 mb-4">{cycleError}</p>
-                <Button variant="outline" onClick={loadCycleCounts}>Thử lại</Button>
+                <Button variant="outline" onClick={loadCycleCounts}>Retry</Button>
               </div>
             ) : cycleCounts.length === 0 ? (
               <div className="p-12 text-center text-slate-500">
-                Chưa có phiên kiểm kê nào.
+                No cycle counts yet.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-200">
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Mã / Contract</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Kho</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Trạng thái</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Hạn kiểm</th>
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Thao tác</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Contract</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Warehouse</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Deadline</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -601,7 +601,7 @@ export default function ServiceRequestsPage() {
                             href={`/customer/cycle-count/${cc.cycle_count_id}`}
                             className="text-sm font-bold text-primary hover:underline"
                           >
-                            Xem chi tiết
+                            View details
                           </a>
                         </td>
                       </tr>
@@ -714,7 +714,7 @@ export default function ServiceRequestsPage() {
                               <input
                                 value={r.sku}
                                 onChange={(e) => updateInboundRow(i, { sku: e.target.value })}
-                                placeholder="Nhập SKU / tên hàng mới"
+                                placeholder="Enter new SKU / item name"
                                 className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
                               />
                               <button
@@ -722,7 +722,7 @@ export default function ServiceRequestsPage() {
                                 onClick={() => updateInboundRow(i, { useNewSku: false, sku: '', name: '' })}
                                 className="text-xs text-primary hover:underline text-left"
                               >
-                                Chọn từ danh sách có sẵn
+                                Choose from existing list
                               </button>
                             </div>
                           ) : (
@@ -738,13 +738,13 @@ export default function ServiceRequestsPage() {
                               }}
                               className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white"
                             >
-                              <option value="">— Chọn SKU có sẵn hoặc tạo mới —</option>
+                              <option value="">— Select existing SKU or create new —</option>
                               {existingInboundSkus.map((name) => (
                                 <option key={name} value={name}>
                                   {name}
                                 </option>
                               ))}
-                              <option value="__new__">➕ Tạo SKU mới</option>
+                              <option value="__new__">➕ Add new SKU</option>
                             </select>
                           )}
                         </td>
@@ -983,13 +983,13 @@ export default function ServiceRequestsPage() {
             {checkScope === 'By SKU list' && (
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Chọn mặt hàng (stored items của hợp đồng)
+                  Select items (contract stored items)
                 </label>
                 {cycleCountStoredItemsLoading ? (
-                  <p className="text-sm text-slate-500">Đang tải danh sách từ kho…</p>
+                  <p className="text-sm text-slate-500">Loading list from warehouse…</p>
                 ) : cycleCountStoredItems.length === 0 ? (
                   <p className="text-sm text-slate-500">
-                    Hợp đồng này chưa có stored item. Chọn Full inventory hoặc thêm hàng vào kho trước.
+                    This contract has no stored items. Choose Full inventory or add items to warehouse first.
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -1037,32 +1037,32 @@ export default function ServiceRequestsPage() {
       <Modal
         open={!!detailRequestId}
         onOpenChange={(open) => { if (!open) setDetailRequestId(null); }}
-        title="Chi tiết đơn"
+        title="Request details"
         size="lg"
       >
         {detailLoading ? (
           <div className="py-12 text-center text-slate-500">
             <span className="material-symbols-outlined text-4xl animate-pulse text-slate-400">hourglass_empty</span>
-            <p className="mt-2">Đang tải chi tiết đơn…</p>
+            <p className="mt-2">Loading request details…</p>
           </div>
         ) : detailRequest ? (
           <div className="space-y-6">
             {/* Thông tin chung */}
             <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <span className="text-slate-500">Mã đơn:</span>
+                <span className="text-slate-500">Request ID:</span>
                 <span className="font-bold text-slate-900">{detailRequest.request_id}</span>
                 <span className="text-slate-400">|</span>
-                <span className="text-slate-500">Loại:</span>
+                <span className="text-slate-500">Type:</span>
                 <span className="font-medium text-slate-800">
-                  {detailRequest.request_type === 'IN' ? 'Nhập kho' : 'Xuất kho'}
+                  {detailRequest.request_type === 'IN' ? 'Inbound' : 'Outbound'}
                 </span>
                 <span className="text-slate-400">|</span>
-                <span className="text-slate-500">Hợp đồng:</span>
+                <span className="text-slate-500">Contract:</span>
                 <span className="font-medium text-slate-800">{detailRequest.contract_id}</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <span className="text-slate-500">Trạng thái:</span>
+                <span className="text-slate-500">Status:</span>
                 <span
                   className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
                     detailRequest.status === 'COMPLETED'
@@ -1077,12 +1077,12 @@ export default function ServiceRequestsPage() {
                   {statusLabel[detailRequest.status] ?? detailRequest.status}
                 </span>
                 <span className="text-slate-400">|</span>
-                <span className="text-slate-500">Ngày tạo:</span>
+                <span className="text-slate-500">Created:</span>
                 <span>{formatDate(detailRequest.created_at)}</span>
                 {detailRequest.updated_at && (
                   <>
                     <span className="text-slate-400">|</span>
-                    <span className="text-slate-500">Cập nhật:</span>
+                    <span className="text-slate-500">Updated:</span>
                     <span>{formatDate(detailRequest.updated_at)}</span>
                   </>
                 )}
@@ -1091,23 +1091,23 @@ export default function ServiceRequestsPage() {
 
             {/* Chi tiết hàng */}
             <div>
-              <h3 className="text-sm font-bold text-slate-700 mb-2">Chi tiết hàng ({detailRequest.items.length} mặt hàng)</h3>
+              <h3 className="text-sm font-bold text-slate-700 mb-2">Items ({detailRequest.items.length})</h3>
               {detailRequest.items.length === 0 ? (
-                <p className="text-slate-500 py-4 text-sm">Không có mặt hàng nào trong đơn.</p>
+                <p className="text-slate-500 py-4 text-sm">No items in this request.</p>
               ) : (
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-100">
-                        <th className="px-4 py-3 text-left font-bold text-slate-600">STT</th>
-                        <th className="px-4 py-3 text-left font-bold text-slate-600">Tên hàng</th>
-                        <th className="px-4 py-3 text-left font-bold text-slate-600">Đơn vị</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">#</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Item</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Unit</th>
                         {detailRequest.request_type === 'IN' && (
                           <th className="px-4 py-3 text-right font-bold text-slate-600">Qty/unit</th>
                         )}
-                        <th className="px-4 py-3 text-right font-bold text-slate-600">SL yêu cầu</th>
-                        <th className="px-4 py-3 text-right font-bold text-slate-600">SL thực tế</th>
-                        <th className="px-4 py-3 text-left font-bold text-slate-600">Kệ</th>
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">Requested</th>
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">Actual</th>
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Shelf</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1144,20 +1144,20 @@ export default function ServiceRequestsPage() {
               });
               if (lossItems.length === 0) return null;
               const lossReasonLabel: Record<string, string> = {
-                damage: 'Hư hỏng trong quá trình vận chuyển',
-                damage_storage: 'Hư hỏng do bảo quản',
-                shortage: 'Thiếu hụt khi nhận hàng',
-                quality: 'Không đạt chất lượng',
-                expired: 'Hết hạn sử dụng',
-                damage_picking: 'Hư hỏng khi lấy hàng',
-                location_error: 'Không tìm thấy vị trí',
-                other: 'Khác',
+                damage: 'Damage in transit',
+                damage_storage: 'Storage damage',
+                shortage: 'Shortage on receipt',
+                quality: 'Quality not met',
+                expired: 'Expired',
+                damage_picking: 'Damage during picking',
+                location_error: 'Location not found',
+                other: 'Other',
               };
               return (
                 <div className="border border-amber-200 rounded-xl bg-amber-50/50 p-4">
                   <h3 className="text-sm font-bold text-amber-800 mb-3 flex items-center gap-2">
                     <span className="material-symbols-outlined text-lg">warning</span>
-                    Thông báo hao hụt
+                    Loss / shortage notice
                   </h3>
                   <ul className="space-y-3">
                     {lossItems.map((it) => {
@@ -1171,16 +1171,16 @@ export default function ServiceRequestsPage() {
                           <p className="font-bold text-slate-900">{it.item_name}</p>
                           <div className="mt-1 space-y-0.5 text-slate-700">
                             {short > 0 && (
-                              <p><span className="text-amber-700 font-medium">Thiếu:</span> {short} {it.unit} (yêu cầu {req}, thực tế {actual})</p>
+                              <p><span className="text-amber-700 font-medium">Short:</span> {short} {it.unit} (requested {req}, actual {actual})</p>
                             )}
                             {damage > 0 && (
-                              <p><span className="text-amber-700 font-medium">Hư hỏng / không đủ:</span> {damage} {it.unit}</p>
+                              <p><span className="text-amber-700 font-medium">Damaged / short:</span> {damage} {it.unit}</p>
                             )}
                             {reasonText && (
-                              <p><span className="text-slate-600 font-medium">Lý do:</span> {reasonText}</p>
+                              <p><span className="text-slate-600 font-medium">Reason:</span> {reasonText}</p>
                             )}
                             {it.loss_notes && (
-                              <p><span className="text-slate-600 font-medium">Ghi chú:</span> {it.loss_notes}</p>
+                              <p><span className="text-slate-600 font-medium">Note:</span> {it.loss_notes}</p>
                             )}
                           </div>
                         </li>
@@ -1194,7 +1194,7 @@ export default function ServiceRequestsPage() {
         ) : (
           <div className="py-12 text-center text-slate-500">
             <span className="material-symbols-outlined text-4xl text-slate-300">inbox</span>
-            <p className="mt-2">Không có dữ liệu đơn.</p>
+            <p className="mt-2">No request data.</p>
           </div>
         )}
       </Modal>

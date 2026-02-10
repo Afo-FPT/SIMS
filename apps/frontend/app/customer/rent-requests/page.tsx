@@ -128,7 +128,7 @@ export default function RentRequestsPage() {
               onChange={(e) => setWarehouseId(e.target.value)}
               disabled={loadingWarehouses}
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-60 cursor-pointer"
-              aria-label="Chọn kho"
+              aria-label="Select warehouse"
             >
               <option value="">— Select warehouse —</option>
               {warehouses.map((w) => (
@@ -194,7 +194,7 @@ export default function RentRequestsPage() {
             type="submit"
             disabled={loading || loadingWarehouses}
             className="px-6 py-3 bg-primary text-white font-black rounded-2xl hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 cursor-pointer"
-            aria-label="Tạo hợp đồng draft"
+            aria-label="Create draft contract"
           >
             {loading ? 'Creating…' : 'Create draft contract'}
           </button>

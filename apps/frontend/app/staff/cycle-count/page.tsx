@@ -21,13 +21,13 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDING_MANAGER_APPROVAL: 'Chờ duyệt',
-  ASSIGNED_TO_STAFF: 'Cần kiểm kê',
-  STAFF_SUBMITTED: 'Đã nộp',
-  CONFIRMED: 'Đã xác nhận',
-  REJECTED: 'Từ chối',
-  ADJUSTMENT_REQUESTED: 'Yêu cầu điều chỉnh',
-  RECOUNT_REQUIRED: 'Yêu cầu kiểm lại',
+  PENDING_MANAGER_APPROVAL: 'Pending approval',
+  ASSIGNED_TO_STAFF: 'Assigned to staff',
+  STAFF_SUBMITTED: 'Submitted',
+  CONFIRMED: 'Confirmed',
+  REJECTED: 'Rejected',
+  ADJUSTMENT_REQUESTED: 'Adjustment requested',
+  RECOUNT_REQUIRED: 'Recount required',
 };
 
 export default function StaffCycleCountPage() {
@@ -48,7 +48,7 @@ export default function StaffCycleCountPage() {
       setList(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
-      toast.error('Không tải được danh sách kiểm kê');
+      toast.error('Failed to load cycle count list');
     } finally {
       setLoading(false);
     }
@@ -64,30 +64,30 @@ export default function StaffCycleCountPage() {
           Cycle Count
         </h1>
         <p className="text-slate-500 mt-1">
-          Kiểm kê hàng theo yêu cầu đã được manager giao
+          Perform inventory counts assigned by manager
         </p>
       </div>
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
-        <ErrorState title="Lỗi tải dữ liệu" message={error} onRetry={load} />
+        <ErrorState title="Failed to load" message={error} onRetry={load} />
       ) : list.length === 0 ? (
         <EmptyState
           icon="fact_check"
-          title="Chưa có phiên kiểm kê"
-          message="Các yêu cầu kiểm kê được manager giao sẽ hiển thị tại đây"
+          title="No cycle counts"
+          message="Cycle counts assigned by manager will appear here"
         />
       ) : (
         <>
           <Table>
             <TableHead>
-              <TableHeader>Mã / Contract</TableHeader>
-              <TableHeader>Khách hàng</TableHeader>
-              <TableHeader>Kho</TableHeader>
-              <TableHeader>Trạng thái</TableHeader>
-              <TableHeader>Hạn kiểm</TableHeader>
-              <TableHeader>Thao tác</TableHeader>
+              <TableHeader>Contract</TableHeader>
+              <TableHeader>Customer</TableHeader>
+              <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Status</TableHeader>
+              <TableHeader>Deadline</TableHeader>
+              <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
               {[...pending, ...others].map((cc) => (
@@ -116,7 +116,7 @@ export default function StaffCycleCountPage() {
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
                     {cc.counting_deadline
-                      ? new Date(cc.counting_deadline).toLocaleString('vi-VN')
+                      ? new Date(cc.counting_deadline).toLocaleString('en-US')
                       : '—'}
                   </TableCell>
                   <TableCell>
@@ -124,7 +124,7 @@ export default function StaffCycleCountPage() {
                       href={`/staff/cycle-count/${cc.cycle_count_id}`}
                       className="text-sm font-bold text-primary hover:underline"
                     >
-                      {cc.status === 'ASSIGNED_TO_STAFF' ? 'Thực hiện' : 'Xem'}
+                      {cc.status === 'ASSIGNED_TO_STAFF' ? 'Start' : 'View'}
                     </Link>
                   </TableCell>
                 </TableRow>
