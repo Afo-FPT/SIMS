@@ -15,6 +15,7 @@ import stockHistoryRoutes from "./routes/stock-history.routes";
 import rentRequestRoutes from "./routes/rent-request.routes";
 import cycleCountRoutes from "./routes/cycle-count.routes";
 import warehouseIssueReportRoutes from "./routes/warehouse-issue-report.routes";
+import reportsRoutes from "./routes/reports.routes";
 
 
 const app = express();
@@ -36,6 +37,7 @@ app.use("/api/stock-history", stockHistoryRoutes);
 app.use("/api/rent-requests", rentRequestRoutes);
 app.use("/api/cycle-counts", cycleCountRoutes);
 app.use("/api/warehouse-issue-reports", warehouseIssueReportRoutes);
+app.use("/api/reports", reportsRoutes);
 
 
 
