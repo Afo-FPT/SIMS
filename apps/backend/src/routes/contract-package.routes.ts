@@ -11,14 +11,9 @@ const router = Router();
 /**
  * GET /api/contract-packages
  * List all contract packages
- * Authorization: Manager only (for now)
+ * Authorization: Manager or Customer (customer can only view)
  */
-router.get(
-  "/",
-  authenticate,
-  authorizeRoles("manager"),
-  listContractPackagesController
-);
+router.get("/", authenticate, authorizeRoles("manager", "customer"), listContractPackagesController);
 
 /**
  * POST /api/contract-packages

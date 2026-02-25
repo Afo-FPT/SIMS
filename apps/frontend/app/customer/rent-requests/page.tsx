@@ -1,20 +1,39 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
 import {
   listWarehousesForRent,
   createDraftContractRequest,
+  listContractPackages,
   type WarehouseOption,
   type CreateDraftContractPayload,
+  type ContractPackageOption,
 } from '../../../lib/rent-requests.api';
 
 const today = new Date().toISOString().slice(0, 10);
+/** Start date must be at least 1 day from today. */
+const minStartDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-function defaultEndDate(start: string): string {
+function addDuration(start: string, pkg: ContractPackageOption | null): string {
+  if (!pkg) return start;
   const d = new Date(start);
-  d.setMonth(d.getMonth() + 6);
+  if (Number.isNaN(d.getTime())) return start;
+  if (pkg.unit === 'day') {
+    d.setDate(d.getDate() + pkg.duration);
+  } else if (pkg.unit === 'month') {
+    d.setMonth(d.getMonth() + pkg.duration);
+  } else {
+    d.setFullYear(d.getFullYear() + pkg.duration);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+function defaultEndDate(start: string, fallbackMonths = 6): string {
+  const d = new Date(start);
+  if (Number.isNaN(d.getTime())) return start;
+  d.setMonth(d.getMonth() + fallbackMonths);
   return d.toISOString().slice(0, 10);
 }
 
@@ -22,8 +41,13 @@ export default function RentRequestsPage() {
   const toast = useToastHelpers();
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [warehouseId, setWarehouseId] = useState('');
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(() => defaultEndDate(today));
+  const [startDate, setStartDate] = useState(minStartDate);
+  const [endDate, setEndDate] = useState(() => defaultEndDate(minStartDate));
+  const [durationMode, setDurationMode] = useState<'package' | 'custom'>('package');
+  const [packages, setPackages] = useState<ContractPackageOption[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(true);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
@@ -56,13 +80,53 @@ export default function RentRequestsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadPackages = async () => {
+      try {
+        setLoadingPackages(true);
+        setPackagesError(null);
+        const list = await listContractPackages();
+        if (cancelled) return;
+        setPackages(list);
+        if (list.length > 0) {
+          setSelectedPackageId(list[0].id);
+        } else {
+          setDurationMode('custom');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load rental packages';
+        setPackagesError(msg);
+        toast.error(msg);
+        setDurationMode('custom');
+      } finally {
+        if (!cancelled) setLoadingPackages(false);
+      }
+    };
+    loadPackages();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedPackage = useMemo(
+    () => packages.find((p) => p.id === selectedPackageId) ?? null,
+    [packages, selectedPackageId]
+  );
+
+  useEffect(() => {
+    if (durationMode !== 'package' || !selectedPackage) return;
+    setEndDate(addDuration(startDate, selectedPackage));
+  }, [durationMode, selectedPackage, startDate]);
+
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (!warehouseId) e.warehouseId = 'Please select a warehouse';
     const start = new Date(startDate);
     const end = endDate ? new Date(endDate) : null;
     if (isNaN(start.getTime())) e.startDate = 'Invalid start date';
-    if (start < new Date(today)) e.startDate = 'Start date must be today or later';
+    if (start < new Date(minStartDate)) e.startDate = 'Start date must be at least 1 day from today';
     if (end) {
       if (isNaN(end.getTime())) e.endDate = 'Invalid end date';
       else if (end <= start) e.endDate = 'End date must be after start date';
@@ -107,7 +171,8 @@ export default function RentRequestsPage() {
           Request rental
         </h1>
         <p className="text-slate-500 mt-1">
-          Choose a warehouse and period. A draft contract will be created; the manager will approve and a zone will be assigned automatically.
+          Choose a warehouse and rental period. Use manager-defined packages or a custom duration.
+          A draft contract will be created; the manager will approve and a zone will be assigned automatically.
         </p>
       </div>
 
@@ -117,7 +182,7 @@ export default function RentRequestsPage() {
       >
         <h2 className="text-xl font-black text-slate-900">Create draft contract request</h2>
 
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div>
             <label htmlFor="rent-warehouse" className="block text-sm font-bold text-slate-700 mb-2">
               Warehouse <span className="text-red-500">*</span>
@@ -144,44 +209,116 @@ export default function RentRequestsPage() {
             {errors.warehouseId && <p className="text-xs text-red-500 mt-1">{errors.warehouseId}</p>}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="rent-start-date" className="block text-sm font-bold text-slate-700 mb-2">
-                Start date <span className="text-red-500">*</span>
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-slate-700 uppercase">Rental period</h3>
+            <div className="flex flex-wrap gap-4 items-center">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                <input
+                  type="radio"
+                  checked={durationMode === 'package'}
+                  onChange={() => setDurationMode('package')}
+                  disabled={packages.length === 0}
+                />
+                <span>Use package</span>
+                {loadingPackages && (
+                  <span className="text-xs text-slate-400">(Loading packages…)</span>
+                )}
+                {!loadingPackages && packages.length === 0 && (
+                  <span className="text-xs text-slate-400">(No packages defined)</span>
+                )}
               </label>
-              <input
-                id="rent-start-date"
-                type="date"
-                min={today}
-                value={startDate}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setStartDate(v);
-                  if (endDate && new Date(v) >= new Date(endDate)) setEndDate(defaultEndDate(v));
-                }}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              />
-              {errors.startDate && <p className="text-xs text-red-500 mt-1">{errors.startDate}</p>}
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                <input
+                  type="radio"
+                  checked={durationMode === 'custom'}
+                  onChange={() => setDurationMode('custom')}
+                />
+                <span>Custom</span>
+              </label>
             </div>
-            <div>
-              <label htmlFor="rent-end-date" className="block text-sm font-bold text-slate-700 mb-2">
-                End date <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="rent-end-date"
-                type="date"
-                min={startDate || today}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              />
-              {errors.endDate && <p className="text-xs text-red-500 mt-1">{errors.endDate}</p>}
+
+            {durationMode === 'package' && packages.length > 0 && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {packages.map((pkg) => (
+                    <button
+                      key={pkg.id}
+                      type="button"
+                      onClick={() => setSelectedPackageId(pkg.id)}
+                      className={`px-4 py-2.5 rounded-2xl border text-sm font-bold transition-colors ${
+                        selectedPackageId === pkg.id
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {pkg.duration} {pkg.unit}
+                      {pkg.duration > 1 ? 's' : ''}
+                    </button>
+                  ))}
+                </div>
+                {selectedPackage && (
+                  <div className="mt-3 pt-3 border-t border-slate-100">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Price</p>
+                    <p className="text-lg font-bold text-slate-900">
+                      {typeof selectedPackage.price === 'number'
+                        ? selectedPackage.price.toLocaleString()
+                        : selectedPackage.price ?? '—'}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {packagesError && (
+              <p className="text-xs text-red-500">{packagesError}</p>
+            )}
+
+            <p className="text-xs text-slate-500 mb-2">
+              At least 1 day from today{durationMode === 'package' ? '. End date is set automatically from the package.' : ''}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="rent-start-date" className="block text-sm font-bold text-slate-700 mb-2">
+                  Start date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="rent-start-date"
+                  type="date"
+                  min={minStartDate}
+                  value={startDate}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setStartDate(v);
+                    if (durationMode === 'custom' && endDate && new Date(v) >= new Date(endDate)) {
+                      setEndDate(defaultEndDate(v));
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+                {errors.startDate && <p className="text-xs text-red-500 mt-1">{errors.startDate}</p>}
+              </div>
+              <div>
+                <label htmlFor="rent-end-date" className="block text-sm font-bold text-slate-700 mb-2">
+                  End date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="rent-end-date"
+                  type="date"
+                  min={startDate || today}
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  disabled={durationMode === 'package'}
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                {errors.endDate && <p className="text-xs text-red-500 mt-1">{errors.endDate}</p>}
+              </div>
             </div>
           </div>
         </div>
 
         <p className="text-sm text-slate-600">
-          Zone will be assigned automatically when the manager approves the draft (no overlap with other contracts). You only choose warehouse and period.
+          Zone will be assigned automatically when the manager approves the draft (no overlap with other contracts). You only choose warehouse and rental period.
         </p>
 
         {submitError && (

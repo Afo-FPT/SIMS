@@ -138,6 +138,46 @@ export async function listWarehousesForRent(): Promise<WarehouseOption[]> {
   }));
 }
 
+// --- Contract packages (manager-defined rental time packages) ---
+
+export type ContractPackageUnit = 'day' | 'month' | 'year';
+
+export interface ContractPackageOption {
+  id: string;
+  name: string;
+  duration: number;
+  unit: ContractPackageUnit;
+  price: number;
+  description?: string;
+}
+
+interface BackendContractPackage {
+  _id: string;
+  name: string;
+  duration: number;
+  unit: ContractPackageUnit;
+  price: number;
+  description?: string;
+}
+
+/**
+ * List contract packages defined by manager.
+ * Customer uses these as suggested rental durations.
+ * Note: apiJson unwraps { data } so we may receive the array directly.
+ */
+export async function listContractPackages(): Promise<ContractPackageOption[]> {
+  const res = await apiJson<BackendContractPackage[] | { data: BackendContractPackage[] }>('/contract-packages', { method: 'GET' });
+  const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+  return list.map((p) => ({
+    id: typeof p._id === 'string' ? p._id : String(p._id),
+    name: p.name,
+    duration: p.duration,
+    unit: p.unit,
+    price: p.price,
+    description: p.description,
+  }));
+}
+
 export interface ZoneOption {
   id: string;
   zoneCode: string;
