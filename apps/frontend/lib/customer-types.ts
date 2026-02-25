@@ -38,6 +38,7 @@ export interface Contract {
   customerId: string;
   customerName?: string;
   warehouseId: string;
+  warehouseName?: string;
   /** Contract rents Zone(s); each zone contains shelves for location tracking */
   rentedZones: RentedZone[];
   /** Draft from customer: single zone request; assigned when manager activates */
