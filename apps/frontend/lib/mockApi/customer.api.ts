@@ -10,56 +10,43 @@ async function safeJson(res: Response): Promise<any> {
 }
 
 /**
- * Backend Contract Response interface (snake_case) - matches backend ContractResponse
+ * Backend can return snake_case (ContractResponse) or Mongoose-style (_id, camelCase).
+ * Support both so list and get-by-id work regardless of response shape.
  */
-interface BackendContractResponse {
-  contract_id: string;
-  contract_code: string;
-  customer_id: string;
-  customer_name?: string;
-  warehouse_id: string;
-  warehouse_name?: string;
-  rented_zones: {
-    zone_id: string;
-    zone_code?: string;
-    zone_name?: string;
-    start_date: string;
-    end_date: string;
-    price: number;
-  }[];
-  requested_zone_id?: string;
-  requested_start_date?: string;
-  requested_end_date?: string;
-  status: 'draft' | 'active' | 'expired' | 'terminated';
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+function normalizeContractId(c: any): string {
+  if (!c) return '';
+  const id = c.contract_id ?? c._id ?? c.id;
+  return typeof id === 'string' ? id : (id?.toString?.() ?? '');
 }
 
-function mapBackendContractToContract(c: BackendContractResponse): Contract {
-  const rentedZones = (c.rented_zones || []).map((rz) => ({
-    zoneId: rz.zone_id,
-    zoneCode: rz.zone_code,
-    zoneName: rz.zone_name,
-    startDate: typeof rz.start_date === 'string' ? rz.start_date : new Date(rz.start_date).toISOString(),
-    endDate: typeof rz.end_date === 'string' ? rz.end_date : new Date(rz.end_date).toISOString(),
-    price: rz.price,
+function mapBackendContractToContract(c: any): Contract {
+  const rentedZones = (c.rented_zones ?? c.rentedZones ?? []).map((rz: any) => ({
+    zoneId: rz.zone_id ?? rz.zoneId ?? '',
+    zoneCode: rz.zone_code ?? rz.zoneCode,
+    zoneName: rz.zone_name ?? rz.zoneName,
+    startDate: typeof (rz.start_date ?? rz.startDate) === 'string' ? (rz.start_date ?? rz.startDate) : new Date(rz.start_date ?? rz.startDate).toISOString(),
+    endDate: typeof (rz.end_date ?? rz.endDate) === 'string' ? (rz.end_date ?? rz.endDate) : new Date(rz.end_date ?? rz.endDate).toISOString(),
+    price: rz.price ?? 0,
   }));
 
+  const createdAt = c.created_at ?? c.createdAt;
+  const updatedAt = c.updated_at ?? c.updatedAt;
+
   return {
-    id: c.contract_id,
-    code: c.contract_code,
-    customerId: c.customer_id,
-    customerName: c.customer_name,
-    warehouseId: c.warehouse_id,
+    id: normalizeContractId(c),
+    code: c.contract_code ?? c.contractCode ?? '',
+    customerId: (c.customer_id ?? c.customerId)?.toString?.() ?? String(c.customer_id ?? c.customerId ?? ''),
+    customerName: c.customer_name ?? c.customerId?.name,
+    warehouseId: (c.warehouse_id ?? c.warehouseId)?.toString?.() ?? String(c.warehouse_id ?? c.warehouseId ?? ''),
+    warehouseName: c.warehouse_name ?? c.warehouseId?.name,
     rentedZones,
-    requestedZoneId: c.requested_zone_id,
-    requestedStartDate: c.requested_start_date ? (typeof c.requested_start_date === 'string' ? c.requested_start_date : new Date(c.requested_start_date).toISOString()) : undefined,
-    requestedEndDate: c.requested_end_date ? (typeof c.requested_end_date === 'string' ? c.requested_end_date : new Date(c.requested_end_date).toISOString()) : undefined,
-    status: c.status,
-    createdBy: c.created_by,
-    createdAt: typeof c.created_at === 'string' ? c.created_at : new Date(c.created_at).toISOString(),
-    updatedAt: typeof c.updated_at === 'string' ? c.updated_at : new Date(c.updated_at).toISOString(),
+    requestedZoneId: (c.requested_zone_id ?? c.requestedZoneId)?.toString?.() ?? c.requested_zone_id ?? c.requestedZoneId,
+    requestedStartDate: c.requested_start_date != null ? (typeof c.requested_start_date === 'string' ? c.requested_start_date : new Date(c.requested_start_date).toISOString()) : (c.requestedStartDate != null ? (typeof c.requestedStartDate === 'string' ? c.requestedStartDate : new Date(c.requestedStartDate).toISOString()) : undefined),
+    requestedEndDate: c.requested_end_date != null ? (typeof c.requested_end_date === 'string' ? c.requested_end_date : new Date(c.requested_end_date).toISOString()) : (c.requestedEndDate != null ? (typeof c.requestedEndDate === 'string' ? c.requestedEndDate : new Date(c.requestedEndDate).toISOString()) : undefined),
+    status: c.status ?? 'draft',
+    createdBy: (c.created_by ?? c.createdBy)?.toString?.() ?? String(c.created_by ?? c.createdBy ?? ''),
+    createdAt: typeof createdAt === 'string' ? createdAt : (createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()),
+    updatedAt: typeof updatedAt === 'string' ? updatedAt : (updatedAt ? new Date(updatedAt).toISOString() : new Date().toISOString()),
   };
 }
 
@@ -78,12 +65,21 @@ export async function getCustomerContracts(): Promise<Contract[]> {
  * Get contract by ID for customer
  */
 export async function getCustomerContractById(contractId: string): Promise<Contract | null> {
+  if (!contractId || contractId === 'undefined' || contractId === 'null') {
+    return null;
+  }
   const res = await apiFetchRaw(`/contracts/${contractId}`, { method: 'GET' });
-  if (res.status === 404) return null;
   const data = await safeJson(res);
+  if (res.status === 404) {
+    return null;
+  }
   if (!res.ok) {
     throw new Error(data?.message || 'Failed to load contract');
   }
-  const contract = data.data || data;
-  return mapBackendContractToContract(contract);
+  const raw = data?.data ?? data;
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+  const contract = mapBackendContractToContract(raw);
+  return { ...contract, id: contract.id || contractId };
 }

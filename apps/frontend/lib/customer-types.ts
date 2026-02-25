@@ -1,6 +1,6 @@
 
 export type RentRequestStatus = 'Draft' | 'Submitted' | 'Approved' | 'Rejected';
-export type ContractStatus = 'draft' | 'active' | 'expired' | 'terminated';
+export type ContractStatus = 'draft' | 'pending_payment' | 'active' | 'expired' | 'terminated';
 export type CountingUnit = 'piece' | 'box' | 'carton' | 'pallet';
 export type StorageZone = 'Zone A' | 'Zone B' | 'Zone C' | 'No preference';
 export type GoodsCategory = 'electronics' | 'cosmetics' | 'food' | 'documents' | 'apparel' | 'other';
@@ -38,6 +38,7 @@ export interface Contract {
   customerId: string;
   customerName?: string;
   warehouseId: string;
+  warehouseName?: string;
   /** Contract rents Zone(s); each zone contains shelves for location tracking */
   rentedZones: RentedZone[];
   /** Draft from customer: single zone request; assigned when manager activates */

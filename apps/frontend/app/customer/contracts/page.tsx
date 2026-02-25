@@ -23,6 +23,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Active';
     case 'draft':
       return 'Pending confirmation';
+    case 'pending_payment':
+      return 'Pending payment';
     case 'expired':
       return 'Expired';
     case 'terminated':
@@ -40,6 +42,8 @@ function getStatusBadgeClass(status: Contract['status']): string {
     case 'active':
       return 'bg-emerald-100 text-emerald-700';
     case 'draft':
+      return 'bg-amber-100 text-amber-700';
+    case 'pending_payment':
       return 'bg-amber-100 text-amber-700';
     default:
       return 'bg-slate-100 text-slate-600';
@@ -158,12 +162,22 @@ export default function ContractsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <Link
-                        href={`/customer/contracts/${c.id}`}
-                        className="text-sm font-bold text-primary hover:underline"
-                      >
-                        View detail
-                      </Link>
+                      {c.status === 'pending_payment' ? (
+                        <Link
+                          href={`/customer/contracts/${c.id}/checkout`}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-lg">payments</span>
+                          Payment
+                        </Link>
+                      ) : (
+                        <Link
+                          href={`/customer/contracts/${c.id}`}
+                          className="text-sm font-bold text-primary hover:underline"
+                        >
+                          View detail
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

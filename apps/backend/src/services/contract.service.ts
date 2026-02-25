@@ -40,7 +40,7 @@ export interface ContractResponse {
   requested_zone_id?: string;
   requested_start_date?: Date;
   requested_end_date?: Date;
-  status: "draft" | "active" | "expired" | "terminated";
+  status: "draft" | "pending_payment" | "active" | "expired" | "terminated";
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -433,7 +433,7 @@ export async function getContractById(
 
 export async function updateContractStatus(
   contractId: string,
-  newStatus: "draft" | "active" | "expired" | "terminated",
+  newStatus: "draft" | "pending_payment" | "active" | "expired" | "terminated",
   userId: string,
   userRole: string
 ): Promise<ContractResponse> {
@@ -449,7 +449,8 @@ export async function updateContractStatus(
   }
 
   const validTransitions: Record<string, string[]> = {
-    draft: ["active", "terminated"],
+    draft: ["pending_payment", "active", "terminated"],
+    pending_payment: ["active", "terminated"],
     active: ["expired", "terminated"],
     expired: ["terminated"],
     terminated: []

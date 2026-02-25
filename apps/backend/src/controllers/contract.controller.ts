@@ -221,7 +221,7 @@ export async function updateContractStatusController(
     const userRole = req.user.role;
 
     // Validate status
-    const validStatuses = ["draft", "active", "expired", "terminated"];
+    const validStatuses = ["draft", "pending_payment", "active", "expired", "terminated"];
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({
         message: `Status must be one of: ${validStatuses.join(", ")}`
