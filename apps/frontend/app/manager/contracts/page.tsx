@@ -41,6 +41,7 @@ function getStatusVariant(status: Contract['status']): 'success' | 'warning' | '
     case 'terminated':
       return 'error';
     case 'draft':
+    case 'pending_payment':
       return 'info';
     default:
       return 'info';
@@ -60,6 +61,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Terminated';
     case 'draft':
       return 'Draft';
+    case 'pending_payment':
+      return 'Pending payment';
     default:
       return status;
   }
@@ -307,10 +310,10 @@ export default function ManagerContractsPage() {
                 {detail.status === 'draft' && (
                   <>
                     <p className="text-sm text-slate-600 mb-2">
-                      Approving will automatically assign a zone to this contract (first available zone in the warehouse for the requested period, no overlap with other active contracts).
+                      Approving will automatically assign a zone to this contract (first available zone in the warehouse for the requested period, no overlap with other active contracts) and mark it as pending payment.
                     </p>
-                    <Button onClick={() => handleStatusChange(detail.id, 'active')} disabled={updating}>
-                      Approve &amp; activate
+                    <Button onClick={() => handleStatusChange(detail.id, 'pending_payment')} disabled={updating}>
+                      Approve &amp; set pending payment
                     </Button>
                   </>
                 )}

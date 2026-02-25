@@ -23,6 +23,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Active';
     case 'draft':
       return 'Pending confirmation';
+    case 'pending_payment':
+      return 'Pending payment';
     case 'expired':
       return 'Expired';
     case 'terminated':

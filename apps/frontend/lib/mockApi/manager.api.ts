@@ -287,6 +287,7 @@ function mapBackendContractToContract(c: BackendContractResponse): Contract {
 function getStatusDisplay(status: Contract['status']): string {
   const statusMap: Record<string, string> = {
     draft: 'Draft',
+    pending_payment: 'Pending payment',
     active: 'Active',
     expired: 'Expired',
     terminated: 'Terminated',

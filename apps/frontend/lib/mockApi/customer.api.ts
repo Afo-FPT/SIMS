@@ -30,7 +30,7 @@ interface BackendContractResponse {
   requested_zone_id?: string;
   requested_start_date?: string;
   requested_end_date?: string;
-  status: 'draft' | 'active' | 'expired' | 'terminated';
+  status: 'draft' | 'pending_payment' | 'active' | 'expired' | 'terminated';
   created_by: string;
   created_at: string;
   updated_at: string;
