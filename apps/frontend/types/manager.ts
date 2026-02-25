@@ -160,3 +160,47 @@ export interface ManagerReportResponse {
   anomalies: ManagerReportAnomaly[];
   expiringAndCapacity: ManagerReportExpiringAndCapacity;
 }
+
+/** Approval rate by manager (Inbound + Outbound) */
+export interface ApprovalByManagerItem {
+  managerId: string;
+  managerName: string;
+  inboundApproved: number;
+  inboundRejected: number;
+  outboundApproved: number;
+  outboundRejected: number;
+  totalApproved: number;
+  totalRejected: number;
+  totalDecisions: number;
+  approvalRatePercent: number;
+}
+
+/** Top outbound product by quantity and frequency */
+export interface TopOutboundProductItem {
+  rank: number;
+  itemName: string;
+  totalQuantity: number;
+  outboundCount: number;
+  unit: string;
+}
+
+/** Processing time trend point (by week/month) */
+export interface ProcessingTimeTrendPoint {
+  period: string;
+  inboundAvgHours: number;
+  outboundAvgHours: number;
+  inboundCount: number;
+  outboundCount: number;
+}
+
+/** Box plot stats: min, Q1, median, Q3, max (hours) */
+export interface ProcessingTimeBoxPlotItem {
+  type: 'IN' | 'OUT';
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  count: number;
+  avgHours: number;
+}

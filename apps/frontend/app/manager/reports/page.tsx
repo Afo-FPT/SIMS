@@ -2,12 +2,28 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  PieChart, Pie, Cell, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
-  LineChart, Line
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+  LineChart,
+  Line,
 } from 'recharts';
 
-import { getManagerReport, type ReportGranularity } from '../../../lib/reports.api';
+import {
+  getManagerReport,
+  getApprovalByManager,
+  getTopOutboundProducts,
+  getProcessingTime,
+  type ReportGranularity,
+} from '../../../lib/reports.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -18,11 +34,18 @@ import type {
   ManagerReportAnomaly,
   ManagerReportExpiringAndCapacity,
   ManagerReportExpiringContractItem,
+  ApprovalByManagerItem,
+  TopOutboundProductItem,
+  ProcessingTimeTrendPoint,
+  ProcessingTimeBoxPlotItem,
 } from '../../../types/manager';
 
 const COLORS = ['#0f172a', '#334155', '#475569', '#94a3b8', '#e2e8f0'];
 const INBOUND_COLOR = '#006c75';
 const OUTBOUND_COLOR = '#0f172a';
+const APPROVED_COLOR = '#059669';
+const REJECTED_COLOR = '#dc2626';
+const OUTBOUND_TOP_COLOR = '#006c75';
 const GANTT_COLORS = ['#006c75', '#0f172a', '#475569', '#64748b', '#94a3b8'];
 
 export default function ManagerReportsPage() {
@@ -45,6 +68,11 @@ export default function ManagerReportsPage() {
   const [anomalies, setAnomalies] = useState<ManagerReportAnomaly[]>([]);
   const [expiringAndCapacity, setExpiringAndCapacity] = useState<ManagerReportExpiringAndCapacity | null>(null);
   const [granularity, setGranularity] = useState<ReportGranularity>('day');
+  const [approvalByManager, setApprovalByManager] = useState<ApprovalByManagerItem[]>([]);
+  const [topOutboundProducts, setTopOutboundProducts] = useState<TopOutboundProductItem[]>([]);
+  const [processingTimeTrend, setProcessingTimeTrend] = useState<ProcessingTimeTrendPoint[]>([]);
+  const [processingTimeBoxPlot, setProcessingTimeBoxPlot] = useState<ProcessingTimeBoxPlotItem[]>([]);
+  const [processingTimeGranularity, setProcessingTimeGranularity] = useState<'week' | 'month'>('week');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -53,17 +81,30 @@ export default function ManagerReportsPage() {
         setError(null);
         if (!startDate || !endDate) return;
 
-        const report = await getManagerReport(startDate, endDate, granularity);
+        const [report, approvalData, topOutboundData, processingTimeData] = await Promise.all([
+          getManagerReport(startDate, endDate, granularity),
+          getApprovalByManager(startDate, endDate),
+          getTopOutboundProducts(startDate, endDate),
+          getProcessingTime(startDate, endDate, processingTimeGranularity),
+        ]);
 
         setStats(report.stats);
-        setCapacityData(report.capacityData?.length ? report.capacityData : [
-          { name: 'Occupied', value: 0 },
-          { name: 'Empty', value: 100 },
-        ]);
+        setCapacityData(
+          report.capacityData?.length
+            ? report.capacityData
+            : [
+                { name: 'Occupied', value: 0 },
+                { name: 'Empty', value: 100 },
+              ],
+        );
         setInventoryData(report.inventoryData ?? []);
         setTrendData(report.trendData ?? []);
         setAnomalies(report.anomalies ?? []);
         setExpiringAndCapacity(report.expiringAndCapacity ?? null);
+        setApprovalByManager(approvalData ?? []);
+        setTopOutboundProducts(topOutboundData ?? []);
+        setProcessingTimeTrend(processingTimeData?.trendData ?? []);
+        setProcessingTimeBoxPlot(processingTimeData?.boxPlotData ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load reports');
         toast.error('Failed to load report data');
@@ -73,7 +114,7 @@ export default function ManagerReportsPage() {
     };
 
     fetchData();
-  }, [startDate, endDate, granularity]);
+  }, [startDate, endDate, granularity, processingTimeGranularity]);
 
   // ====================== EXPORT CSV ======================
   const handleExportCSV = () => {
@@ -143,6 +184,66 @@ export default function ManagerReportsPage() {
       csvRows.push('Date,Type,Value,Message,Severity');
       anomalies.forEach(a => {
         csvRows.push([escapeCsvValue(a.date), escapeCsvValue(a.type), escapeCsvValue(a.value), escapeCsvValue(a.message), escapeCsvValue(a.severity)].join(','));
+      });
+
+      // APPROVAL RATE BY MANAGER
+      csvRows.push('');
+      csvRows.push('=== APPROVAL RATE BY MANAGER ===');
+      csvRows.push('Manager,Inbound Approved,Inbound Rejected,Outbound Approved,Outbound Rejected,Total Approved,Total Rejected,Approval Rate (%)');
+      approvalByManager.forEach(m => {
+        csvRows.push([
+          escapeCsvValue(m.managerName),
+          escapeCsvValue(m.inboundApproved),
+          escapeCsvValue(m.inboundRejected),
+          escapeCsvValue(m.outboundApproved),
+          escapeCsvValue(m.outboundRejected),
+          escapeCsvValue(m.totalApproved),
+          escapeCsvValue(m.totalRejected),
+          escapeCsvValue(m.approvalRatePercent),
+        ].join(','));
+      });
+
+      // TOP 10 OUTBOUND PRODUCTS
+      csvRows.push('');
+      csvRows.push('=== TOP 10 OUTBOUND PRODUCTS ===');
+      csvRows.push('Rank,Product Name,Total Quantity,Outbound Count,Unit');
+      topOutboundProducts.forEach(p => {
+        csvRows.push([
+          escapeCsvValue(p.rank),
+          escapeCsvValue(p.itemName),
+          escapeCsvValue(p.totalQuantity),
+          escapeCsvValue(p.outboundCount),
+          escapeCsvValue(p.unit),
+        ].join(','));
+      });
+
+      // PROCESSING TIME
+      csvRows.push('');
+      csvRows.push('=== AVERAGE PROCESSING TIME (TREND) ===');
+      csvRows.push('Period,Inbound Avg (h),Outbound Avg (h),Inbound Count,Outbound Count');
+      processingTimeTrend.forEach(t => {
+        csvRows.push([
+          escapeCsvValue(t.period),
+          escapeCsvValue(t.inboundAvgHours),
+          escapeCsvValue(t.outboundAvgHours),
+          escapeCsvValue(t.inboundCount),
+          escapeCsvValue(t.outboundCount),
+        ].join(','));
+      });
+      csvRows.push('');
+      csvRows.push('=== PROCESSING TIME DISTRIBUTION (BOX PLOT) ===');
+      csvRows.push('Type,Min (h),Q1 (h),Median (h),Q3 (h),Max (h),Count,Avg (h)');
+      processingTimeBoxPlot.forEach(b => {
+        csvRows.push([
+          escapeCsvValue(b.type),
+          escapeCsvValue(b.min),
+          escapeCsvValue(b.q1),
+          escapeCsvValue(b.median),
+          escapeCsvValue(b.q3),
+          escapeCsvValue(b.max),
+          escapeCsvValue(b.count),
+          escapeCsvValue(b.avgHours),
+        ].join(','));
       });
 
       if (expiringAndCapacity) {
@@ -232,6 +333,34 @@ export default function ManagerReportsPage() {
           <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
             <button
               type="button"
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(start.getDate() - 30);
+                setStartDate(start.toISOString().slice(0, 10));
+                setEndDate(end.toISOString().slice(0, 10));
+              }}
+              className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Last 30 days
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(start.getDate() - 90);
+                setStartDate(start.toISOString().slice(0, 10));
+                setEndDate(end.toISOString().slice(0, 10));
+              }}
+              className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Last 90 days
+            </button>
+          </div>
+          <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+            <button
+              type="button"
               onClick={() => setGranularity('day')}
               className={`px-4 py-2.5 text-sm font-bold transition-colors ${granularity === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
             >
@@ -260,6 +389,326 @@ export default function ManagerReportsPage() {
           unit="items mismatched" 
           isWarning={stats.discrepancies > 0} 
         />
+      </div>
+
+      {/* Approval Rate by Manager - KPI Cards + Horizontal Bar Chart */}
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
+          Approval Rate by Manager
+        </h3>
+        <p className="text-slate-500 text-sm mb-6">
+          Compare quantity and approval/rejection rate per Manager (Inbound + Outbound)
+        </p>
+
+        {approvalByManager.length > 0 ? (
+          <>
+            {/* KPI Cards for approval stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <StatCard
+                title="Total Approved"
+                value={approvalByManager.reduce((s, m) => s + m.totalApproved, 0)}
+                unit="requests"
+              />
+              <StatCard
+                title="Total Rejected"
+                value={approvalByManager.reduce((s, m) => s + m.totalRejected, 0)}
+                unit="requests"
+                isWarning={approvalByManager.reduce((s, m) => s + m.totalRejected, 0) > 0}
+              />
+              <StatCard
+                title="Avg Approval Rate"
+                value={
+                  approvalByManager.filter((m) => m.totalDecisions > 0).length > 0
+                    ? `${Math.round(
+                        approvalByManager
+                          .filter((m) => m.totalDecisions > 0)
+                          .reduce((s, m) => s + m.approvalRatePercent, 0) /
+                          approvalByManager.filter((m) => m.totalDecisions > 0).length
+                      )}%`
+                    : '0%'
+                }
+              />
+              <StatCard
+                title="Managers with Decisions"
+                value={approvalByManager.filter((m) => m.totalDecisions > 0).length}
+                unit="managers"
+              />
+            </div>
+
+            {/* Horizontal Bar Chart - by Manager */}
+            <div className="h-[400px] min-h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={approvalByManager}
+                  layout="vertical"
+                  margin={{ left: 12, right: 24, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis
+                    dataKey="managerName"
+                    type="category"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    width={120}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                    formatter={(value: any, name: any) => [value, name === 'totalApproved' ? 'Approved' : 'Rejected']}
+                    labelFormatter={(label: string) => `Manager: ${label}`}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value: any) => (value === 'totalApproved' ? 'Approved' : 'Rejected')}
+                  />
+                  <Bar dataKey="totalApproved" name="totalApproved" fill={APPROVED_COLOR} radius={[0, 4, 4, 0]} barSize={20} stackId="a" />
+                  <Bar dataKey="totalRejected" name="totalRejected" fill={REJECTED_COLOR} radius={[0, 4, 4, 0]} barSize={20} stackId="a" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Summary table */}
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Summary by Manager</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 font-bold border-b border-slate-200">
+                      <th className="pb-2 pr-4">Manager</th>
+                      <th className="pb-2 pr-4 text-right">Inbound Approved</th>
+                      <th className="pb-2 pr-4 text-right">Inbound Rejected</th>
+                      <th className="pb-2 pr-4 text-right">Outbound Approved</th>
+                      <th className="pb-2 pr-4 text-right">Outbound Rejected</th>
+                      <th className="pb-2 pr-4 text-right">Approval Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvalByManager.map((m) => (
+                      <tr key={m.managerId} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2 pr-4 font-medium text-slate-900">{m.managerName}</td>
+                        <td className="py-2 pr-4 text-right text-emerald-600">{m.inboundApproved}</td>
+                        <td className="py-2 pr-4 text-right text-red-600">{m.inboundRejected}</td>
+                        <td className="py-2 pr-4 text-right text-emerald-600">{m.outboundApproved}</td>
+                        <td className="py-2 pr-4 text-right text-red-600">{m.outboundRejected}</td>
+                        <td className="py-2 pr-4 text-right font-bold text-slate-900">{m.approvalRatePercent}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="py-12 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+            No approval data in this period. Managers approve/reject Inbound and Outbound requests.
+          </div>
+        )}
+      </div>
+
+      {/* Top 10 Outbound Products - Horizontal Bar Chart + Detail Table */}
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
+          Top 10 Outbound Products
+        </h3>
+        <p className="text-slate-500 text-sm mb-6">
+          Products with highest outbound frequency and volume in the selected period (30/90 days)
+        </p>
+
+        {topOutboundProducts.length > 0 ? (
+          <>
+            {/* Horizontal Bar Chart */}
+            <div className="h-[320px] min-h-[200px] mb-8">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={topOutboundProducts}
+                  layout="vertical"
+                  margin={{ left: 12, right: 24, top: 8, bottom: 8 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis
+                    dataKey="itemName"
+                    type="category"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    width={140}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#f8fafc' }}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                    formatter={(value: any) => [value, 'Total quantity']}
+                    labelFormatter={(label: string) => `Product: ${label}`}
+                  />
+                  <Bar
+                    dataKey="totalQuantity"
+                    name="totalQuantity"
+                    fill={OUTBOUND_TOP_COLOR}
+                    radius={[0, 4, 4, 0]}
+                    barSize={24}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Detail Table */}
+            <div>
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                Detail Table
+              </h4>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-left text-slate-500 font-bold border-b border-slate-200">
+                      <th className="pb-3 pt-3 px-4">Rank</th>
+                      <th className="pb-3 pt-3 px-4">Product name</th>
+                      <th className="pb-3 pt-3 px-4 text-right">Total quantity</th>
+                      <th className="pb-3 pt-3 px-4 text-right">Outbound count</th>
+                      <th className="pb-3 pt-3 px-4">Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topOutboundProducts.map((p) => (
+                      <tr
+                        key={`${p.itemName}-${p.rank}`}
+                        className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+                      >
+                        <td className="py-3 px-4">
+                          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs">
+                            {p.rank}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-slate-900">{p.itemName}</td>
+                        <td className="py-3 px-4 text-right font-bold text-slate-900">
+                          {p.totalQuantity.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-slate-600">
+                          {p.outboundCount} shipments
+                        </td>
+                        <td className="py-3 px-4 text-slate-500">{p.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="py-12 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+            No outbound data in this period. Completed outbound requests will appear here.
+          </div>
+        )}
+      </div>
+
+      {/* Average Processing Time - Line Chart + Box Plot */}
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
+          Average Processing Time
+        </h3>
+        <p className="text-slate-500 text-sm mb-6">
+          Time from request creation to approval/rejection (Inbound vs Outbound)
+        </p>
+
+        {(processingTimeTrend.length > 0 || processingTimeBoxPlot.some((b) => b.count > 0)) ? (
+          <>
+            {/* Granularity toggle */}
+            <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white w-fit mb-6">
+              <button
+                type="button"
+                onClick={() => setProcessingTimeGranularity('week')}
+                className={`px-4 py-2.5 text-sm font-bold transition-colors ${processingTimeGranularity === 'week' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                By week
+              </button>
+              <button
+                type="button"
+                onClick={() => setProcessingTimeGranularity('month')}
+                className={`px-4 py-2.5 text-sm font-bold transition-colors ${processingTimeGranularity === 'month' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                By month
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {/* Line Chart - Trend */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+                  Trend {processingTimeGranularity === 'month' ? '(by month)' : '(by week)'}
+                </h4>
+                <div className="h-72">
+                  {processingTimeTrend.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={processingTimeTrend} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis
+                          dataKey="period"
+                          stroke="#94a3b8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis
+                          stroke="#94a3b8"
+                          fontSize={11}
+                          tickLine={false}
+                          axisLine={false}
+                          allowDecimals
+                          unit="h"
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                          formatter={(value: any) => [`${(value as number).toFixed(2)} h`, '']}
+                          labelFormatter={(label: string) => `Period: ${label}`}
+                        />
+                        <Legend verticalAlign="top" height={36} />
+                        <Line
+                          type="monotone"
+                          dataKey="inboundAvgHours"
+                          name="Inbound (avg hours)"
+                          stroke={INBOUND_COLOR}
+                          strokeWidth={2}
+                          dot={{ fill: INBOUND_COLOR, r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="outboundAvgHours"
+                          name="Outbound (avg hours)"
+                          stroke={OUTBOUND_COLOR}
+                          strokeWidth={2}
+                          dot={{ fill: OUTBOUND_COLOR, r: 4 }}
+                          activeDot={{ r: 6 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                      No trend data in this period
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Box Plot */}
+              <div>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+                  Distribution (Box Plot)
+                </h4>
+                <BoxPlotChart data={processingTimeBoxPlot} />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="py-12 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+            No processing time data in this period. Approved/rejected requests will appear here.
+          </div>
+        )}
       </div>
 
       {/* Charts */}
@@ -442,6 +891,97 @@ function StatCard({ title, value, unit, isWarning = false }: {
         {value}
       </p>
       {unit && <p className="text-xs text-slate-400 mt-1 font-medium">{unit}</p>}
+    </div>
+  );
+}
+
+function BoxPlotChart({ data }: { data: ProcessingTimeBoxPlotItem[] }) {
+  const hasData = data.some((d) => d.count > 0);
+  if (!hasData) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+        No distribution data
+      </div>
+    );
+  }
+
+  const allValues = data.flatMap((d) => [d.min, d.max]);
+  const maxVal = allValues.length > 0 ? Math.max(...allValues, 0) : 1;
+  const padding = maxVal * 0.05 || 1;
+  const scaleMax = Math.max(maxVal + padding, 1);
+  const boxWidth = 220;
+
+  const toX = (hours: number) => (hours / scaleMax) * boxWidth;
+
+  return (
+    <div className="h-64">
+      <div className="flex flex-col gap-4">
+        {data.map((d) => {
+          if (d.count === 0) return null;
+          const fill = d.type === 'IN' ? INBOUND_COLOR : OUTBOUND_COLOR;
+          const label = d.type === 'IN' ? 'Inbound' : 'Outbound';
+          const xMin = toX(d.min);
+          const xQ1 = toX(d.q1);
+          const xMedian = toX(d.median);
+          const xQ3 = toX(d.q3);
+          const xMax = toX(d.max);
+
+          return (
+            <div key={d.type}>
+              <div className="text-xs font-bold text-slate-500 mb-2">
+                {label} (n={d.count}, avg={d.avgHours.toFixed(1)}h)
+              </div>
+              <div className="relative h-12" style={{ width: boxWidth + 40 }}>
+                {/* axis */}
+                <div className="absolute -bottom-5 left-0 right-0 flex justify-between text-[10px] text-slate-400 font-medium">
+                  <span>0h</span>
+                  <span>{scaleMax.toFixed(0)}h</span>
+                </div>
+                {/* whisker min-Q1 */}
+                <div
+                  className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-slate-300"
+                  style={{ left: xMin, width: Math.max(xQ1 - xMin, 0) }}
+                />
+                {/* box Q1-Q3 */}
+                <div
+                  className="absolute top-2 bottom-2 rounded-sm opacity-80"
+                  style={{
+                    left: xQ1,
+                    width: Math.max(xQ3 - xQ1, 2),
+                    backgroundColor: fill,
+                  }}
+                />
+                {/* median */}
+                <div
+                  className="absolute top-1 bottom-1 w-0.5 bg-slate-900"
+                  style={{ left: xMedian }}
+                />
+                {/* whisker Q3-max */}
+                <div
+                  className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-slate-300"
+                  style={{ left: xQ3, width: Math.max(xMax - xQ3, 0) }}
+                />
+                {/* caps */}
+                <div
+                  className="absolute top-1/2 w-1 h-3 -translate-y-1/2 -translate-x-1/2 bg-slate-400 rounded-sm"
+                  style={{ left: xMin }}
+                />
+                <div
+                  className="absolute top-1/2 w-1 h-3 -translate-y-1/2 translate-x-1/2 bg-slate-400 rounded-sm"
+                  style={{ left: xMax }}
+                />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500">
+                <span>Min: {d.min.toFixed(1)}h</span>
+                <span>Q1: {d.q1.toFixed(1)}h</span>
+                <span>Med: {d.median.toFixed(1)}h</span>
+                <span>Q3: {d.q3.toFixed(1)}h</span>
+                <span>Max: {d.max.toFixed(1)}h</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

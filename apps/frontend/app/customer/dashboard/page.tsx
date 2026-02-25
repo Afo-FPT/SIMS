@@ -1,29 +1,92 @@
 
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  MOCK_CONTRACTS,
-  MOCK_RENT_REQUESTS,
-  MOCK_SERVICE_REQUESTS,
-  MOCK_INVENTORY,
-  MOCK_ACTIVITIES,
-  getActiveContractsForCustomer,
-} from '../../../lib/customer-mock';
+import { useToastHelpers } from '../../../lib/toast';
+import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { listMyStoredItems } from '../../../lib/stored-items.api';
+import { listRentRequests } from '../../../lib/rent-requests.api';
+import type { Contract } from '../../../lib/customer-types';
+import type { StoredItemOption } from '../../../lib/stored-items.api';
+import type { RentRequest } from '../../../lib/customer-types';
+import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { ErrorState } from '../../../components/ui/ErrorState';
+import { EmptyState } from '../../../components/ui/EmptyState';
 
 export default function CustomerDashboard() {
-  const activeContracts = getActiveContractsForCustomer();
-  const shelvesOccupied = activeContracts.reduce((s, c) => s + c.shelvesRented, 0);
-  const shelvesTotal = 24;
+  const toast = useToastHelpers();
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [storedItems, setStoredItems] = useState<StoredItemOption[]>([]);
+  const [rentRequests, setRentRequests] = useState<RentRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [c, items, rr] = await Promise.all([
+        getCustomerContracts(),
+        listMyStoredItems(),
+        listRentRequests(),
+      ]);
+      setContracts(c);
+      setStoredItems(items);
+      setRentRequests(rr);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load dashboard data';
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
+          <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
+        </div>
+        <LoadingSkeleton className="h-64 w-full rounded-3xl" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
+          <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
+        </div>
+        <ErrorState title="Failed to load dashboard" message={error} onRetry={loadData} />
+      </div>
+    );
+  }
+
+  const activeContracts = contracts.filter((c) => c.status === 'active');
+  const shelvesOccupied = activeContracts.reduce((s, c) => s + (c.rentedZones?.length || 0), 0);
+  const shelvesTotal = Math.max(shelvesOccupied, 24);
   const shelvesAvailable = shelvesTotal - shelvesOccupied;
-  const totalSKUs = MOCK_INVENTORY.length;
-  const totalQty = MOCK_INVENTORY.reduce((s, i) => s + i.quantity, 0);
-  const requestsInProgress = MOCK_RENT_REQUESTS.filter(
-    (r) => r.status === 'Submitted'
-  ).length + MOCK_SERVICE_REQUESTS.filter(
-    (r) => r.status === 'Pending' || r.status === 'Processing'
+
+  const uniqueSkuNames = new Set(storedItems.map((i) => i.item_name));
+  const totalSKUs = uniqueSkuNames.size;
+  const totalQty = storedItems.reduce((s, i) => s + i.quantity, 0);
+
+  const requestsInProgress = rentRequests.filter(
+    (r) => r.status === 'Submitted',
   ).length;
+
+  const recentContracts = [...contracts]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 4);
 
   return (
     <div className="space-y-8">
@@ -31,35 +94,6 @@ export default function CustomerDashboard() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
         <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
       </div>
-
-      {/* Contract status */}
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Contract status</h2>
-        <div className="flex flex-wrap gap-4">
-          {MOCK_CONTRACTS.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100"
-            >
-              <span
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${c.status === 'Active'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : c.status === 'Pending confirmation'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-slate-200 text-slate-600'
-                  }`}
-              >
-                <span className="size-1.5 rounded-full bg-current" />
-                {c.status}
-              </span>
-              <span className="text-sm font-bold text-slate-900">{c.code}</span>
-              <span className="text-xs text-slate-500">
-                {c.startDate} → {c.endDate}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* Shelves + SKUs + Requests */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -114,11 +148,49 @@ export default function CustomerDashboard() {
             </h3>
           </div>
           <p className="text-3xl font-black text-slate-900">{requestsInProgress}</p>
-          <p className="text-xs text-slate-500 mt-1">Rent + service requests</p>
+          <p className="text-xs text-slate-500 mt-1">Rent requests in Submitted state</p>
         </div>
       </div>
 
-      {/* Recent activity */}
+      {/* Contract status */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-4">Contract status</h2>
+        {contracts.length === 0 ? (
+          <EmptyState
+            icon="description"
+            title="No contracts yet"
+            message="You don't have any active contracts. Submit a rent request to start."
+          />
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {recentContracts.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100"
+              >
+                <span
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                    c.status === 'active'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : c.status === 'draft'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  <span className="size-1.5 rounded-full bg-current" />
+                  {c.status}
+                </span>
+                <span className="text-sm font-bold text-slate-900">{c.code}</span>
+                <span className="text-xs text-slate-500">
+                  {c.rentedZones?.[0]?.startDate} → {c.rentedZones?.[0]?.endDate}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Recent activity (simple view from contracts & rent requests) */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-black text-slate-900">Recent activity</h2>
@@ -130,56 +202,61 @@ export default function CustomerDashboard() {
               Rent requests
             </Link>
             <Link
-              href="/customer/service-requests"
+              href="/customer/contracts"
               className="text-sm font-bold text-primary hover:text-primary-dark"
             >
-              Service requests
+              Contracts
             </Link>
           </div>
         </div>
-        <ul className="space-y-0">
-          {MOCK_ACTIVITIES.slice(0, 6).map((a, i) => (
-            <li
-              key={a.id}
-              className="flex gap-4 py-4 border-b border-slate-100 last:border-0"
-            >
-              <div className="flex flex-col items-center">
-                <div
-                  className={`size-9 rounded-full flex items-center justify-center ${a.type === 'contract'
-                      ? 'bg-primary/10 text-primary'
-                      : a.type === 'rent_request'
-                        ? 'bg-amber-500/10 text-amber-600'
-                        : a.type === 'service'
-                          ? 'bg-blue-500/10 text-blue-600'
-                          : 'bg-slate-100 text-slate-600'
-                    }`}
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    {a.type === 'contract'
-                      ? 'description'
-                      : a.type === 'rent_request'
-                        ? 'request_quote'
-                        : a.type === 'service'
-                          ? 'local_shipping'
-                          : 'inventory_2'}
-                  </span>
+        {contracts.length === 0 && rentRequests.length === 0 ? (
+          <EmptyState
+            icon="history"
+            title="No recent activity"
+            message="Your contracts and rent requests will appear here."
+          />
+        ) : (
+          <ul className="space-y-0">
+            {contracts.slice(0, 3).map((c) => (
+              <li
+                key={c.id}
+                className="flex gap-4 py-3 border-b border-slate-100 last:border-0"
+              >
+                <div className="flex flex-col items-center">
+                  <div className="size-8 rounded-full flex items-center justify-center bg-primary/10 text-primary">
+                    <span className="material-symbols-outlined text-lg">description</span>
+                  </div>
                 </div>
-                {i < 5 && (
-                  <div className="w-px flex-1 min-h-[1rem] bg-slate-200 mt-1" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0 pb-2">
-                <p className="text-sm font-bold text-slate-900">{a.title}</p>
-                {a.detail && (
-                  <p className="text-xs text-slate-500 mt-0.5">{a.detail}</p>
-                )}
-                <p className="text-[10px] text-slate-400 mt-1 font-medium">
-                  {new Date(a.date).toLocaleString()}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
+                <div className="flex-1 min-w-0 pb-1">
+                  <p className="text-sm font-bold text-slate-900">Contract {c.code}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Status: {c.status} · Updated at {new Date(c.updatedAt).toLocaleString()}
+                  </p>
+                </div>
+              </li>
+            ))}
+            {rentRequests.slice(0, 3).map((r) => (
+              <li
+                key={r.id}
+                className="flex gap-4 py-3 border-b border-slate-100 last:border-0"
+              >
+                <div className="flex flex-col items-center">
+                  <div className="size-8 rounded-full flex items-center justify-center bg-amber-500/10 text-amber-600">
+                    <span className="material-symbols-outlined text-lg">request_quote</span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 pb-1">
+                  <p className="text-sm font-bold text-slate-900">
+                    Rent request · {r.shelves} shelves
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Status: {r.status} · Created at {new Date(r.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );
