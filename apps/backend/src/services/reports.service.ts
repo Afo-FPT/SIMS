@@ -1,10 +1,57 @@
 import StorageRequest from "../models/StorageRequest";
+import StorageRequestDetail from "../models/StorageRequestDetail";
 import Shelf from "../models/Shelf";
 import StoredItem from "../models/StoredItem";
 import CycleCountItem from "../models/CycleCountItem";
 import Contract from "../models/Contract";
 import User from "../models/User";
+import InboundApproval from "../models/InboundApproval";
+import OutboundApproval from "../models/OutboundApproval";
 import type { Types } from "mongoose";
+
+/** Top outbound product by quantity and frequency */
+export interface TopOutboundProductItem {
+  rank: number;
+  itemName: string;
+  totalQuantity: number;
+  outboundCount: number;
+  unit: string;
+}
+
+/** Approval stats per manager (Inbound + Outbound) */
+export interface ApprovalByManagerItem {
+  managerId: string;
+  managerName: string;
+  inboundApproved: number;
+  inboundRejected: number;
+  outboundApproved: number;
+  outboundRejected: number;
+  totalApproved: number;
+  totalRejected: number;
+  totalDecisions: number;
+  approvalRatePercent: number;
+}
+
+/** Processing time trend point (by week/month) */
+export interface ProcessingTimeTrendPoint {
+  period: string;
+  inboundAvgHours: number;
+  outboundAvgHours: number;
+  inboundCount: number;
+  outboundCount: number;
+}
+
+/** Box plot stats: min, Q1, median, Q3, max (hours) */
+export interface ProcessingTimeBoxPlotItem {
+  type: "IN" | "OUT";
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  count: number;
+  avgHours: number;
+}
 
 export interface ManagerReportStats {
   inbound: number;
@@ -409,4 +456,296 @@ function detectAnomalies(trendData: TrendDataPoint[]): TrendAnomaly[] {
   });
 
   return anomalies;
+}
+
+/**
+ * Get top 10 products by outbound quantity (highest frequency and volume).
+ * Uses completed OUT requests (DONE_BY_STAFF, COMPLETED) within date range.
+ */
+export async function getTopOutboundProducts(
+  startDate: string,
+  endDate: string
+): Promise<TopOutboundProductItem[]> {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const aggregated = await StorageRequestDetail.aggregate([
+    {
+      $lookup: {
+        from: "storagerequests",
+        localField: "requestId",
+        foreignField: "_id",
+        as: "request"
+      }
+    },
+    { $unwind: "$request" },
+    {
+      $match: {
+        "request.requestType": "OUT",
+        "request.status": { $in: ["DONE_BY_STAFF", "COMPLETED"] },
+        "request.updatedAt": { $gte: start, $lte: end }
+      }
+    },
+    {
+      $group: {
+        _id: { itemName: "$itemName", unit: { $ifNull: ["$unit", "pcs"] } },
+        totalQuantity: {
+          $sum: { $ifNull: ["$quantityActual", "$quantityRequested"] }
+        },
+        requestIds: { $addToSet: "$requestId" }
+      }
+    },
+    {
+      $project: {
+        itemName: "$_id.itemName",
+        unit: "$_id.unit",
+        totalQuantity: 1,
+        outboundCount: { $size: "$requestIds" }
+      }
+    },
+    { $sort: { totalQuantity: -1 } },
+    { $limit: 10 }
+  ]);
+
+  return aggregated.map(
+    (
+      r: { itemName: string; totalQuantity: number; outboundCount: number; unit: string },
+      i: number
+    ) => ({
+      rank: i + 1,
+      itemName: r.itemName || "Unknown",
+      totalQuantity: r.totalQuantity,
+      outboundCount: r.outboundCount,
+      unit: r.unit || "pcs"
+    })
+  );
+}
+
+/**
+ * Get approval rate by manager (Inbound + Outbound).
+ * Aggregates InboundApproval and OutboundApproval by manager within date range.
+ */
+export async function getApprovalRateByManager(
+  startDate: string,
+  endDate: string
+): Promise<ApprovalByManagerItem[]> {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const dateFilter = { approvedAt: { $gte: start, $lte: end } };
+
+  const [inboundAgg, outboundAgg] = await Promise.all([
+    InboundApproval.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: "$managerId",
+          approved: { $sum: { $cond: [{ $eq: ["$decision", "APPROVED"] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ["$decision", "REJECTED"] }, 1, 0] } }
+        }
+      }
+    ]),
+    OutboundApproval.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: "$managerId",
+          approved: { $sum: { $cond: [{ $eq: ["$decision", "APPROVED"] }, 1, 0] } },
+          rejected: { $sum: { $cond: [{ $eq: ["$decision", "REJECTED"] }, 1, 0] } }
+        }
+      }
+    ])
+  ]);
+
+  const managerIds = new Set<string>();
+  inboundAgg.forEach((r: { _id: Types.ObjectId }) => managerIds.add(r._id.toString()));
+  outboundAgg.forEach((r: { _id: Types.ObjectId }) => managerIds.add(r._id.toString()));
+
+  if (managerIds.size === 0) {
+    return [];
+  }
+
+  const users = await User.find({ _id: { $in: Array.from(managerIds) } })
+    .select("_id name")
+    .lean();
+
+  const userMap = new Map(users.map((u) => [u._id.toString(), u.name || "Unknown"]));
+  const inboundMap = new Map(
+    inboundAgg.map(
+      (r: { _id: Types.ObjectId; approved: number; rejected: number }) => [
+        r._id.toString(),
+        { approved: r.approved, rejected: r.rejected }
+      ]
+    )
+  );
+  const outboundMap = new Map(
+    outboundAgg.map(
+      (r: { _id: Types.ObjectId; approved: number; rejected: number }) => [
+        r._id.toString(),
+        { approved: r.approved, rejected: r.rejected }
+      ]
+    )
+  );
+
+  const result: ApprovalByManagerItem[] = [];
+
+  for (const mid of managerIds) {
+    const inbound = inboundMap.get(mid) || { approved: 0, rejected: 0 };
+    const outbound = outboundMap.get(mid) || { approved: 0, rejected: 0 };
+    const totalApproved = inbound.approved + outbound.approved;
+    const totalRejected = inbound.rejected + outbound.rejected;
+    const totalDecisions = totalApproved + totalRejected;
+    const approvalRatePercent =
+      totalDecisions > 0 ? Math.round((totalApproved / totalDecisions) * 100) : 0;
+
+    result.push({
+      managerId: mid,
+      managerName: userMap.get(mid) || "Unknown",
+      inboundApproved: inbound.approved,
+      inboundRejected: inbound.rejected,
+      outboundApproved: outbound.approved,
+      outboundRejected: outbound.rejected,
+      totalApproved,
+      totalRejected,
+      totalDecisions,
+      approvalRatePercent
+    });
+  }
+
+  result.sort((a, b) => b.totalDecisions - a.totalDecisions);
+  return result;
+}
+
+/** Percentile from sorted array (0-100) */
+function percentile(sortedArr: number[], p: number): number {
+  if (sortedArr.length === 0) return 0;
+  if (sortedArr.length === 1) return sortedArr[0];
+  const idx = (p / 100) * (sortedArr.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sortedArr[lo];
+  const w = idx - lo;
+  return sortedArr[lo] * (1 - w) + sortedArr[hi] * w;
+}
+
+/**
+ * Get average processing time stats (creation to approval/rejection).
+ * Time from createdAt to approvedAt. Distinguishes Inbound vs Outbound.
+ */
+export async function getProcessingTimeStats(
+  startDate: string,
+  endDate: string,
+  granularity: "week" | "month" = "week"
+): Promise<{
+  trendData: ProcessingTimeTrendPoint[];
+  boxPlotData: ProcessingTimeBoxPlotItem[];
+}> {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const requests = await StorageRequest.find({
+    status: { $in: ["APPROVED", "REJECTED"] },
+    approvedAt: { $exists: true, $ne: null, $gte: start, $lte: end }
+  })
+    .select("requestType createdAt approvedAt")
+    .lean();
+
+  const inboundHours: number[] = [];
+  const outboundHours: number[] = [];
+
+  for (const r of requests) {
+    const created = new Date(r.createdAt).getTime();
+    const approved = new Date(r.approvedAt as Date).getTime();
+    const hours = (approved - created) / (1000 * 60 * 60);
+    if (r.requestType === "IN") {
+      inboundHours.push(hours);
+    } else {
+      outboundHours.push(hours);
+    }
+  }
+
+  const boxPlotData: ProcessingTimeBoxPlotItem[] = [];
+
+  for (const [type, arr] of [
+    ["IN" as const, inboundHours],
+    ["OUT" as const, outboundHours]
+  ]) {
+    const sorted = [...arr].sort((a, b) => a - b);
+    const count = sorted.length;
+    const avgHours = count > 0 ? sorted.reduce((s, x) => s + x, 0) / count : 0;
+
+    boxPlotData.push({
+      type,
+      min: count > 0 ? sorted[0] : 0,
+      q1: percentile(sorted, 25),
+      median: percentile(sorted, 50),
+      q3: percentile(sorted, 75),
+      max: count > 0 ? sorted[count - 1] : 0,
+      count,
+      avgHours: Math.round(avgHours * 100) / 100
+    });
+  }
+
+  const periodMap = new Map<string, { inbound: number[]; outbound: number[] }>();
+
+  const fmtPeriod = (d: Date) => {
+    if (granularity === "month") {
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+    const y = d.getFullYear();
+    const startOfYear = new Date(y, 0, 1);
+    const weekNum = Math.ceil(
+      ((d.getTime() - startOfYear.getTime()) / (7 * 24 * 60 * 60 * 1000) + 1)
+    );
+    return `${y}-W${String(weekNum).padStart(2, "0")}`;
+  };
+
+  for (const r of requests) {
+    const approvedAt = new Date(r.approvedAt as Date);
+    const created = new Date(r.createdAt).getTime();
+    const approved = approvedAt.getTime();
+    const hours = (approved - created) / (1000 * 60 * 60);
+    const period = fmtPeriod(approvedAt);
+
+    if (!periodMap.has(period)) {
+      periodMap.set(period, { inbound: [], outbound: [] });
+    }
+    const entry = periodMap.get(period)!;
+    if (r.requestType === "IN") {
+      entry.inbound.push(hours);
+    } else {
+      entry.outbound.push(hours);
+    }
+  }
+
+  const trendData: ProcessingTimeTrendPoint[] = [];
+  const periods = Array.from(periodMap.keys()).sort();
+
+  for (const period of periods) {
+    const entry = periodMap.get(period)!;
+    const inboundAvg =
+      entry.inbound.length > 0
+        ? entry.inbound.reduce((s, x) => s + x, 0) / entry.inbound.length
+        : 0;
+    const outboundAvg =
+      entry.outbound.length > 0
+        ? entry.outbound.reduce((s, x) => s + x, 0) / entry.outbound.length
+        : 0;
+
+    trendData.push({
+      period,
+      inboundAvgHours: Math.round(inboundAvg * 100) / 100,
+      outboundAvgHours: Math.round(outboundAvg * 100) / 100,
+      inboundCount: entry.inbound.length,
+      outboundCount: entry.outbound.length
+    });
+  }
+
+  return { trendData, boxPlotData };
 }

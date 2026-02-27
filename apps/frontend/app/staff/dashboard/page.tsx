@@ -37,7 +37,7 @@ export default function StaffDashboard() {
       setLoading(true);
       setError(null);
       const [reqs, cycles] = await Promise.all([
-        listStorageRequests(), // backend will filter by logged-in staff
+        listStorageRequests(),
         getCycleCounts(),
       ]);
       setRequests(reqs);
