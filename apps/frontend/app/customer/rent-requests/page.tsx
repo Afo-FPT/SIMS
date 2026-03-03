@@ -10,6 +10,8 @@ import {
   type WarehouseOption,
   type CreateDraftContractPayload,
   type ContractPackageOption,
+  listZonesByWarehouse,
+  type ZoneOption,
 } from '../../../lib/rent-requests.api';
 
 const today = new Date().toISOString().slice(0, 10);
@@ -54,6 +56,11 @@ export default function RentRequestsPage() {
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdContractCode, setCreatedContractCode] = useState<string | null>(null);
+  const [zones, setZones] = useState<ZoneOption[]>([]);
+  const [loadingZones, setLoadingZones] = useState(false);
+  const [zonesError, setZonesError] = useState<string | null>(null);
+  // Support selecting multiple zones in the warehouse
+  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +127,66 @@ export default function RentRequestsPage() {
     setEndDate(addDuration(startDate, selectedPackage));
   }, [durationMode, selectedPackage, startDate]);
 
+  // Load zones when warehouse changes
+  useEffect(() => {
+    if (!warehouseId) {
+      setZones([]);
+      setSelectedZoneIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    const loadZones = async () => {
+      try {
+        setLoadingZones(true);
+        setZonesError(null);
+        const list = await listZonesByWarehouse(warehouseId);
+        if (cancelled) return;
+        setZones(list);
+        // Reset selected zones when warehouse changes
+        setSelectedZoneIds(new Set());
+      } catch (err) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : 'Failed to load zones';
+        setZonesError(msg);
+        toast.error(msg);
+        setZones([]);
+        setSelectedZoneIds(new Set());
+      } finally {
+        if (!cancelled) setLoadingZones(false);
+      }
+    };
+    loadZones();
+    return () => {
+      cancelled = true;
+    };
+  }, [warehouseId]);
+
+  const rentalDays = useMemo(() => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffMs = end.getTime() - start.getTime();
+    if (Number.isNaN(diffMs) || diffMs <= 0) return 0;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  }, [startDate, endDate]);
+
+  const zoneCount = useMemo(
+    () => zones.filter((z) => z.status === 'ACTIVE' && selectedZoneIds.has(z.id)).length,
+    [zones, selectedZoneIds],
+  );
+
+  const estimatedContractPrice = useMemo(() => {
+    if (!rentalDays || !zoneCount) return 0;
+    // If using a package, treat package price as price per zone for the whole period
+    if (selectedPackage) {
+      const perZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
+      return perZone * zoneCount;
+    }
+    // Custom duration: simple model = baseDailyPrice * days * number of zones
+    const baseDailyPricePerZone = 100000; // VND per zone per day (fallback)
+    return baseDailyPricePerZone * rentalDays * zoneCount;
+  }, [rentalDays, zoneCount, selectedPackage]);
+
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (!warehouseId) e.warehouseId = 'Please select a warehouse';
@@ -132,6 +199,9 @@ export default function RentRequestsPage() {
       else if (end <= start) e.endDate = 'End date must be after start date';
     } else {
       e.endDate = 'End date is required';
+    }
+    if (selectedZoneIds.size === 0) {
+      e.zoneId = 'Please select at least one zone';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -148,6 +218,8 @@ export default function RentRequestsPage() {
       warehouseId,
       startDate,
       endDate: endDate!,
+      // Send all selected zones so backend can save as rented_zones
+      zoneIds: Array.from(selectedZoneIds),
     };
     try {
       setLoading(true);
@@ -171,8 +243,8 @@ export default function RentRequestsPage() {
           Request rental
         </h1>
         <p className="text-slate-500 mt-1">
-          Choose a warehouse and rental period. Use manager-defined packages or a custom duration.
-          A draft contract will be created; the manager will approve and a zone will be assigned automatically.
+          Choose a warehouse, an available zone, and a rental period. Use manager-defined packages or a custom duration.
+          A draft contract will be created; the manager will approve it and activate the contract.
         </p>
       </div>
 
@@ -207,6 +279,75 @@ export default function RentRequestsPage() {
               <p className="text-xs text-amber-600 mt-1">No warehouses available. {warehouseError || 'Please contact admin.'}</p>
             )}
             {errors.warehouseId && <p className="text-xs text-red-500 mt-1">{errors.warehouseId}</p>}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-bold text-slate-700 mb-2">
+              Zones in selected warehouse
+            </h3>
+            {loadingZones ? (
+              <p className="text-xs text-slate-500">Loading zones…</p>
+            ) : zones.length === 0 ? (
+              <p className="text-xs text-amber-600">
+                No zones available for this warehouse. {zonesError || 'Please contact manager.'}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {zones.map((z) => {
+                  const disabled = z.status !== 'ACTIVE';
+                  const checked = selectedZoneIds.has(z.id);
+                  return (
+                    <button
+                      key={z.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (disabled) return;
+                        setSelectedZoneIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(z.id)) {
+                            next.delete(z.id);
+                          } else {
+                            next.add(z.id);
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`text-left rounded-2xl border px-4 py-3 text-sm transition-colors ${
+                        checked
+                          ? 'border-primary bg-primary/5'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-slate-900">
+                            {z.zoneCode} — {z.name}
+                          </p>
+                          {z.description && (
+                            <p className="text-xs text-slate-500">
+                              {z.description}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-500">
+                            Status:{' '}
+                            <span className="font-semibold">
+                              {z.status === 'ACTIVE' ? 'Active' : z.status || 'Unknown'}
+                            </span>
+                          </p>
+                        </div>
+                        {!disabled && (
+                          <span className="inline-flex items-center justify-center size-5 rounded-full border border-primary text-primary text-xs font-bold">
+                            {checked ? '✓' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {errors.zoneId && <p className="text-xs text-red-500 mt-1">{errors.zoneId}</p>}
           </div>
 
           <div className="space-y-4">
@@ -317,9 +458,29 @@ export default function RentRequestsPage() {
           </div>
         </div>
 
-        <p className="text-sm text-slate-600">
-          Zone will be assigned automatically when the manager approves the draft (no overlap with other contracts). You only choose warehouse and rental period.
-        </p>
+        <div className="space-y-2 text-sm text-slate-600">
+          <p>
+            The system will validate the selected zones when the manager approves the draft (no overlap with other
+            active contracts). You choose the warehouse, one or more zones, and the rental period; the manager
+            will confirm and activate the contract.
+          </p>
+          <p className="font-bold text-slate-900">
+            Selected zones: <span className="text-primary">{zoneCount}</span>
+            {rentalDays > 0 && (
+              <>
+                {' '}| Rental days: <span className="text-primary">{rentalDays}</span>
+              </>
+            )}
+            {estimatedContractPrice > 0 && (
+              <>
+                {' '}| Estimated contract price:{' '}
+                <span className="text-primary">
+                  {estimatedContractPrice.toLocaleString('vi-VN')} đ
+                </span>
+              </>
+            )}
+          </p>
+        </div>
 
         {submitError && (
           <div className="rounded-2xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">

@@ -282,7 +282,7 @@ export async function createContract(
   }
 }
 
-const DEFAULT_PRICE_PER_ZONE = 100000;
+export const DEFAULT_PRICE_PER_ZONE = 100000;
 
 /**
  * DTO for customer request-draft: warehouse + date range. Zone is auto-assigned when manager approves.
@@ -292,6 +292,10 @@ export interface RequestDraftContractRequest {
   startDate: string | Date;
   endDate: string | Date;
   pricePerZone?: number;
+  /** Optional preferred zone selected by customer when requesting draft */
+  requestedZoneId?: string;
+  /** Optional list of zones selected by customer when requesting draft */
+  zoneIds?: string[];
 }
 
 export async function createDraftContractFromRequest(
@@ -343,6 +347,46 @@ async function createDraftContractWithRequestOnly(
     throw new Error("Start date cannot be in the past");
   }
 
+  // If customer selected a preferred zone, ensure it is valid and keep ObjectId
+  let requestedZoneObjectId: Types.ObjectId | undefined;
+  if (data.requestedZoneId) {
+    await validateZone(data.requestedZoneId, data.warehouseId);
+    requestedZoneObjectId = new Types.ObjectId(data.requestedZoneId);
+  }
+
+  // If customer selected specific zones (multi-select), prepare rentedZones upfront
+  let rentedZonesDocs: {
+    zoneId: Types.ObjectId;
+    startDate: Date;
+    endDate: Date;
+    price: number;
+  }[] = [];
+  if (data.zoneIds && data.zoneIds.length > 0) {
+    const uniqueZoneIds = Array.from(new Set(data.zoneIds));
+    const draftRentedZones = uniqueZoneIds.map((zid) => ({
+      zoneId: zid,
+      startDate,
+      endDate,
+      price: data.pricePerZone && data.pricePerZone > 0 ? data.pricePerZone : DEFAULT_PRICE_PER_ZONE
+    }));
+    // Validate against overlaps and zone/warehouse consistency
+    await validateRentedZones(
+      data.warehouseId,
+      draftRentedZones.map((rz) => ({
+        zoneId: rz.zoneId,
+        startDate: rz.startDate,
+        endDate: rz.endDate,
+        price: rz.price
+      }))
+    );
+    rentedZonesDocs = draftRentedZones.map((rz) => ({
+      zoneId: new Types.ObjectId(rz.zoneId),
+      startDate: rz.startDate,
+      endDate: rz.endDate,
+      price: rz.price
+    }));
+  }
+
   let contractCode = generateContractCode();
   let attempts = 0;
   while (attempts < 10) {
@@ -364,8 +408,8 @@ async function createDraftContractWithRequestOnly(
           contractCode,
           customerId: new Types.ObjectId(customerId),
           warehouseId: new Types.ObjectId(data.warehouseId),
-          rentedZones: [],
-          requestedZoneId: undefined,
+          rentedZones: rentedZonesDocs,
+          requestedZoneId: rentedZonesDocs.length === 0 ? requestedZoneObjectId : undefined,
           requestedStartDate: startDate,
           requestedEndDate: endDate,
           status: "draft",

@@ -71,6 +71,17 @@ export async function getCustomerContractById(contractId: string): Promise<Contr
   const res = await apiFetchRaw(`/contracts/${contractId}`, { method: 'GET' });
   const data = await safeJson(res);
   if (res.status === 404) {
+    // Fallback: try to find contract from the list endpoint, in case
+    // the ID mapping between /contracts and /contracts/:id is inconsistent.
+    try {
+      const list = await getCustomerContracts();
+      const found = list.find((c) => c.id === contractId);
+      if (found) {
+        return found;
+      }
+    } catch {
+      // ignore fallback errors, return null below
+    }
     return null;
   }
   if (!res.ok) {

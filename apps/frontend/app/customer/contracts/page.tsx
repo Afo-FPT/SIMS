@@ -11,7 +11,7 @@ import type { Contract } from '../../../lib/customer-types';
  */
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('vi-VN');
+  return date.toLocaleDateString('en-US', { dateStyle: 'medium' });
 }
 
 /**
@@ -108,7 +108,9 @@ export default function ContractsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Contracts</h1>
-        <p className="text-slate-500 mt-1">Zone rental contracts — zone assigned when manager approves</p>
+        <p className="text-slate-500 mt-1">
+          Zone rental contracts — zones are assigned when the manager approves.
+        </p>
       </div>
 
       {loading ? (
@@ -168,7 +170,7 @@ export default function ContractsPage() {
                           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors"
                         >
                           <span className="material-symbols-outlined text-lg">payments</span>
-                          Payment
+                          Pay
                         </Link>
                       ) : (
                         <Link
