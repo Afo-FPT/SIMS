@@ -91,7 +91,7 @@ export async function requestDraftContractController(req: Request, res: Response
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const { warehouseId, startDate, endDate, pricePerZone } = req.body;
+    const { warehouseId, startDate, endDate, pricePerZone, requestedZoneId } = req.body;
 
     if (!warehouseId || !startDate || !endDate) {
       return res.status(400).json({
@@ -103,7 +103,9 @@ export async function requestDraftContractController(req: Request, res: Response
       warehouseId,
       startDate,
       endDate,
-      pricePerZone: pricePerZone != null ? Number(pricePerZone) : undefined
+      pricePerZone: pricePerZone != null ? Number(pricePerZone) : undefined,
+      requestedZoneId,
+      zoneIds: Array.isArray(req.body.zoneIds) ? req.body.zoneIds : undefined,
     };
 
     const customerId = req.user.userId;

@@ -7,6 +7,7 @@ import { useToast } from '../../../lib/toast';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getStockInHistory, getStockOutHistory } from '../../../lib/stock-history.api';
 
 type InventoryRow = CustomerInventoryItem & {
   contractId: string;
@@ -21,6 +22,7 @@ export default function CustomerInventoryPage() {
   const [locationFilter, setLocationFilter] = useState('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [detail, setDetail] = useState<CustomerInventoryItem | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +102,79 @@ export default function CustomerInventoryPage() {
   }, [inventory]);
 
   const showContractColumn = contractFilter === 'ALL';
+
+  const openDetail = async (row: InventoryRow) => {
+    setDetail({
+      id: row.id,
+      sku: row.sku,
+      name: row.name,
+      quantity: row.quantity,
+      unit: row.unit,
+      shelf: row.shelf,
+      lastUpdated: row.lastUpdated,
+      history: row.history,
+    });
+    try {
+      setDetailLoading(true);
+      // Lấy lịch sử inbound/outbound theo hợp đồng của mặt hàng này
+      const [inbound, outbound] = await Promise.all([
+        getStockInHistory({
+          contractId: row.contractId,
+          page: 1,
+          limit: 100,
+        }),
+        getStockOutHistory({
+          contractId: row.contractId,
+          page: 1,
+          limit: 100,
+        }),
+      ]);
+
+      const toEvents = (type: 'Inbound' | 'Outbound', data: typeof inbound) => {
+        const events: { date: string; action: string; qty: number; note?: string }[] = [];
+        data.history.forEach((h) => {
+          h.items.forEach((it) => {
+            // Lọc theo SKU/tên (bỏ lọc theo kệ để tránh bỏ sót lịch sử)
+            const sameItem =
+              it.item_name === row.sku ||
+              it.item_name === row.name;
+            if (!sameItem) return;
+            const qty = it.quantity_actual ?? it.quantity_requested;
+            events.push({
+              date: new Date(h.created_at).toLocaleString('vi-VN', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              }),
+              action: type === 'Inbound' ? 'Nhập kho' : 'Xuất kho',
+              qty,
+              note: it.shelf_code ? `Kệ: ${it.shelf_code}` : undefined,
+            });
+          });
+        });
+        return events;
+      };
+
+      const inboundEvents = toEvents('Inbound', inbound);
+      const outboundEvents = toEvents('Outbound', outbound);
+      const allEvents = [...inboundEvents, ...outboundEvents].sort((a, b) =>
+        a.date.localeCompare(b.date),
+      );
+
+      setDetail((prev) =>
+        prev && prev.id === row.id
+          ? {
+            ...prev,
+            history: allEvents,
+          }
+          : prev,
+      );
+    } catch (e) {
+      console.error(e);
+      showToast('error', 'Không tải được lịch sử nhập/xuất cho mặt hàng này', 5000);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   if (loading) {
     return <LoadingSkeleton className="h-64 w-full" />;
@@ -223,7 +298,7 @@ export default function CustomerInventoryPage() {
                     <td className="px-6 py-4">
                       <button
                         type="button"
-                        onClick={() => setDetail(i)}
+                        onClick={() => openDetail(i)}
                         className="text-sm font-bold text-primary hover:underline"
                       >
                         View details

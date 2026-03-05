@@ -135,7 +135,7 @@ export default function ContractDetailPage() {
         <div className="flex flex-wrap justify-between items-start gap-4">
           <div>
             <h1 className="text-2xl font-black text-slate-900">{contract.code}</h1>
-            <p className="text-slate-500 mt-1">Contract detail</p>
+            <p className="text-slate-500 mt-1">Contract details</p>
             <div className="flex flex-wrap gap-x-6 gap-y-1 mt-2 text-xs text-slate-400">
               {contract.createdAt && (
                 <span>Created {formatDateTime(contract.createdAt)}</span>

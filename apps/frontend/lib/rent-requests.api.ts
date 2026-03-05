@@ -183,6 +183,7 @@ export interface ZoneOption {
   zoneCode: string;
   name: string;
   warehouseId: string;
+  description?: string;
   status?: string;
 }
 
@@ -200,7 +201,37 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneOpt
     zoneCode: z.zone_code ?? z.zoneCode ?? '',
     name: z.name ?? '',
     warehouseId: z.warehouse_id ?? z.warehouseId ?? warehouseId,
+    description: z.description,
     status: z.status,
+  }));
+}
+
+export interface ShelfOptionForRent {
+  id: string;
+  code: string;
+  status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+  zoneId: string;
+}
+
+interface BackendShelfForZone {
+  shelf_id: string;
+  shelf_code: string;
+  zone_id: string;
+  zone_code?: string;
+  status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+}
+
+/** List AVAILABLE shelves in a specific zone for customer rent flow. */
+export async function listAvailableShelvesByZone(zoneId: string): Promise<ShelfOptionForRent[]> {
+  const data = await apiJson<{ data?: BackendShelfForZone[] } | BackendShelfForZone[]>(`/zones/${zoneId}/shelves`, {
+    method: 'GET',
+  });
+  const list = Array.isArray((data as any)?.data) ? (data as any).data : Array.isArray(data) ? (data as any) : [];
+  return (list as BackendShelfForZone[]).map((s) => ({
+    id: s.shelf_id,
+    code: s.shelf_code,
+    status: s.status,
+    zoneId: s.zone_id,
   }));
 }
 
@@ -257,6 +288,10 @@ export interface CreateDraftContractPayload {
   warehouseId: string;
   startDate: string;
   endDate: string;
+  /** Optional preferred zone chosen by customer */
+  zoneId?: string;
+  /** Optional multiple zones chosen by customer */
+  zoneIds?: string[];
 }
 
 /** Customer requests draft contract (warehouse + period). Zone is auto-assigned when manager approves. */
@@ -267,6 +302,8 @@ export async function createDraftContractRequest(payload: CreateDraftContractPay
       warehouseId: payload.warehouseId,
       startDate: payload.startDate,
       endDate: payload.endDate,
+      requestedZoneId: payload.zoneId,
+      zoneIds: payload.zoneIds,
     }),
   });
   let data: { message?: string; data?: BackendContractResponse } = {};

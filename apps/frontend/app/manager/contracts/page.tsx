@@ -12,6 +12,7 @@ import {
   type ManagerWarehouse,
 } from '../../../lib/mockApi/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
+import { listManagerPayments, type ManagerPayment } from '../../../lib/payment.api';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -118,6 +119,10 @@ export default function ManagerContractsPage() {
     warehouseId: '',
     rentedZones: [{ zoneId: '', startDate: '', endDate: '', price: '' }] as RentedZoneRow[],
   });
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -136,6 +141,31 @@ export default function ManagerContractsPage() {
     }
     listZonesByWarehouse(createForm.warehouseId).then(setZones).catch(() => setZones([]));
   }, [createForm.warehouseId]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout | undefined;
+    const loadPayments = async () => {
+      try {
+        setPaymentsLoading(true);
+        setPaymentsError(null);
+        const data = await listManagerPayments();
+        setPayments(data);
+      } catch (err) {
+        setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
+      } finally {
+        setPaymentsLoading(false);
+      }
+    };
+
+    if (paymentsOpen) {
+      loadPayments();
+      timer = setInterval(loadPayments, 5000);
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [paymentsOpen]);
 
   const load = async () => {
     try {
@@ -247,7 +277,12 @@ export default function ManagerContractsPage() {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Contracts</h1>
           <p className="text-slate-500 mt-1">Manage zone rental contracts</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>Create contract</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setPaymentsOpen(true)}>
+            View payments
+          </Button>
+          <Button onClick={() => setCreateOpen(true)}>Create contract</Button>
+        </div>
       </div>
 
       {loading ? (
@@ -408,6 +443,95 @@ export default function ManagerContractsPage() {
               <Button type="submit" isLoading={creating}>Create contract</Button>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {paymentsOpen && (
+        <Modal open={paymentsOpen} onOpenChange={setPaymentsOpen} title="Payments (VNPay)" size="lg">
+          <div className="space-y-4">
+            {paymentsLoading ? (
+              <LoadingSkeleton className="h-32" />
+            ) : paymentsError ? (
+              <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => setPaymentsOpen(true)} />
+            ) : payments.length === 0 ? (
+              <EmptyState icon="payments" title="No payments" message="No payments found yet." />
+            ) : (
+              <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
+                      <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-2 text-slate-600">
+                          {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="px-4 py-2 text-slate-700">
+                          <div className="font-bold">{p.contractCode || p.contractId}</div>
+                          {p.warehouseName && (
+                            <div className="text-xs text-slate-500">{p.warehouseName}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-slate-700">
+                          {p.customerName || '—'}
+                        </td>
+                        <td className="px-4 py-2 text-slate-900 font-bold">
+                          {p.amount.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="px-4 py-2">
+                          <Badge
+                            variant={
+                              p.status === 'paid'
+                                ? 'success'
+                                : p.status === 'pending'
+                                ? 'info'
+                                : 'error'
+                            }
+                          >
+                            {p.status === 'paid'
+                              ? 'Paid'
+                              : p.status === 'pending'
+                              ? 'Pending'
+                              : p.status === 'expired'
+                              ? 'Expired'
+                              : 'Failed'}
+                          </Badge>
+                          {p.paidAt && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              at{' '}
+                              {new Date(p.paidAt).toLocaleString('vi-VN', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-slate-700">
+                          <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
+                          {p.vnpResponseCode && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Resp: {p.vnpResponseCode}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="text-xs text-slate-500">
+              Danh sách thanh toán được tự động cập nhật mỗi 5 giây từ VNPay thông qua backend.
+            </p>
+          </div>
         </Modal>
       )}
     </div>

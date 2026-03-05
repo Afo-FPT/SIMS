@@ -122,6 +122,33 @@ export async function listShelvesByWarehouse(
   });
 }
 
+export async function listAvailableShelvesByZone(
+  zoneId: string
+): Promise<ShelfViewDTO[]> {
+  if (!Types.ObjectId.isValid(zoneId)) {
+    throw new Error("Invalid zone ID");
+  }
+  const zone = await Zone.findById(zoneId).select("_id zoneCode warehouseId status");
+  if (!zone) {
+    throw new Error("Zone not found");
+  }
+  const shelves = await Shelf.find({
+    zoneId: zone._id,
+    status: "AVAILABLE"
+  })
+    .select("_id shelfCode status zoneId")
+    .sort({ shelfCode: 1 })
+    .lean();
+
+  return shelves.map((s: any) => ({
+    shelf_id: s._id.toString(),
+    shelf_code: s.shelfCode,
+    zone_id: zone._id.toString(),
+    zone_code: zone.zoneCode,
+    status: s.status
+  }));
+}
+
 export async function listShelvesForContract(
   contractId: string,
   userId: string,

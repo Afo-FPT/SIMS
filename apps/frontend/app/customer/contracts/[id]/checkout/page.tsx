@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getCustomerContractById } from '../../../../../lib/mockApi/customer.api';
 import type { Contract } from '../../../../../lib/customer-types';
+import { startContractVNPayPayment } from '../../../../../lib/payment.api';
+import { useToastHelpers } from '../../../../../lib/toast';
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('en-US', { dateStyle: 'medium' });
@@ -43,12 +45,23 @@ function getTotalAmount(contract: Contract): number {
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const toast = useToastHelpers();
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [startingPayment, setStartingPayment] = useState(false);
+  const [expireAt, setExpireAt] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<string | null>(null);
 
+  // Load contract only when we are not handling a VNPay return result
   useEffect(() => {
+    const hasResult = searchParams.get('result');
+    if (hasResult) {
+      // We will redirect based on result, no need to load contract here
+      return;
+    }
     let cancelled = false;
     const load = async () => {
       try {
@@ -73,7 +86,70 @@ export default function CheckoutPage() {
     };
     load();
     return () => { cancelled = true; };
-  }, [id, router]);
+  }, [id, router, searchParams]);
+
+  useEffect(() => {
+    const result = searchParams.get('result');
+    const message = searchParams.get('message');
+    if (!result) return;
+    if (result === 'success') {
+      toast.success(message || 'Payment completed successfully.');
+      router.replace(`/customer/contracts/${id}`);
+    } else if (result === 'failed') {
+      toast.error(message || 'Payment failed. Please try again or contact support.');
+    }
+  }, [searchParams, toast, router, id]);
+
+  useEffect(() => {
+    if (!expireAt) {
+      setCountdown(null);
+      return;
+    }
+    const parseVnpDate = (v: string) => {
+      const year = Number(v.slice(0, 4));
+      const month = Number(v.slice(4, 6)) - 1;
+      const day = Number(v.slice(6, 8));
+      const hour = Number(v.slice(8, 10));
+      const min = Number(v.slice(10, 12));
+      const sec = Number(v.slice(12, 14));
+      return new Date(year, month, day, hour, min, sec);
+    };
+    const expireDate = parseVnpDate(expireAt);
+
+    const updateCountdown = () => {
+      const now = new Date();
+      const diff = expireDate.getTime() - now.getTime();
+      if (diff <= 0) {
+        setCountdown('Expired');
+        return;
+      }
+      const totalSeconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      setCountdown(`${minutes} min ${seconds.toString().padStart(2, '0')} s`);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [expireAt]);
+
+  const handleStartPayment = async () => {
+    if (!id) return;
+    try {
+      setStartingPayment(true);
+      const result = await startContractVNPayPayment(id);
+      setExpireAt(result.expireAt);
+      if (typeof window !== 'undefined') {
+        window.location.href = result.paymentUrl;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not initialize VNPay payment.';
+      toast.error(message);
+    } finally {
+      setStartingPayment(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -108,7 +184,7 @@ export default function CheckoutPage() {
         </Link>
       </div>
 
-      <h1 className="text-2xl font-black text-slate-900">Checkout</h1>
+          <h1 className="text-2xl font-black text-slate-900">Contract payment</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Contract detail */}
@@ -155,17 +231,31 @@ export default function CheckoutPage() {
           </dl>
         </section>
 
-        {/* QR payment placeholder */}
+        {/* VNPay payment */}
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-4">
             Payment
           </h2>
-          <div className="flex flex-col items-center justify-center min-h-[280px] rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-            <span className="material-symbols-outlined text-5xl text-slate-300 mb-3">qr_code_2</span>
-            <p className="text-slate-500 font-medium text-center px-4">
-              QR payment will be displayed here
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              You will be redirected to the <span className="font-bold">VNPay</span> payment gateway to pay for this
+              contract. Once the payment is successful, the contract will be activated automatically.
             </p>
-            <p className="text-slate-400 text-sm mt-1">Coming soon</p>
+            {countdown && (
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 inline-flex items-center gap-2">
+                <span className="material-symbols-outlined text-base">schedule</span>
+                <span>Payment session time left: <span className="font-bold">{countdown}</span></span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleStartPayment}
+              disabled={startingPayment}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white font-bold text-sm hover:bg-primary-dark disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">payments</span>
+              {startingPayment ? 'Creating payment session...' : 'Pay with VNPay'}
+            </button>
           </div>
         </section>
       </div>
