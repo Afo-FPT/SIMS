@@ -237,6 +237,7 @@ interface BackendContractResponse {
   customer_name?: string;
   warehouse_id: string;
   warehouse_name?: string;
+  warehouse_address?: string;
   rented_zones: {
     zone_id: string;
     zone_code?: string;
@@ -270,6 +271,8 @@ function mapBackendContractToContract(c: BackendContractResponse): Contract {
     customerId: c.customer_id,
     customerName: c.customer_name,
     warehouseId: c.warehouse_id,
+    warehouseName: c.warehouse_name,
+    warehouseAddress: c.warehouse_address,
     rentedZones,
     requestedZoneId: c.requested_zone_id,
     requestedStartDate: c.requested_start_date ? (typeof c.requested_start_date === 'string' ? c.requested_start_date : new Date(c.requested_start_date).toISOString()) : undefined,

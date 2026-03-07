@@ -210,7 +210,13 @@ export default function ManagerDashboard() {
                         {t.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-slate-600 text-sm">{new Date(t.dueDate).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-slate-600 text-sm">
+                      {new Date(t.dueDate).toLocaleDateString('vi-VN', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

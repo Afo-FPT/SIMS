@@ -8,6 +8,7 @@ export interface StoredItemOption {
   item_name: string;
   quantity: number;
   unit: string;
+  quantity_per_unit?: number;
   updated_at: string;
 }
 

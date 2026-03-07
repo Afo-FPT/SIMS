@@ -27,13 +27,13 @@ export default function ManagerServiceRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<ServiceRequest | null>(null);
-  const [createTaskModal, setCreateTaskModal] = useState(false);
-  const [rejectModal, setRejectModal] = useState(false);
-  const [rejecting, setRejecting] = useState<ServiceRequest | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [taskPayload, setTaskPayload] = useState<CreateTaskFromServiceRequestPayload | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [requestType, setRequestType] = useState<ServiceRequestType>('Inbound');
+  const [createTaskModal] = useState(false);
+  const [rejectModal] = useState(false);
+  const [rejecting] = useState<ServiceRequest | null>(null);
+  const [rejectReason] = useState('');
+  const [taskPayload] = useState<CreateTaskFromServiceRequestPayload | null>(null);
+  const [submitting] = useState(false);
+  const [requestType, setRequestType] = useState<ServiceRequestType | 'ALL'>('ALL');
 
   useEffect(() => {
     load();
@@ -53,97 +53,20 @@ export default function ManagerServiceRequestsPage() {
     }
   };
 
-  const handleApprove = async (r: ServiceRequest) => {
-    if (r.status !== 'Pending') return;
-    const preferred = r.preferredTime
-      ? `${r.preferredDate}T${r.preferredTime.length <= 5 ? `${r.preferredTime}:00` : r.preferredTime}`
-      : `${r.preferredDate}T09:00:00`;
-    const due = new Date(r.preferredDate);
-    due.setDate(due.getDate() + 2);
-    let items: CreateTaskFromServiceRequestPayload['items'];
-    if (r.type === 'Inventory Checking') {
-      const inv = await listInventory();
-      items = inv.map((i) => ({
-        sku: i.sku,
-        productName: i.name,
-        currentQty: i.quantity,
-      }));
-    } else {
-      items = (r.items || []).map((it) => ({
-        sku: it.sku,
-        productName: it.name,
-        expectedQty: r.type === 'Inbound' ? it.quantity : undefined,
-        requiredQty: r.type === 'Outbound' ? it.quantity : undefined,
-        currentQty: undefined,
-      }));
-    }
-    setTaskPayload({
-      serviceRequestId: r.id,
-      contractId: r.contractId,
-      type: r.type,
-      preferredExecutionTime: preferred,
-      dueDate: due.toISOString().slice(0, 19),
-      inboundRef: r.inboundRef,
-      outboundRef: r.outboundRef,
-      items,
-      fullCheckRequired: r.type === 'Inventory Checking' && r.scope === 'Full inventory',
-      customerName: r.customerName || 'Customer',
-    });
-    setDetail(null);
-    setCreateTaskModal(true);
-  };
-
-  const handleCreateTask = async () => {
-    if (!taskPayload) return;
-    try {
-      setSubmitting(true);
-      await approveServiceRequest(taskPayload.serviceRequestId);
-      await createTaskFromServiceRequest(taskPayload);
-      toast.success('Service request approved and task created');
-      setCreateTaskModal(false);
-      setTaskPayload(null);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create task');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleReject = (r: ServiceRequest) => {
-    setDetail(null);
-    setRejecting(r);
-    setRejectReason('');
-    setRejectModal(true);
-  };
-
-  const doReject = async () => {
-    if (!rejecting) return;
-    try {
-      await rejectServiceRequest(rejecting.id, rejectReason);
-      toast.success('Service request rejected');
-      setRejectModal(false);
-      setRejecting(null);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reject');
-    }
-  };
-
-  const filteredRequests = requests.filter((r) => r.type === requestType);
+  const filteredRequests = requests.filter((r) => (requestType === 'ALL' ? true : r.type === requestType));
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Service Requests</h1>
-        <p className="text-slate-500 mt-1">Approve and convert to tasks</p>
+        <p className="text-slate-500 mt-1">View all inbound / outbound / inventory checking requests (read only).</p>
       </div>
 
       {/* Request type tabs */}
       <div className="space-y-4">
         <p className="text-sm font-bold text-slate-700">Request type</p>
         <div className="flex gap-2 flex-wrap">
-          {(['Inbound', 'Outbound', 'Inventory Checking'] as const).map((type) => (
+          {(['ALL', 'Inbound', 'Outbound', 'Inventory Checking'] as const).map((type) => (
             <button
               key={type}
               type="button"
@@ -159,7 +82,7 @@ export default function ManagerServiceRequestsPage() {
           ))}
         </div>
         <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight pt-1">
-          {requestType.toUpperCase()}
+          {requestType === 'ALL' ? 'ALL REQUESTS' : requestType.toUpperCase()}
         </h2>
       </div>
 
@@ -201,15 +124,13 @@ export default function ManagerServiceRequestsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setDetail(r)} className="text-sm font-bold text-primary hover:underline">View</button>
-                      {r.status === 'Pending' && (
-                        <>
-                          <button type="button" onClick={() => handleApprove(r)} className="text-sm font-bold text-emerald-600 hover:underline">Approve → Create task</button>
-                          <button type="button" onClick={() => handleReject(r)} className="text-sm font-bold text-red-600 hover:underline">Reject</button>
-                        </>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetail(r)}
+                      className="text-sm font-bold text-primary hover:underline"
+                    >
+                      View
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -256,32 +177,7 @@ export default function ManagerServiceRequestsPage() {
         </Modal>
       )}
 
-      {createTaskModal && taskPayload && (
-        <Modal open={createTaskModal} onOpenChange={setCreateTaskModal} title="Create task from request" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">
-              Create task for {taskPayload.customerName}: {taskPayload.type}, due {taskPayload.dueDate.slice(0, 10)}.
-            </p>
-            <div className="flex gap-3">
-              <Button onClick={handleCreateTask} isLoading={submitting}>Create task</Button>
-              <Button variant="ghost" onClick={() => { setCreateTaskModal(false); setTaskPayload(null); }}>Cancel</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {rejectModal && rejecting && (
-        <Modal open={rejectModal} onOpenChange={(o) => { if (!o) { setRejectModal(false); setRejecting(null); } }} title="Reject service request" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">Reject {rejecting.id}? Optionally provide a reason.</p>
-            <Input label="Reason (optional)" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Reason" />
-            <div className="flex gap-3">
-              <Button variant="danger" onClick={doReject}>Reject</Button>
-              <Button variant="ghost" onClick={() => { setRejectModal(false); setRejecting(null); }}>Cancel</Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {/* Read-only page: no approve/reject/actions besides viewing details */}
     </div>
   );
 }

@@ -298,6 +298,7 @@ export default function ManagerContractsPage() {
               <TableHeader>Contract code</TableHeader>
               <TableHeader>Customer</TableHeader>
               <TableHeader>Zones</TableHeader>
+              <TableHeader>Warehouse</TableHeader>
               <TableHeader>Start / End</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Actions</TableHeader>
@@ -308,6 +309,10 @@ export default function ManagerContractsPage() {
                   <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
                   <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
                   <TableCell className="text-slate-700">{getZonesRentedDisplay(c)}</TableCell>
+                  <TableCell className="text-slate-700">
+                    {c.warehouseName || '—'}
+                    {c.warehouseAddress ? ` — ${c.warehouseAddress}` : ''}
+                  </TableCell>
                   <TableCell className="text-slate-700">{getDateRangeDisplay(c)}</TableCell>
                   <TableCell>
                     <Badge variant={getStatusVariant(c.status)}>
@@ -334,10 +339,31 @@ export default function ManagerContractsPage() {
         <Modal open={!!detail} onOpenChange={(o) => !o && setDetail(null)} title={detail.code} size="lg">
           <div className="space-y-6">
             <dl className="grid grid-cols-2 gap-4 text-sm">
-              <div><dt className="text-slate-500">Customer</dt><dd className="font-bold">{detail.customerName || '—'}</dd></div>
-              <div><dt className="text-slate-500">Zones</dt><dd className="font-bold">{getZonesRentedDisplay(detail)}</dd></div>
-              <div><dt className="text-slate-500">Start</dt><dd className="font-bold">{getDateRangeDisplay(detail)}</dd></div>
-              <div><dt className="text-slate-500">Status</dt><dd className="font-bold"><Badge variant={getStatusVariant(detail.status)}>{getStatusDisplay(detail.status)}</Badge></dd></div>
+              <div>
+                <dt className="text-slate-500">Customer</dt>
+                <dd className="font-bold">{detail.customerName || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Zones</dt>
+                <dd className="font-bold">{getZonesRentedDisplay(detail)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Warehouse</dt>
+                <dd className="font-bold">
+                  {detail.warehouseName || '—'}
+                  {detail.warehouseAddress ? ` — ${detail.warehouseAddress}` : ''}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Start / End</dt>
+                <dd className="font-bold">{getDateRangeDisplay(detail)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Status</dt>
+                <dd className="font-bold">
+                  <Badge variant={getStatusVariant(detail.status)}>{getStatusDisplay(detail.status)}</Badge>
+                </dd>
+              </div>
             </dl>
             <div>
               <h4 className="text-sm font-bold text-slate-700 mb-2">Actions</h4>

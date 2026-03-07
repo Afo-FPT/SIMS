@@ -99,10 +99,10 @@ export default function StaffDashboard() {
 
   const formatDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('en-US', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      });
+    return new Date(s).toLocaleString('vi-VN', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
     } catch {
       return s;
     }

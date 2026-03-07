@@ -179,7 +179,10 @@ export default function StaffCycleCountDetailPage() {
             <p className="text-slate-500 mb-1">Deadline</p>
             <p className="font-bold text-slate-900">
               {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('en-US')
+                ? new Date(data.counting_deadline).toLocaleString('vi-VN', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })
                 : '—'}
             </p>
           </div>

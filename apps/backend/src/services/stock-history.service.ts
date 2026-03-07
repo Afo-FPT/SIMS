@@ -136,18 +136,27 @@ export async function getStockInHistory(
             : undefined,
         request_type: request.requestType,
         status: request.status,
-        items: details.map((detail) => ({
-          request_detail_id: detail._id.toString(),
-          shelf_id: detail.shelfId.toString(),
-          shelf_code:
-            typeof detail.shelfId === "object" && "shelfCode" in detail.shelfId
-              ? (detail.shelfId as any).shelfCode
-              : undefined,
-          item_name: detail.itemName,
-          quantity_requested: detail.quantityRequested,
-          quantity_actual: detail.quantityActual,
-          unit: detail.unit
-        })),
+        items: details.map((detail) => {
+          const shelfIdVal: any = detail.shelfId;
+          const shelfIdStr =
+            shelfIdVal && typeof shelfIdVal === "object" && "_id" in shelfIdVal
+              ? shelfIdVal._id.toString()
+              : shelfIdVal?.toString?.() ?? "";
+          const shelfCode =
+            shelfIdVal && typeof shelfIdVal === "object" && "shelfCode" in shelfIdVal
+              ? (shelfIdVal as any).shelfCode
+              : undefined;
+
+          return {
+            request_detail_id: detail._id.toString(),
+            shelf_id: shelfIdStr,
+            shelf_code: shelfCode,
+            item_name: detail.itemName,
+            quantity_requested: detail.quantityRequested,
+            quantity_actual: detail.quantityActual,
+            unit: detail.unit
+          };
+        }),
         approved_by:
           request.approvedBy && typeof request.approvedBy === "object" && "name" in request.approvedBy
             ? (request.approvedBy as any).name
@@ -253,18 +262,27 @@ export async function getStockOutHistory(
             : undefined,
         request_type: request.requestType,
         status: request.status,
-        items: details.map((detail) => ({
-          request_detail_id: detail._id.toString(),
-          shelf_id: detail.shelfId.toString(),
-          shelf_code:
-            typeof detail.shelfId === "object" && "shelfCode" in detail.shelfId
-              ? (detail.shelfId as any).shelfCode
-              : undefined,
-          item_name: detail.itemName,
-          quantity_requested: detail.quantityRequested,
-          quantity_actual: detail.quantityActual,
-          unit: detail.unit
-        })),
+        items: details.map((detail) => {
+          const shelfIdVal: any = detail.shelfId;
+          const shelfIdStr =
+            shelfIdVal && typeof shelfIdVal === "object" && "_id" in shelfIdVal
+              ? shelfIdVal._id.toString()
+              : shelfIdVal?.toString?.() ?? "";
+          const shelfCode =
+            shelfIdVal && typeof shelfIdVal === "object" && "shelfCode" in shelfIdVal
+              ? (shelfIdVal as any).shelfCode
+              : undefined;
+
+          return {
+            request_detail_id: detail._id.toString(),
+            shelf_id: shelfIdStr,
+            shelf_code: shelfCode,
+            item_name: detail.itemName,
+            quantity_requested: detail.quantityRequested,
+            quantity_actual: detail.quantityActual,
+            unit: detail.unit
+          };
+        }),
         approved_by:
           request.approvedBy && typeof request.approvedBy === "object" && "name" in request.approvedBy
             ? (request.approvedBy as any).name

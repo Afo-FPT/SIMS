@@ -9,7 +9,11 @@ import { startContractVNPayPayment } from '../../../../../lib/payment.api';
 import { useToastHelpers } from '../../../../../lib/toast';
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { dateStyle: 'medium' });
+  return new Date(dateStr).toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function getDateRangeDisplay(contract: Contract): string {
@@ -92,6 +96,15 @@ export default function CheckoutPage() {
     const result = searchParams.get('result');
     const message = searchParams.get('message');
     if (!result) return;
+    if (typeof window !== 'undefined') {
+      // Global guard to avoid duplicate handling in React StrictMode/dev
+      (window as any).__swsPaymentHandled = (window as any).__swsPaymentHandled || {};
+      const key = `contract_payment_${id}_${result}`;
+      if ((window as any).__swsPaymentHandled[key]) {
+        return;
+      }
+      (window as any).__swsPaymentHandled[key] = true;
+    }
     if (result === 'success') {
       toast.success(message || 'Payment completed successfully.');
       router.replace(`/customer/contracts/${id}`);

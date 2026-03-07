@@ -39,8 +39,12 @@ export default function ManagerInboundRequestsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await listStorageRequests({ requestType: 'IN', status: 'PENDING' });
-      setItems(data);
+      // Giữ lại cả PENDING và APPROVED để manager không mất danh sách sau khi assign
+      const [pending, approved] = await Promise.all([
+        listStorageRequests({ requestType: 'IN', status: 'PENDING' }),
+        listStorageRequests({ requestType: 'IN', status: 'APPROVED' }),
+      ]);
+      setItems([...pending, ...approved]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load inbound requests';
       setError(msg);
@@ -78,7 +82,14 @@ export default function ManagerInboundRequestsPage() {
       toast.success('Staff assigned to inbound request');
       setAssigning(null);
       setAssignStaffIds([]);
-      await load();
+      // Cập nhật trạng thái request trong danh sách hiện tại, thay vì load lại và mất view
+      setItems((prev) =>
+        prev.map((r) =>
+          r.request_id === assigning.request_id
+            ? { ...r, status: 'APPROVED' as any, assigned_staff_ids: assignStaffIds }
+            : r,
+        ),
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to assign staff');
     } finally {
@@ -124,7 +135,10 @@ export default function ManagerInboundRequestsPage() {
                   <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(r.created_at).toLocaleString('en-US')}
+                    {new Date(r.created_at).toLocaleString('vi-VN', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
                   </TableCell>
                   <TableCell>
                     <Button

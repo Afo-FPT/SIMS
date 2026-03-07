@@ -1,30 +1,32 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { RentRequest } from '../../../lib/customer-types';
-import {
-  listRentRequests,
-  managerUpdateRentRequestStatus,
-} from '../../../lib/rent-requests.api';
+import type { Contract } from '../../../lib/customer-types';
+import { listContracts, updateContractStatus } from '../../../lib/mockApi/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { Modal } from '../../../components/ui/Modal';
-import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
+function formatDate(dateStr?: string) {
+  if (!dateStr) return '—';
+  try {
+    return new Date(dateStr).toLocaleDateString('vi-VN');
+  } catch {
+    return dateStr;
+  }
+}
+
 export default function ManagerRentRequestsPage() {
   const toast = useToastHelpers();
-  const [requests, setRequests] = useState<RentRequest[]>([]);
+  const [draftContracts, setDraftContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detail, setDetail] = useState<RentRequest | null>(null);
-  const [rejecting, setRejecting] = useState<RentRequest | null>(null);
-  const [rejectModalOpen, setRejectModalOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
+  const [detail, setDetail] = useState<Contract | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,8 +37,10 @@ export default function ManagerRentRequestsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await listRentRequests();
-      setRequests(data);
+      const data = await listContracts();
+      // Chỉ hiển thị các hợp đồng ở trạng thái draft như là "rent requests"
+      const drafts = data.filter((c) => c.status === 'draft');
+      setDraftContracts(drafts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load rent requests');
       toast.error('Failed to load rent requests');
@@ -45,41 +49,16 @@ export default function ManagerRentRequestsPage() {
     }
   };
 
-  const handleApprove = (r: RentRequest) => {
-    if (r.status !== 'Submitted') return;
-    doApprove(r.id);
-  };
-
   const doApprove = async (id: string) => {
     try {
       setApprovingId(id);
-      await managerUpdateRentRequestStatus(id, 'Approved');
-      toast.success('Rent request approved');
-      load();
+      await updateContractStatus(id, 'pending_payment');
+      toast.success('Draft contract approved. Status changed to pending payment and moved to Contracts.');
+      await load();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to approve rent request');
+      toast.error(err instanceof Error ? err.message : 'Failed to approve draft contract');
     } finally {
       setApprovingId(null);
-    }
-  };
-
-  const handleReject = (r: RentRequest) => {
-    setDetail(null);
-    setRejecting(r);
-    setRejectReason('');
-    setRejectModalOpen(true);
-  };
-
-  const doReject = async () => {
-    if (!rejecting) return;
-    try {
-      await managerUpdateRentRequestStatus(rejecting.id, 'Rejected', rejectReason);
-      toast.success('Rent request rejected');
-      setRejectModalOpen(false);
-      setRejecting(null);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to reject');
     }
   };
 
@@ -87,70 +66,55 @@ export default function ManagerRentRequestsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Rent Requests</h1>
-        <p className="text-slate-500 mt-1">Review and approve shelf rental requests</p>
+        <p className="text-slate-500 mt-1">
+          Review draft contracts created from customer rental requests. Approving will move them to Contracts with
+          status <span className="font-bold">pending payment</span>.
+        </p>
       </div>
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
         <ErrorState title="Failed to load" message={error} onRetry={load} />
-      ) : requests.length === 0 ? (
-        <EmptyState icon="request_quote" title="No rent requests" message="No submitted requests to review" />
+      ) : draftContracts.length === 0 ? (
+        <EmptyState
+          icon="request_quote"
+          title="No rent requests"
+          message="No draft contracts from rental requests to review."
+        />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <Table>
             <TableHead>
-              <TableHeader>Request code</TableHeader>
+              <TableHeader>Contract code</TableHeader>
               <TableHeader>Customer</TableHeader>
-              <TableHeader>Shelves</TableHeader>
-              <TableHeader>Duration</TableHeader>
+              <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Rental period</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
-              {requests.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-bold text-slate-900">{r.id}</TableCell>
-                  <TableCell className="text-slate-700">{r.customerName || '—'}</TableCell>
-                  <TableCell className="text-slate-700">{r.shelves}</TableCell>
-                  <TableCell className="text-slate-700">{r.durationMonths} months</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        r.status === 'Approved' ? 'success' : r.status === 'Rejected' ? 'error' : 'warning'
-                      }
-                    >
-                      {r.status}
-                    </Badge>
+              {draftContracts.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
+                  <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
+                  <TableCell className="text-slate-700">{c.warehouseName || c.warehouseId}</TableCell>
+                  <TableCell className="text-slate-700">
+                    {c.requestedStartDate && c.requestedEndDate
+                      ? `${formatDate(c.requestedStartDate)} → ${formatDate(c.requestedEndDate)}`
+                      : '—'}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDetail(r)}
-                        className="text-sm font-bold text-primary hover:underline"
-                      >
-                        View
-                      </button>
-                      {r.status === 'Submitted' && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleApprove(r)}
-                            className="text-sm font-bold text-emerald-600 hover:underline"
-                          >
-                            Approve
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleReject(r)}
-                            className="text-sm font-bold text-red-600 hover:underline"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    <Badge variant="info">draft</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      onClick={() => doApprove(c.id)}
+                      isLoading={approvingId === c.id}
+                    >
+                      Approve
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -161,52 +125,34 @@ export default function ManagerRentRequestsPage() {
 
       {/* Detail modal */}
       {detail && (
-        <Modal open={!!detail} onOpenChange={(o) => !o && setDetail(null)} title={`Request ${detail.id}`} size="md">
+        <Modal
+          open={!!detail}
+          onOpenChange={(o) => !o && setDetail(null)}
+          title={`Draft contract ${detail.code}`}
+          size="md"
+        >
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <dt className="text-slate-500">Customer</dt>
               <dd className="font-bold">{detail.customerName || '—'}</dd>
-              <dt className="text-slate-500">Shelves</dt>
-              <dd className="font-bold">{detail.shelves}</dd>
-              <dt className="text-slate-500">Start / Duration</dt>
-              <dd className="font-bold">{detail.startDate} / {detail.durationMonths} months</dd>
-              <dt className="text-slate-500">Zone</dt>
-              <dd className="font-bold">{detail.zonePreference || '—'}</dd>
-              <dt className="text-slate-500">Counting unit</dt>
-              <dd className="font-bold">{detail.countingUnit}</dd>
-              <dt className="text-slate-500">Categories</dt>
-              <dd className="font-bold">{detail.goodsCategory?.join(', ') || '—'}</dd>
+              <dt className="text-slate-500">Warehouse</dt>
+              <dd className="font-bold">{detail.warehouseName || detail.warehouseId}</dd>
+              <dt className="text-slate-500">Rental period</dt>
+              <dd className="font-bold">
+                {detail.requestedStartDate && detail.requestedEndDate
+                  ? `${formatDate(detail.requestedStartDate)} → ${formatDate(detail.requestedEndDate)}`
+                  : '—'}
+              </dd>
+              <dt className="text-slate-500">Status</dt>
+              <dd className="font-bold">draft</dd>
             </dl>
-            {detail.specialNotes && (
-              <div>
-                <p className="text-slate-500 text-sm mb-1">Special notes</p>
-                <p className="text-slate-800">{detail.specialNotes}</p>
-              </div>
-            )}
-            {detail.status === 'Submitted' && (
-              <div className="flex gap-3 pt-4">
-                <Button onClick={() => { handleApprove(detail); setDetail(null); }}>Approve → Create contract</Button>
-                <Button variant="ghost" onClick={() => handleReject(detail)}>Reject</Button>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
-
-      {/* Reject modal */}
-      {rejectModalOpen && rejecting && (
-        <Modal open={rejectModalOpen} onOpenChange={(o) => { if (!o) { setRejectModalOpen(false); setRejecting(null); } }} title="Reject rent request" size="md">
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600">Reject request {rejecting.id}? You may provide a reason.</p>
-            <Input
-              label="Reason (optional)"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Reason for rejection"
-            />
-            <div className="flex gap-3">
-              <Button variant="danger" onClick={doReject}>Reject</Button>
-              <Button variant="ghost" onClick={() => { setRejectModalOpen(false); setRejecting(null); }}>Cancel</Button>
+            <div className="flex gap-3 pt-4">
+              <Button onClick={() => { doApprove(detail.id); setDetail(null); }}>
+                Approve
+              </Button>
+              <Button variant="ghost" onClick={() => setDetail(null)}>
+                Close
+              </Button>
             </div>
           </div>
         </Modal>

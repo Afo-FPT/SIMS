@@ -73,12 +73,9 @@ export default function ServiceRequestsPage() {
   const [notes, setNotes] = useState('');
   const [inboundRef, setInboundRef] = useState('');
   const [inboundItems, setInboundItems] = useState<(ServiceRequestItem & { quantityPerUnit?: number; useNewSku?: boolean; unit?: string })[]>([]);
-  const [expectedArrival, setExpectedArrival] = useState('');
   const [outboundRef, setOutboundRef] = useState('');
   const [outboundItems, setOutboundItems] = useState<{ storedItemId: string; sku: string; quantity: number }[]>([]);
   const [storedItemOptions, setStoredItemOptions] = useState<StoredItemOption[]>([]);
-  const [pickupDelivery, setPickupDelivery] = useState<PickupDelivery>('Pickup');
-  const [destination, setDestination] = useState('');
   const [checkScope, setCheckScope] = useState<'Full inventory' | 'By SKU list'>('Full inventory');
   /** When "By SKU list": list of stored_item_id selected for cycle count */
   const [checkSkuList, setCheckSkuList] = useState<string[]>([]);
@@ -220,7 +217,7 @@ export default function ServiceRequestsPage() {
   };
   const formatDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+      return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
     } catch {
       return s;
     }
@@ -231,10 +228,31 @@ export default function ServiceRequestsPage() {
   };
 
   // Unique existing SKU names from stored items (for Inbound dropdown)
-  const existingInboundSkus = useMemo(() => {
-    const names = [...new Set(storedItemOptions.map((s) => s.item_name).filter(Boolean))];
-    return names.sort((a, b) => a.localeCompare(b));
+  // Existing SKU templates (name -> default unit + qty/unit)
+  const existingInboundSkuTemplates = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        unit: string;
+        quantityPerUnit?: number;
+      }
+    >();
+    for (const s of storedItemOptions) {
+      if (!s.item_name) continue;
+      if (!map.has(s.item_name)) {
+        map.set(s.item_name, {
+          unit: s.unit,
+          quantityPerUnit: (s as any).quantity_per_unit,
+        });
+      }
+    }
+    return map;
   }, [storedItemOptions]);
+
+  const existingInboundSkus = useMemo(() => {
+    const names = [...existingInboundSkuTemplates.keys()];
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [existingInboundSkuTemplates]);
   const removeInboundRow = (i: number) => {
     setInboundItems((prev) => prev.filter((_, j) => j !== i));
   };
@@ -269,10 +287,16 @@ export default function ServiceRequestsPage() {
     if (!contractId) e.contract = 'Select a contract';
     if (!preferredDate) e.preferredDate = 'Preferred date is required';
     if (type === 'Inbound') {
+      if (!inboundRef.trim()) {
+        e.inboundRef = 'Inbound reference is required';
+      }
       const withQty = inboundItems.filter((r) => r.sku && r.quantity > 0);
       if (withQty.length === 0) e.items = 'Add at least one item';
     }
     if (type === 'Outbound') {
+      if (!outboundRef.trim()) {
+        e.outboundRef = 'Outbound reference is required';
+      }
       const withQty = outboundItems.filter((r) => r.storedItemId && r.quantity > 0);
       if (withQty.length === 0) {
         e.items = 'Add at least one item (select stored item + quantity)';
@@ -327,13 +351,11 @@ export default function ServiceRequestsPage() {
             {
               ...base,
               inboundRef: inboundRef || undefined,
-              items,
-              expectedArrival: expectedArrival || undefined,
+            items,
             } as ServiceRequest,
           ]);
           setInboundItems([]);
           setInboundRef('');
-          setExpectedArrival('');
           loadTrackingRequests();
         })
         .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit inbound request'));
@@ -364,9 +386,7 @@ export default function ServiceRequestsPage() {
             {
               ...base,
               outboundRef: outboundRef || undefined,
-              items: outboundItems,
-              pickupDelivery,
-              destination: pickupDelivery === 'Delivery' ? destination : undefined,
+            items: outboundItems,
             } as ServiceRequest,
           ]);
           setOutboundItems([]);
@@ -690,6 +710,9 @@ export default function ServiceRequestsPage() {
                 placeholder="e.g. IN-2025-0025"
                 className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               />
+              {errors.inboundRef && (
+                <p className="text-xs text-red-500 mt-1">{errors.inboundRef}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Items</label>
@@ -731,9 +754,21 @@ export default function ServiceRequestsPage() {
                               onChange={(e) => {
                                 const v = e.target.value;
                                 if (v === '__new__') {
-                                  updateInboundRow(i, { useNewSku: true, sku: '', name: '' });
+                                  updateInboundRow(i, {
+                                    useNewSku: true,
+                                    sku: '',
+                                    name: '',
+                                    quantityPerUnit: undefined,
+                                    unit: 'pcs',
+                                  } as any);
                                 } else {
-                                  updateInboundRow(i, { sku: v, name: v });
+                                  const tpl = existingInboundSkuTemplates.get(v);
+                                  updateInboundRow(i, {
+                                    sku: v,
+                                    name: v,
+                                    quantityPerUnit: tpl?.quantityPerUnit,
+                                    unit: tpl?.unit ?? 'pcs',
+                                  } as any);
                                 }
                               }}
                               className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white"
@@ -752,7 +787,8 @@ export default function ServiceRequestsPage() {
                           <input
                             value={r.name ?? ''}
                             onChange={(e) => updateInboundRow(i, { name: e.target.value })}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                            disabled={!r.useNewSku}
+                            className="w-full px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -774,10 +810,14 @@ export default function ServiceRequestsPage() {
                             onChange={(e) =>
                               updateInboundRow(
                                 i,
-                                { quantityPerUnit: e.target.value === '' ? undefined : Number(e.target.value) } as any
+                                {
+                                  quantityPerUnit:
+                                    e.target.value === '' ? undefined : Number(e.target.value),
+                                } as any,
                               )
                             }
-                            className="w-28 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                            disabled={!r.useNewSku}
+                            className="w-28 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
                             placeholder="optional"
                           />
                         </td>
@@ -785,7 +825,8 @@ export default function ServiceRequestsPage() {
                           <select
                             value={r.unit ?? 'pcs'}
                             onChange={(e) => updateInboundRow(i, { unit: e.target.value })}
-                            className="w-full min-w-[6rem] px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                            disabled={!r.useNewSku}
+                            className="w-full min-w-[6rem] px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 bg-white disabled:bg-slate-50 disabled:text-slate-500"
                           >
                             <option value="pcs">pcs</option>
                             <option value="box">box</option>
@@ -826,17 +867,6 @@ export default function ServiceRequestsPage() {
                 <p className="text-xs text-red-500 mt-1">{errors.items}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">
-                Expected arrival (date/time)
-              </label>
-              <input
-                type="datetime-local"
-                value={expectedArrival}
-                onChange={(e) => setExpectedArrival(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              />
-            </div>
           </div>
         )}
 
@@ -854,6 +884,9 @@ export default function ServiceRequestsPage() {
                 placeholder="e.g. OUT-2025-0012"
                 className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               />
+              {errors.outboundRef && (
+                <p className="text-xs text-red-500 mt-1">{errors.outboundRef}</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Items</label>
@@ -929,33 +962,6 @@ export default function ServiceRequestsPage() {
                 <p className="text-xs text-red-500 mt-1">{errors.items}</p>
               )}
             </div>
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">
-                Pickup / Delivery
-              </label>
-              <select
-                value={pickupDelivery}
-                onChange={(e) => setPickupDelivery(e.target.value as PickupDelivery)}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              >
-                <option value="Pickup">Pickup</option>
-                <option value="Delivery">Delivery</option>
-              </select>
-            </div>
-            {pickupDelivery === 'Delivery' && (
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">
-                  Destination
-                </label>
-                <input
-                  type="text"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="Address"
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                />
-              </div>
-            )}
           </div>
         )}
 

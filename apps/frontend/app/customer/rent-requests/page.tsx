@@ -220,6 +220,8 @@ export default function RentRequestsPage() {
       endDate: endDate!,
       // Send all selected zones so backend can save as rented_zones
       zoneIds: Array.from(selectedZoneIds),
+      // If customer chose a package, use its price as price per zone
+      pricePerZone: selectedPackage ? selectedPackage.price : undefined,
     };
     try {
       setLoading(true);

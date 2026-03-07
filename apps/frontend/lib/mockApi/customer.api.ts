@@ -39,6 +39,7 @@ function mapBackendContractToContract(c: any): Contract {
     customerName: c.customer_name ?? c.customerId?.name,
     warehouseId: (c.warehouse_id ?? c.warehouseId)?.toString?.() ?? String(c.warehouse_id ?? c.warehouseId ?? ''),
     warehouseName: c.warehouse_name ?? c.warehouseId?.name,
+    warehouseAddress: c.warehouse_address ?? c.warehouseId?.address,
     rentedZones,
     requestedZoneId: (c.requested_zone_id ?? c.requestedZoneId)?.toString?.() ?? c.requested_zone_id ?? c.requestedZoneId,
     requestedStartDate: c.requested_start_date != null ? (typeof c.requested_start_date === 'string' ? c.requested_start_date : new Date(c.requested_start_date).toISOString()) : (c.requestedStartDate != null ? (typeof c.requestedStartDate === 'string' ? c.requestedStartDate : new Date(c.requestedStartDate).toISOString()) : undefined),

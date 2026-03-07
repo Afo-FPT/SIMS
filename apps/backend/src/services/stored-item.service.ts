@@ -11,6 +11,8 @@ export interface StoredItemViewDTO {
   item_name: string;
   quantity: number;
   unit: string;
+   /** Optional: default quantity per unit/package for this SKU */
+  quantity_per_unit?: number;
   updated_at: Date;
 }
 
@@ -86,6 +88,7 @@ export async function getMyStoredItems(
     item_name: it.itemName,
     quantity: it.quantity,
     unit: it.unit,
+    quantity_per_unit: (it as any).quantityPerUnit,
     updated_at: it.updatedAt
   }));
 }

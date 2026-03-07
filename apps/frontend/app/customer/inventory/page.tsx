@@ -12,6 +12,7 @@ import { getStockInHistory, getStockOutHistory } from '../../../lib/stock-histor
 type InventoryRow = CustomerInventoryItem & {
   contractId: string;
   contractCode?: string;
+  quantityPerUnit?: number;
 };
 
 export default function CustomerInventoryPage() {
@@ -55,6 +56,7 @@ export default function CustomerInventoryPage() {
           history: [], // Can be loaded separately if needed
           contractId: item.contract_id,
           contractCode: contractCodeById.get(item.contract_id),
+          quantityPerUnit: (item as any).quantity_per_unit,
         }));
 
         if (!cancelled) {
@@ -252,6 +254,7 @@ export default function CustomerInventoryPage() {
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Contract</th>
                 )}
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Quantity</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Qty / unit</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Shelf</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">
                   Last updated
@@ -262,7 +265,7 @@ export default function CustomerInventoryPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={showContractColumn ? 6 : 5} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={showContractColumn ? 7 : 6} className="px-6 py-12 text-center text-slate-500">
                     {inventory.length === 0
                       ? 'No inventory yet. Items appear after staff completes putaway (DONE_BY_STAFF).'
                       : 'No items match the current filters.'}
@@ -291,9 +294,22 @@ export default function CustomerInventoryPage() {
                       <span className="font-medium">{i.quantity}</span>{' '}
                       <span className="text-slate-400">{i.unit}</span>
                     </td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {i.quantityPerUnit != null ? (
+                        <>
+                          <span className="font-medium">{i.quantityPerUnit}</span>{' '}
+                          <span className="text-slate-400">{i.unit}/unit</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400 text-sm">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-slate-700">{i.shelf || '—'}</td>
                     <td className="px-6 py-4 text-slate-500 text-sm">
-                      {new Date(i.lastUpdated).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
+                      {new Date(i.lastUpdated).toLocaleString('vi-VN', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
                     </td>
                     <td className="px-6 py-4">
                       <button

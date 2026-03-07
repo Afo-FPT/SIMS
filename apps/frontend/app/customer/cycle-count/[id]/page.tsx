@@ -168,14 +168,20 @@ export default function CustomerCycleCountDetailPage() {
           <div>
             <p className="text-slate-500 mb-1">Requested at</p>
             <p className="font-bold text-slate-900">
-              {new Date(data.requested_at).toLocaleString('en-US')}
+              {new Date(data.requested_at).toLocaleString('vi-VN', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
             </p>
           </div>
           <div>
             <p className="text-slate-500 mb-1">Counting deadline</p>
             <p className="font-bold text-slate-900">
               {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('en-US')
+                ? new Date(data.counting_deadline).toLocaleString('vi-VN', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })
                 : '—'}
             </p>
           </div>
@@ -183,7 +189,10 @@ export default function CustomerCycleCountDetailPage() {
             <div>
             <p className="text-slate-500 mb-1">Preferred time</p>
             <p className="font-bold text-slate-900">
-                {new Date(data.preferred_date).toLocaleString('en-US')}
+                {new Date(data.preferred_date).toLocaleString('vi-VN', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
               </p>
             </div>
           )}
@@ -191,7 +200,10 @@ export default function CustomerCycleCountDetailPage() {
             <div>
             <p className="text-slate-500 mb-1">Confirmed at</p>
             <p className="font-bold text-slate-900">
-                {new Date(data.confirmed_at).toLocaleString('en-US')}
+                {new Date(data.confirmed_at).toLocaleString('vi-VN', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
               </p>
             </div>
           )}

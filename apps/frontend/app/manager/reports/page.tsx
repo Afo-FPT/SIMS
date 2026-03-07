@@ -134,7 +134,15 @@ export default function ManagerReportsPage() {
       let csvRows: string[] = [];
 
       csvRows.push('SIMS-AI OPERATIONAL REPORT');
-      csvRows.push(`Generated Date: ${new Date().toLocaleString('en-US')}`);
+      csvRows.push(
+        `Generated Date: ${new Date().toLocaleString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })}`,
+      );
       csvRows.push(`Period: ${startDate} to ${endDate}`);
       csvRows.push('');
   
@@ -1051,8 +1059,20 @@ function GanttChart({ contracts }: { contracts: ManagerReportExpiringContractIte
         })}
       </div>
       <div className="mt-2 flex justify-between text-[10px] text-slate-400 font-medium">
-        <span>{new Date(start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-        <span>{new Date(end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        <span>
+          {new Date(start).toLocaleDateString('vi-VN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          })}
+        </span>
+        <span>
+          {new Date(end).toLocaleDateString('vi-VN', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          })}
+        </span>
       </div>
     </div>
   );

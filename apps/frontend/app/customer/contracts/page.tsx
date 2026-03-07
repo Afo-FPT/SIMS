@@ -11,7 +11,11 @@ import type { Contract } from '../../../lib/customer-types';
  */
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { dateStyle: 'medium' });
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 /**
@@ -20,7 +24,7 @@ function formatDate(dateStr: string): string {
 function getStatusDisplay(status: Contract['status']): string {
   switch (status) {
     case 'active':
-      return 'Active';
+      return 'Rented';
     case 'draft':
       return 'Pending confirmation';
     case 'pending_payment':
@@ -138,6 +142,9 @@ export default function ContractsPage() {
                     Zones
                   </th>
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Warehouse
+                  </th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
                     Start / End
                   </th>
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest">
@@ -153,6 +160,18 @@ export default function ContractsPage() {
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                     <td className="px-6 py-4 font-bold text-slate-900">{c.code}</td>
                     <td className="px-6 py-4 text-slate-700">{getZonesRentedDisplay(c)}</td>
+                    <td className="px-6 py-4 text-slate-700">
+                      {c.warehouseName || c.warehouseAddress ? (
+                        <>
+                          <span className="font-semibold">{c.warehouseName || '—'}</span>
+                          {c.warehouseAddress && (
+                            <span className="text-slate-500 text-xs"> — {c.warehouseAddress}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-slate-400 text-sm">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-slate-700">
                       {getDateRangeDisplay(c)}
                     </td>

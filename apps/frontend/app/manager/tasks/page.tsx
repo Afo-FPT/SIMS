@@ -106,7 +106,12 @@ export default function ManagerTasksPage() {
                       {t.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-700 text-sm">{new Date(t.dueDate).toLocaleString()}</TableCell>
+                  <TableCell className="text-slate-700 text-sm">
+                    {new Date(t.dueDate).toLocaleString('vi-VN', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </TableCell>
                   <TableCell>
                     <button type="button" onClick={() => { setDetail(t); setAssignStaffId(t.assignedToStaffId || ''); }} className="text-sm font-bold text-primary hover:underline">
                       Open
@@ -127,7 +132,15 @@ export default function ManagerTasksPage() {
               <div><dt className="text-slate-500">Customer</dt><dd className="font-bold">{detail.customerName}</dd></div>
               <div><dt className="text-slate-500">Contract</dt><dd className="font-bold">{detail.contractCode}</dd></div>
               <div><dt className="text-slate-500">Status</dt><dd><Badge variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'IN_PROGRESS' ? 'info' : 'warning'}>{detail.status}</Badge></dd></div>
-              <div><dt className="text-slate-500">Due</dt><dd className="font-bold">{new Date(detail.dueDate).toLocaleString()}</dd></div>
+              <div>
+                <dt className="text-slate-500">Due</dt>
+                <dd className="font-bold">
+                  {new Date(detail.dueDate).toLocaleString('vi-VN', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </dd>
+              </div>
               <div><dt className="text-slate-500">Assigned to</dt><dd className="font-bold">{detail.assignedToStaffName || '—'}</dd></div>
             </dl>
             {detail.status !== 'COMPLETED' && (

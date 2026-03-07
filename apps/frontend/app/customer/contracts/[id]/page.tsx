@@ -7,17 +7,27 @@ import { getCustomerContractById } from '../../../../lib/mockApi/customer.api';
 import type { Contract } from '../../../../lib/customer-types';
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', { dateStyle: 'medium' });
+  return new Date(dateStr).toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  return new Date(dateStr).toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function getStatusDisplay(status: Contract['status']): string {
   switch (status) {
     case 'active':
-      return 'Active';
+      return 'Rented';
     case 'draft':
       return 'Pending confirmation';
     case 'pending_payment':

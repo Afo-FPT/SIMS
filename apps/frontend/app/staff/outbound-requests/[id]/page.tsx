@@ -71,7 +71,7 @@ export default function StaffOutboundDetailPage() {
 
   const formatDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
+    return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
     } catch {
       return s;
     }
@@ -218,14 +218,20 @@ export default function StaffOutboundDetailPage() {
                       <Input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="1"
                         max={it.quantity_requested}
                         value={row?.quantityActual ?? ''}
                         onChange={(e) => {
-                          const val = e.target.value;
+                          // Chỉ cho phép số nguyên không âm
+                          const raw = e.target.value;
+                          const intVal =
+                            raw === '' ? '' : String(Math.max(0, Math.floor(Number(raw) || 0)));
                           const requested = it.quantity_requested;
-                          const shortage = requested - (Number(val) || 0);
-                          const patch: { quantityActual: string; damageQuantity?: string } = { quantityActual: val };
+                          const actualNum = Number(intVal) || 0;
+                          const shortage = requested - actualNum;
+                          const patch: { quantityActual: string; damageQuantity?: string } = {
+                            quantityActual: intVal,
+                          };
                           if (shortage > 0) patch.damageQuantity = String(shortage);
                           else patch.damageQuantity = '';
                           updateRow(idx, patch);

@@ -151,7 +151,11 @@ export default function StaffHistoryPage() {
                       : '—'}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(task.dueDate).toLocaleDateString()}
+                    {new Date(task.dueDate).toLocaleDateString('vi-VN', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                    })}
                   </TableCell>
                   <TableCell>
                     <Link

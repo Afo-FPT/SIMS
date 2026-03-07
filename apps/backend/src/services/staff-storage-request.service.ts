@@ -258,6 +258,15 @@ export async function staffCompleteStorageRequest(
       if (it.quantityActual <= 0) continue;
 
       if (request.requestType === "IN") {
+        const update: any = {
+          $inc: { quantity: it.quantityActual }
+        };
+        // Lưu quantityPerUnit lần đầu làm mặc định cho SKU
+        if ((detail as any).quantityPerUnit != null) {
+          update.$setOnInsert = {
+            quantityPerUnit: (detail as any).quantityPerUnit
+          };
+        }
         await StoredItem.findOneAndUpdate(
           {
             contractId: request.contractId,
@@ -265,7 +274,7 @@ export async function staffCompleteStorageRequest(
             itemName: detail.itemName,
             unit
           },
-          { $inc: { quantity: it.quantityActual } },
+          update,
           { upsert: true, new: true, setDefaultsOnInsert: true, session }
         );
       } else {

@@ -292,6 +292,8 @@ export interface CreateDraftContractPayload {
   zoneId?: string;
   /** Optional multiple zones chosen by customer */
   zoneIds?: string[];
+  /** Optional price per zone (e.g. from selected package) */
+  pricePerZone?: number;
 }
 
 /** Customer requests draft contract (warehouse + period). Zone is auto-assigned when manager approves. */
@@ -304,6 +306,7 @@ export async function createDraftContractRequest(payload: CreateDraftContractPay
       endDate: payload.endDate,
       requestedZoneId: payload.zoneId,
       zoneIds: payload.zoneIds,
+      pricePerZone: payload.pricePerZone,
     }),
   });
   let data: { message?: string; data?: BackendContractResponse } = {};

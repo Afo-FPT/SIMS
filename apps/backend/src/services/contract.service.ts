@@ -29,6 +29,7 @@ export interface ContractResponse {
   customer_name?: string;
   warehouse_id: string;
   warehouse_name?: string;
+  warehouse_address?: string;
   rented_zones: {
     zone_id: string;
     zone_code?: string;
@@ -54,6 +55,7 @@ function mapContractToResponse(contract: any): ContractResponse {
     customer_name: (contract.customerId as any)?.name,
     warehouse_id: contract.warehouseId.toString(),
     warehouse_name: (contract.warehouseId as any)?.name,
+    warehouse_address: (contract.warehouseId as any)?.address,
     rented_zones: (contract.rentedZones || []).map((rz: any) => ({
       zone_id: rz.zoneId?.toString?.() ?? rz.zoneId.toString(),
       zone_code: (rz.zoneId as any)?.zoneCode,

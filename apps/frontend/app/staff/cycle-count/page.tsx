@@ -116,7 +116,10 @@ export default function StaffCycleCountPage() {
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
                     {cc.counting_deadline
-                      ? new Date(cc.counting_deadline).toLocaleString('en-US')
+                      ? new Date(cc.counting_deadline).toLocaleString('vi-VN', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })
                       : '—'}
                   </TableCell>
                   <TableCell>
