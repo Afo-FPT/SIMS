@@ -328,51 +328,105 @@ export default function CustomerInventoryPage() {
         </div>
       </section>
 
-      {/* Detail modal — history timeline */}
+      {/* Detail modal — enlarged, with clearer summary and history */}
       {detail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
           onClick={() => setDetail(null)}
         >
           <div
-            className="bg-white rounded-3xl max-w-md w-full max-h-[90vh] overflow-y-auto p-6 shadow-xl"
+            className="bg-white rounded-3xl w-full max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-xl font-black text-slate-900 mb-2">
-              {detail.sku} — {detail.name}
-            </h3>
-            <p className="text-sm text-slate-500 mb-4">
-              {detail.quantity} {detail.unit} • {detail.shelf}
-            </p>
-            <h4 className="text-sm font-bold text-slate-700 uppercase mb-3">
-              History
-            </h4>
-            <ul className="space-y-3">
-              {(detail.history ?? []).map((h, i) => (
-                <li key={i} className="flex gap-3">
-                  <div className="size-2 rounded-full bg-primary mt-2 shrink-0" />
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{h.action}</p>
-                    {h.note && (
-                      <p className="text-xs text-slate-500">{h.note}</p>
-                    )}
-                    <p className="text-[10px] text-slate-400">
-                      {h.date} • SL: {h.qty}
-                    </p>
-                  </div>
-                </li>
-              ))}
-              {(!detail.history || detail.history.length === 0) && (
-                <li className="text-sm text-slate-500">No history yet.</li>
-              )}
-            </ul>
-            <button
-              type="button"
-              onClick={() => setDetail(null)}
-              className="mt-6 w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-2xl hover:bg-slate-200"
-            >
-              Đóng
-            </button>
+            <div className="px-6 py-5 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">
+                  {detail.sku} — {detail.name}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Shelf {detail.shelf || '—'} • {detail.quantity} {detail.unit}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetail(null)}
+                className="size-9 flex items-center justify-center rounded-2xl bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Summary metrics */}
+              <section className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    Quantity
+                  </p>
+                  <p className="mt-1 text-lg font-black text-slate-900">
+                    {detail.quantity}{' '}
+                    <span className="text-xs font-semibold text-slate-500">{detail.unit}</span>
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    Shelf
+                  </p>
+                  <p className="mt-1 text-lg font-black text-slate-900">
+                    {detail.shelf || '—'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                    History entries
+                  </p>
+                  <p className="mt-1 text-lg font-black text-slate-900">
+                    {(detail.history ?? []).length}
+                  </p>
+                </div>
+              </section>
+
+              {/* History timeline */}
+              <section>
+                <h4 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-3">
+                  Movement history
+                </h4>
+                <ul className="space-y-3">
+                  {(detail.history ?? []).map((h, i) => (
+                    <li key={i} className="flex gap-3">
+                      <div className="mt-2 flex flex-col items-center gap-2">
+                        <div className="size-2.5 rounded-full bg-primary shrink-0" />
+                        {i < (detail.history?.length ?? 0) - 1 && (
+                          <div className="w-px flex-1 bg-slate-200" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-slate-900">{h.action}</p>
+                        {h.note && (
+                          <p className="text-xs text-slate-500 mt-0.5">{h.note}</p>
+                        )}
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {h.date} • Qty: {h.qty}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                  {(!detail.history || detail.history.length === 0) && (
+                    <li className="text-sm text-slate-500">No history yet.</li>
+                  )}
+                </ul>
+              </section>
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="px-5 py-2.5 bg-slate-900 text-white text-sm font-bold rounded-2xl hover:bg-slate-800 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -20,6 +20,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Modal } from '../../../components/ui/Modal';
 
 export default function ManagerWarehousesPage() {
   const toast = useToastHelpers();
@@ -46,6 +47,7 @@ export default function ManagerWarehousesPage() {
     maxCapacity: '',
   });
   const [creatingShelf, setCreatingShelf] = useState(false);
+  const [createWarehouseModalOpen, setCreateWarehouseModalOpen] = useState(false);
 
   useEffect(() => {
     load();
@@ -140,6 +142,7 @@ export default function ManagerWarehousesPage() {
       setWarehouseLength('');
       setWarehouseWidth('');
       setWarehouseDescription('');
+      setCreateWarehouseModalOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create warehouse');
     } finally {
@@ -251,10 +254,28 @@ export default function ManagerWarehousesPage() {
         <p className="text-slate-500 mt-1">Warehouse creation and shelf management</p>
       </div>
 
-      {/* Create warehouse form */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-black text-slate-900">Create warehouse</h2>
-        <form onSubmit={handleCreateWarehouse} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Create warehouse entry point */}
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-900">Create warehouse</h2>
+          <p className="text-sm text-slate-600 mt-1">
+            Define a new warehouse with size and address. You can then add zones and shelves.
+          </p>
+        </div>
+        <Button onClick={() => setCreateWarehouseModalOpen(true)}>
+          <span className="material-symbols-outlined text-base mr-1">add</span>
+          New warehouse
+        </Button>
+      </div>
+
+      {/* Create warehouse modal */}
+      <Modal
+        open={createWarehouseModalOpen}
+        onOpenChange={setCreateWarehouseModalOpen}
+        title="New warehouse"
+        size="lg"
+      >
+        <form onSubmit={handleCreateWarehouse} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Name"
             value={warehouseName}
@@ -283,7 +304,7 @@ export default function ManagerWarehousesPage() {
             placeholder="Width"
             required
           />
-          <div className="md:col-span-2 lg:col-span-3">
+          <div className="md:col-span-2">
             <Input
               label="Description (optional)"
               value={warehouseDescription}
@@ -291,27 +312,26 @@ export default function ManagerWarehousesPage() {
               placeholder="Short description"
             />
           </div>
-          <div className="md:col-span-2 lg:col-span-3 flex justify-end">
+          <div className="md:col-span-2 flex justify-end gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setCreateWarehouseModalOpen(false)}
+            >
+              Cancel
+            </Button>
             <Button type="submit" isLoading={creatingWarehouse}>
               Create warehouse
             </Button>
           </div>
         </form>
-      </div>
+      </Modal>
 
-      {/* Existing warehouses & shelf creation */}
+          {/* Existing warehouses */}
       {warehouses.length > 0 && (
         <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
             <h2 className="text-lg font-black text-slate-900">Existing warehouses</h2>
-            <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
-              <span className="text-sm font-bold text-slate-700">Selected warehouse:</span>
-              <Select
-                value={selectedWarehouseId}
-                onChange={(e) => handleWarehouseChange(e.target.value)}
-                options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
-              />
-            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
@@ -320,6 +340,7 @@ export default function ManagerWarehousesPage() {
                     <th className="py-2 pr-4">Address</th>
                     <th className="py-2 pr-4">Area (m²)</th>
                     <th className="py-2 pr-4">Status</th>
+                        <th className="py-2 pr-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -330,6 +351,15 @@ export default function ManagerWarehousesPage() {
                       <td className="py-2 pr-4 text-slate-700">{w.area}</td>
                       <td className="py-2 pr-4">
                         <Badge variant={w.status === 'ACTIVE' ? 'success' : 'warning'}>{w.status}</Badge>
+                          </td>
+                          <td className="py-2 pr-4 text-right">
+                            <a
+                              href={`/manager/warehouses/${w.id}`}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/5"
+                            >
+                              <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                              Manage
+                            </a>
                       </td>
                     </tr>
                   ))}
@@ -337,154 +367,10 @@ export default function ManagerWarehousesPage() {
               </table>
             </div>
           </div>
-
-          {/* Zones: list + create */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-black text-slate-900">Zones in selected warehouse</h2>
-            <p className="text-sm text-slate-600">Zones group shelves for location tracking. Contracts are assigned to zones.</p>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-100">
-                    <th className="py-2 pr-4">Zone code</th>
-                    <th className="py-2 pr-4">Name</th>
-                    <th className="py-2 pr-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {zones.length === 0 ? (
-                    <tr><td colSpan={3} className="py-4 text-slate-500">No zones yet. Create one below.</td></tr>
-                  ) : (
-                    zones.map((z) => (
-                      <tr key={z.id} className="border-b border-slate-50">
-                        <td className="py-2 pr-4 font-bold text-slate-900">{z.zoneCode}</td>
-                        <td className="py-2 pr-4 text-slate-700">{z.name}</td>
-                        <td className="py-2 pr-4">
-                          <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>{z.status ?? '—'}</Badge>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <form onSubmit={handleCreateZone} className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-              <Input
-                label="Zone code"
-                value={zoneForm.zoneCode}
-                onChange={(e) => setZoneForm((p) => ({ ...p, zoneCode: e.target.value }))}
-                placeholder="A"
-                required
-              />
-              <Input
-                label="Zone name"
-                value={zoneForm.name}
-                onChange={(e) => setZoneForm((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Zone A"
-                required
-              />
-              <Input
-                label="Description (optional)"
-                value={zoneForm.description}
-                onChange={(e) => setZoneForm((p) => ({ ...p, description: e.target.value }))}
-                placeholder="Short description"
-              />
-              <div className="md:col-span-3 flex justify-end">
-                <Button type="submit" isLoading={creatingZone}>
-                  Create zone
-                </Button>
-              </div>
-            </form>
-          </div>
-
-          {/* Create shelf form: requires zone */}
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-black text-slate-900">Create shelf in a zone</h2>
-            <form onSubmit={handleCreateShelf} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Select
-                label="Zone"
-                value={selectedZoneId}
-                onChange={(e) => setSelectedZoneId(e.target.value)}
-                options={[
-                  { value: '', label: 'Select zone' },
-                  ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` })),
-                ]}
-              />
-              <Input
-                label="Shelf code"
-                value={shelfForm.shelfCode}
-                onChange={(e) => handleShelfFormChange('shelfCode', e.target.value)}
-                placeholder="A-01-01"
-                required
-              />
-              <Input
-                label="Tier count"
-                value={shelfForm.tierCount}
-                onChange={(e) => handleShelfFormChange('tierCount', e.target.value)}
-                placeholder="Number of tiers"
-                required
-              />
-              <Input
-                label="Width (m)"
-                value={shelfForm.width}
-                onChange={(e) => handleShelfFormChange('width', e.target.value)}
-                placeholder="Width"
-                required
-              />
-              <Input
-                label="Depth (m)"
-                value={shelfForm.depth}
-                onChange={(e) => handleShelfFormChange('depth', e.target.value)}
-                placeholder="Depth"
-                required
-              />
-              <Input
-                label="Max capacity"
-                value={shelfForm.maxCapacity}
-                onChange={(e) => handleShelfFormChange('maxCapacity', e.target.value)}
-                placeholder="Max capacity"
-                required
-              />
-              <div className="md:col-span-2 lg:col-span-3 flex justify-end">
-                <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
-                  Create shelf
-                </Button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
-      {loading ? (
-        <TableSkeleton rows={5} cols={5} />
-      ) : error ? (
-        <ErrorState title="Failed to load" message={error} onRetry={load} />
-      ) : shelves.length === 0 ? (
-        <EmptyState icon="warehouse" title="No shelves" message="No shelf data" />
-      ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <Table>
-            <TableHead>
-              <TableHeader>Shelf code</TableHeader>
-              <TableHeader>Zone</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Contract</TableHeader>
-            </TableHead>
-            <TableBody>
-              {shelves.map((s) => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-bold text-slate-900">{s.code}</TableCell>
-                  <TableCell className="text-slate-700">{s.zone || '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>{s.status}</Badge>
-                  </TableCell>
-                  <TableCell className="text-slate-700">{s.contractCode || '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      {/* Shelf overview was moved into per-warehouse manage page (/manager/warehouses/[id]) */}
     </div>
   );
 }
