@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import StorageRequest from "../models/StorageRequest";
 import StorageRequestDetail from "../models/StorageRequestDetail";
 import StoredItem from "../models/StoredItem";
+import { notifyStorageRequestEvent } from "./notification.service";
 
 export interface StaffCompleteRequestItemDTO {
   requestDetailId: string;
@@ -217,7 +218,7 @@ export async function staffCompleteStorageRequest(
 
         const available = await getTotalStoredQuantity({
           contractId: request.contractId,
-          shelfId: detail.shelfId,
+          shelfId: detail.shelfId!,
           itemName: detail.itemName,
           unit,
           session
@@ -225,7 +226,7 @@ export async function staffCompleteStorageRequest(
 
         if (available < it.quantityActual) {
           throw new Error(
-            `Not enough stored quantity for item '${detail.itemName}' on shelf '${detail.shelfId.toString()}'`
+            `Not enough stored quantity for item '${detail.itemName}' on shelf '${detail.shelfId!.toString()}'`
           );
         }
       }
@@ -270,7 +271,7 @@ export async function staffCompleteStorageRequest(
         await StoredItem.findOneAndUpdate(
           {
             contractId: request.contractId,
-            shelfId: detail.shelfId,
+            shelfId: detail.shelfId!,
             itemName: detail.itemName,
             unit
           },
@@ -280,7 +281,7 @@ export async function staffCompleteStorageRequest(
       } else {
         await decreaseStoredQuantity({
           contractId: request.contractId,
-          shelfId: detail.shelfId,
+          shelfId: detail.shelfId!,
           itemName: detail.itemName,
           unit,
           quantity: it.quantityActual,
@@ -297,6 +298,18 @@ export async function staffCompleteStorageRequest(
     );
 
     await session.commitTransaction();
+
+    // Notifications (best-effort)
+    notifyStorageRequestEvent({
+      eventType: "REQUEST_DONE_BY_STAFF",
+      requestId: request._id.toString(),
+      actorUserId: staffUserId
+    });
+    notifyStorageRequestEvent({
+      eventType: "REQUEST_STATUS_CHANGED",
+      requestId: request._id.toString(),
+      actorUserId: staffUserId
+    });
 
     return {
       request_id: request._id.toString(),

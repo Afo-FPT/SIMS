@@ -52,6 +52,10 @@ export async function loginUser(email: string, password: string) {
     throw new Error("Invalid credentials");
   }
 
+  // Track last login time for admin reporting
+  user.lastLoginAt = new Date();
+  await user.save();
+
   const token = signToken({
     userId: user._id.toString(),
     role: user.role

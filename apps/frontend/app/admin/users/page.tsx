@@ -117,6 +117,20 @@ export default function AdminUsersPage() {
 
   const totalPages = Math.ceil(total / limit);
 
+  const getRoleVariant = (role: Role) => {
+    switch (role) {
+      case 'ADMIN':
+        return 'error' as const;
+      case 'MANAGER':
+        return 'info' as const;
+      case 'STAFF':
+        return 'warning' as const;
+      case 'CUSTOMER':
+      default:
+        return 'success' as const;
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -209,7 +223,7 @@ export default function AdminUsersPage() {
                   </TableCell>
                   <TableCell className="text-slate-700">{user.email}</TableCell>
                   <TableCell>
-                    <Badge variant="neutral">{user.role}</Badge>
+                    <Badge variant={getRoleVariant(user.role)}>{user.role}</Badge>
                   </TableCell>
                   <TableCell>
                     <Badge variant={user.status === 'ACTIVE' ? 'success' : 'error'}>

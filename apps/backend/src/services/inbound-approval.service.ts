@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import StorageRequest from "../models/StorageRequest";
 import InboundApproval from "../models/InboundApproval";
 import User from "../models/User";
+import { notifyStorageRequestEvent } from "./notification.service";
 
 export interface InboundApprovalRequestDTO {
   decision: "APPROVED" | "REJECTED";
@@ -114,6 +115,18 @@ export async function approveOrRejectInboundRequest(
     );
 
     await session.commitTransaction();
+
+    // Notifications (best-effort)
+    notifyStorageRequestEvent({
+      eventType: dto.decision === "APPROVED" ? "REQUEST_APPROVED" : "REQUEST_REJECTED",
+      requestId: request._id.toString(),
+      actorUserId: managerId
+    });
+    notifyStorageRequestEvent({
+      eventType: "REQUEST_STATUS_CHANGED",
+      requestId: request._id.toString(),
+      actorUserId: managerId
+    });
 
     return {
       inbound_request_id: request._id.toString(),

@@ -39,6 +39,37 @@ const createTransporter = () => {
   throw new Error("Email service not configured. Please set SMTP or Gmail credentials in .env");
 };
 
+export async function sendEmail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+}): Promise<void> {
+  const transporter = createTransporter();
+  const mailOptions = {
+    from:
+      process.env.EMAIL_FROM ||
+      process.env.SMTP_USER ||
+      process.env.GMAIL_USER ||
+      "noreply@sims.ai",
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+    text: params.text
+  };
+
+  if (!transporter) {
+    console.log("\n=== EMAIL (Development Mode) ===");
+    console.log("To:", params.to);
+    console.log("Subject:", params.subject);
+    console.log("Text:", params.text || "");
+    console.log("===============================\n");
+    return;
+  }
+
+  await transporter.sendMail(mailOptions);
+}
+
 /**
  * Gửi email reset password
  */

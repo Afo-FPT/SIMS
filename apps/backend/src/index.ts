@@ -6,6 +6,9 @@ import connectDB from "./config/db";
 import { initializeAdmin } from "./utils/initAdmin";
 import { verifyEmailConfig } from "./utils/email";
 import { runContractScheduler } from "./services/contract-scheduler.service";
+import http from "http";
+import { initSocket } from "./realtime/socket";
+import { startEmailWorker } from "./queues/email.queue";
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -66,12 +69,17 @@ const startServer = async () => {
   // Verify email configuration
   await verifyEmailConfig();
 
+  // Start email worker (if Redis configured)
+  startEmailWorker();
+
   // Start contract scheduler
   startContractScheduler();
 
   const PORT = process.env.PORT || 3001;
 
-  app.listen(PORT, () => {
+  const server = http.createServer(app);
+  initSocket(server);
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
   console.log("INDEX JWT_SECRET =", process.env.JWT_SECRET);

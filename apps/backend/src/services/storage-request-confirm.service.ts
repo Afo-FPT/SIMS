@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import StorageRequest from "../models/StorageRequest";
+import { notifyStorageRequestEvent } from "./notification.service";
 
 export interface CustomerConfirmStorageRequestResponseDTO {
   request_id: string;
@@ -42,6 +43,18 @@ export async function customerConfirmStorageRequest(
   request.status = "COMPLETED";
   request.customerConfirmedAt = now;
   await request.save();
+
+  // Notifications (best-effort)
+  notifyStorageRequestEvent({
+    eventType: "REQUEST_COMPLETED",
+    requestId: request._id.toString(),
+    actorUserId: customerId
+  });
+  notifyStorageRequestEvent({
+    eventType: "REQUEST_STATUS_CHANGED",
+    requestId: request._id.toString(),
+    actorUserId: customerId
+  });
 
   return {
     request_id: request._id.toString(),

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { DEMO_ACCOUNTS } from '../../../lib/demo-accounts';
 import { useToastHelpers } from '../../../lib/toast';
-import { apiLogin, persistAuth } from '../../../lib/auth';
+import { apiForgotPassword, apiLogin, persistAuth } from '../../../lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,6 +15,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +45,7 @@ export default function LoginPage() {
 
       // Redirect based on role
       if (persona === 'CUSTOMER') {
-        router.push('/');
+        router.push('/customer/dashboard');
       } else if (persona === 'ADMIN') {
         router.push('/admin/dashboard');
       } else if (persona === 'MANAGER') {
@@ -64,6 +68,31 @@ export default function LoginPage() {
   const handleQuickLogin = (demoEmail: string, demoPassword: string) => {
     setEmail(demoEmail);
     setPassword(demoPassword);
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotMessage(null);
+    if (!forgotEmail) {
+      toast.warning('Please enter your email address.');
+      return;
+    }
+    try {
+      setForgotLoading(true);
+      const res = await apiForgotPassword(forgotEmail);
+      setForgotMessage(res.message || 'If the email exists, a reset link will be sent.');
+      toast.success(res.message || 'If the email exists, a reset link will be sent.');
+      // In non-production, backend may return resetLink for testing
+      if (res.resetLink) {
+        toast.info('Development reset link returned. Open it to reset your password.');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to request password reset';
+      toast.error(msg);
+      setForgotMessage(msg);
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -118,6 +147,19 @@ export default function LoginPage() {
                 required
               />
             </div>
+            <div className="mt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotOpen(true);
+                  setForgotEmail(email || '');
+                  setForgotMessage(null);
+                }}
+                className="text-xs font-black text-slate-500 hover:text-primary transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
           </div>
 
           {/* Demo Accounts Quick Login */}
@@ -171,6 +213,49 @@ export default function LoginPage() {
             )}
           </button>
         </form>
+
+        {forgotOpen && (
+          <div className="mt-8 pt-6 border-t border-slate-100">
+            <h2 className="text-sm font-black text-slate-900 mb-2">Reset your password</h2>
+            <p className="text-xs text-slate-500 mb-4">
+              Enter your email address and we will send you a reset link.
+            </p>
+            <form onSubmit={handleForgotPassword} className="space-y-3">
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="your.email@company.com"
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
+                required
+              />
+              {forgotMessage && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium">
+                  {forgotMessage}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="flex-1 py-3 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {forgotLoading ? 'Sending...' : 'Send reset link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForgotOpen(false)}
+                  className="px-4 py-3 bg-slate-50 border border-slate-200 text-slate-700 font-black rounded-2xl hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                You will receive a link like <span className="font-mono">/reset-password?token=...</span>
+              </p>
+            </form>
+          </div>
+        )}
 
         <div className="mt-8 pt-8 border-t border-slate-100 space-y-4">
           <Link

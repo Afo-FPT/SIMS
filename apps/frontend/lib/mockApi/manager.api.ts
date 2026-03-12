@@ -11,6 +11,8 @@ import { mockStaffTasks } from '../mock/staff.mock';
 import { MOCK_SHELVES, MOCK_STAFF_USERS } from '../mock/manager.mock';
 import { apiFetchRaw } from '../api-client';
 
+export type { ManagerWarehouse } from '../../types/manager';
+
 async function fetchWithAuth(path: string, options: RequestInit = {}): Promise<Response> {
   return apiFetchRaw(path, options);
 }

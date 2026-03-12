@@ -9,6 +9,7 @@ interface BackendUser {
   role: 'admin' | 'manager' | 'staff' | 'customer';
   isActive: boolean;
   createdAt?: string;
+  lastLoginAt?: string;
   // other fields are ignored
 }
 
@@ -58,7 +59,7 @@ function mapBackendUserToAdminUser(user: BackendUser): AdminUser {
     role: mapBackendRoleToFrontend(user.role),
     status,
     createdAt: user.createdAt || new Date().toISOString(),
-    // Optional fields (avatar, title, lastLoginAt, ipAddress) are not provided by backend
+    lastLoginAt: user.lastLoginAt,
   };
 }
 

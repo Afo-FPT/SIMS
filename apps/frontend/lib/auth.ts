@@ -75,6 +75,38 @@ export async function apiRegister(name: string, email: string, password: string)
   return data as RegisterResponse;
 }
 
+export async function apiForgotPassword(email: string): Promise<{ message: string; resetLink?: string }> {
+  const res = await fetch(getApiUrl('/auth/forgot-password'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Request reset password failed');
+  }
+  return data as { message: string; resetLink?: string };
+}
+
+export async function apiResetPassword(token: string, password: string): Promise<{ message: string }> {
+  const res = await fetch(getApiUrl('/auth/reset-password'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token, password }),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Reset password failed');
+  }
+  return data as { message: string };
+}
+
 /**
  * Persist auth data to localStorage so existing layouts continue to work
  */

@@ -168,9 +168,8 @@ export default function ManagerServiceRequestsPage() {
               </div>
             )}
             {detail.status === 'Pending' && (
-              <div className="flex gap-3 pt-4">
-                <Button onClick={() => { handleApprove(detail).then(() => { }); setDetail(null); }}>Approve → Create task</Button>
-                <Button variant="ghost" onClick={() => handleReject(detail)}>Reject</Button>
+              <div className="pt-4 text-sm text-slate-500">
+                Approve/Reject actions are not available on this page.
               </div>
             )}
           </div>

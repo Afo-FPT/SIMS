@@ -3,6 +3,7 @@ import StorageRequest from "../models/StorageRequest";
 import StorageRequestDetail from "../models/StorageRequestDetail";
 import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
+import { notifyStorageRequestEvent } from "./notification.service";
 
 /**
  * DTO for inbound request item
@@ -277,7 +278,7 @@ export async function createInboundRequest(
     quantityActual: detail.quantityActual
   }));
 
-  return {
+  const response = {
     requestId: request._id.toString(),
     contractId: request.contractId.toString(),
     status: request.status,
@@ -285,6 +286,11 @@ export async function createInboundRequest(
     items: itemsResponse,
     createdAt: request.createdAt
   };
+
+  // Notifications (best-effort)
+  notifyStorageRequestEvent({ eventType: "REQUEST_CREATED", requestId: request._id.toString(), actorUserId: customerId });
+
+  return response;
 }
 
 /**
@@ -336,14 +342,14 @@ export async function createOutboundRequest(
   // Build response
   const itemsResponse: RequestDetailResponse[] = requestDetails.map((detail) => ({
     requestDetailId: detail._id.toString(),
-    shelfId: detail.shelfId.toString(),
+    shelfId: detail.shelfId!.toString(),
     itemName: detail.itemName,
     unit: (detail as any).unit || "pcs",
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));
 
-  return {
+  const response = {
     requestId: request._id.toString(),
     contractId: request.contractId.toString(),
     status: request.status,
@@ -351,6 +357,11 @@ export async function createOutboundRequest(
     items: itemsResponse,
     createdAt: request.createdAt
   };
+
+  // Notifications (best-effort)
+  notifyStorageRequestEvent({ eventType: "REQUEST_CREATED", requestId: request._id.toString(), actorUserId: customerId });
+
+  return response;
 }
 
 /**
@@ -396,6 +407,9 @@ export async function assignStorageRequest(
   request.approvedAt = new Date();
   request.assignedStaffIds = objectIds;
   await request.save();
+
+  // Notifications (best-effort)
+  notifyStorageRequestEvent({ eventType: "REQUEST_ASSIGNED", requestId: request._id.toString(), actorUserId: managerId });
 
   return {
     request_id: request._id.toString(),

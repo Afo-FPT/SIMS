@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Shelf, ManagerWarehouse } from '../../../types/manager';
+import Link from 'next/link';
 import {
   listWarehouses,
   createWarehouse,
@@ -353,13 +354,13 @@ export default function ManagerWarehousesPage() {
                         <Badge variant={w.status === 'ACTIVE' ? 'success' : 'warning'}>{w.status}</Badge>
                           </td>
                           <td className="py-2 pr-4 text-right">
-                            <a
+                            <Link
                               href={`/manager/warehouses/${w.id}`}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/5"
                             >
                               <span className="material-symbols-outlined text-sm">manage_accounts</span>
                               Manage
-                            </a>
+                            </Link>
                       </td>
                     </tr>
                   ))}

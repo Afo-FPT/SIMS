@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type {
   ServiceRequest,
   ServiceRequestType,
@@ -35,6 +36,7 @@ const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
 
 export default function ServiceRequestsPage() {
   const toast = useToastHelpers();
+  const searchParams = useSearchParams();
   const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
   const [contractsError, setContractsError] = useState<string | null>(null);
@@ -113,6 +115,14 @@ export default function ServiceRequestsPage() {
       cancelled = true;
     };
   }, [type, contractId]);
+
+  // Open request detail from URL (Topbar notification -> /service-requests?requestId=...)
+  useEffect(() => {
+    const rid = searchParams.get('requestId');
+    if (!rid) return;
+    setMainTab('list');
+    setDetailRequestId(rid);
+  }, [searchParams]);
 
   // Load stored items for Inventory Checking "By SKU list" (SKUs của contract từ BE)
   useEffect(() => {
@@ -518,7 +528,7 @@ export default function ServiceRequestsPage() {
             ) : trackingError ? (
               <div className="p-12 text-center">
                 <p className="text-red-600 mb-4">{trackingError}</p>
-                <Button variant="outline" onClick={loadTrackingRequests}>Retry</Button>
+                <Button variant="secondary" onClick={loadTrackingRequests}>Retry</Button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -587,7 +597,7 @@ export default function ServiceRequestsPage() {
             ) : cycleError ? (
               <div className="p-12 text-center">
                 <p className="text-red-600 mb-4">{cycleError}</p>
-                <Button variant="outline" onClick={loadCycleCounts}>Retry</Button>
+                <Button variant="secondary" onClick={loadCycleCounts}>Retry</Button>
               </div>
             ) : cycleCounts.length === 0 ? (
               <div className="p-12 text-center text-slate-500">
@@ -1065,7 +1075,7 @@ export default function ServiceRequestsPage() {
                 </span>
                 <span className="text-slate-400">|</span>
                 <span className="text-slate-500">Contract:</span>
-                <span className="font-medium text-slate-800">{detailRequest.contract_id}</span>
+                <span className="font-medium text-slate-800">{detailRequest.contract_code || 'Unknown Contract'}</span>
               </div>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
                 <span className="text-slate-500">Status:</span>
