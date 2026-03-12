@@ -6,10 +6,10 @@ import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
-import { listRentRequests } from '../../../lib/rent-requests.api';
+import { listStorageRequests } from '../../../lib/storage-requests.api';
+import { getCycleCounts } from '../../../lib/cycle-count.api';
 import type { Contract } from '../../../lib/customer-types';
 import type { StoredItemOption } from '../../../lib/stored-items.api';
-import type { RentRequest } from '../../../lib/customer-types';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
@@ -18,7 +18,8 @@ export default function CustomerDashboard() {
   const toast = useToastHelpers();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [storedItems, setStoredItems] = useState<StoredItemOption[]>([]);
-  const [rentRequests, setRentRequests] = useState<RentRequest[]>([]);
+  const [storageRequests, setStorageRequests] = useState<any[]>([]);
+  const [cycleCounts, setCycleCounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,14 +31,16 @@ export default function CustomerDashboard() {
     try {
       setLoading(true);
       setError(null);
-      const [c, items, rr] = await Promise.all([
+      const [c, items, sr, cc] = await Promise.all([
         getCustomerContracts(),
         listMyStoredItems(),
-        listRentRequests(),
+        listStorageRequests(),
+        getCycleCounts(),
       ]);
       setContracts(c);
       setStoredItems(items);
-      setRentRequests(rr);
+      setStorageRequests(sr);
+      setCycleCounts(cc);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load dashboard data';
       setError(msg);
@@ -51,8 +54,8 @@ export default function CustomerDashboard() {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
-          <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Customer Dashboard</h1>
+          <p className="text-slate-500 mt-1">My inventory, service requests, contracts, and warehouse notifications</p>
         </div>
         <LoadingSkeleton className="h-64 w-full rounded-3xl" />
       </div>
@@ -63,8 +66,8 @@ export default function CustomerDashboard() {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
-          <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Customer Dashboard</h1>
+          <p className="text-slate-500 mt-1">My inventory, service requests, contracts, and warehouse notifications</p>
         </div>
         <ErrorState title="Failed to load dashboard" message={error} onRetry={loadData} />
       </div>
@@ -72,17 +75,25 @@ export default function CustomerDashboard() {
   }
 
   const activeContracts = contracts.filter((c) => c.status === 'active');
-  const shelvesOccupied = activeContracts.reduce((s, c) => s + (c.rentedZones?.length || 0), 0);
-  const shelvesTotal = Math.max(shelvesOccupied, 24);
-  const shelvesAvailable = shelvesTotal - shelvesOccupied;
 
   const uniqueSkuNames = new Set(storedItems.map((i) => i.item_name));
   const totalSKUs = uniqueSkuNames.size;
   const totalQty = storedItems.reduce((s, i) => s + i.quantity, 0);
+  const lowStockCount = storedItems.filter((i) => i.quantity < 50).length;
+  const requestInProgress = storageRequests.filter((r) => r.status === 'PENDING' || r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+  const requestCompleted = storageRequests.filter((r) => r.status === 'COMPLETED').length;
+  const pendingConfirmations = cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
 
-  const requestsInProgress = rentRequests.filter(
-    (r) => r.status === 'Submitted',
-  ).length;
+  const customerModules = [
+    { title: 'Warehouse & Services', href: '/customer/warehouse-services', icon: 'warehouse' },
+    { title: 'My Contracts', href: '/customer/contracts', icon: 'description' },
+    { title: 'Submit Requests', href: '/customer/service-requests', icon: 'post_add' },
+    { title: 'In/Out Tracking', href: '/customer/service-requests', icon: 'local_shipping' },
+    { title: 'Checking Requests', href: '/customer/inventory-checking', icon: 'fact_check' },
+    { title: 'History', href: '/customer/history', icon: 'history' },
+    { title: 'Reports', href: '/customer/reports', icon: 'monitoring' },
+    { title: 'Profile & Settings', href: '/customer/settings', icon: 'settings' },
+  ];
 
   const recentContracts = [...contracts]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -91,25 +102,22 @@ export default function CustomerDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Overview</h1>
-        <p className="text-slate-500 mt-1">Contract status, shelves, inventory & activity</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Customer Dashboard</h1>
+        <p className="text-slate-500 mt-1">My inventory, service requests, contracts, and warehouse notifications</p>
       </div>
 
-      {/* Shelves + SKUs + Requests */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-              <span className="material-symbols-outlined text-2xl">view_agenda</span>
+              <span className="material-symbols-outlined text-2xl">inventory_2</span>
             </div>
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">
-              Shelves rented
+              Inventory quantity
             </h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{shelvesOccupied}</p>
-          <p className="text-xs text-slate-500 mt-1">
-            <span className="font-bold text-slate-700">{shelvesAvailable}</span> available
-          </p>
+          <p className="text-3xl font-black text-slate-900">{totalQty}</p>
+          <p className="text-xs text-slate-500 mt-1">Across all active contracts</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
@@ -122,7 +130,7 @@ export default function CustomerDashboard() {
             </h3>
           </div>
           <p className="text-3xl font-black text-slate-900">{totalSKUs}</p>
-          <p className="text-xs text-slate-500 mt-1">Unique SKUs in storage</p>
+          <p className="text-xs text-slate-500 mt-1">{lowStockCount} low-stock alerts</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
@@ -131,11 +139,11 @@ export default function CustomerDashboard() {
               <span className="material-symbols-outlined text-2xl">numbers</span>
             </div>
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">
-              Total quantity
+              Active contracts
             </h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{totalQty}</p>
-          <p className="text-xs text-slate-500 mt-1">By counting rule (contract unit)</p>
+          <p className="text-3xl font-black text-slate-900">{activeContracts.length}</p>
+          <p className="text-xs text-slate-500 mt-1">Signed and currently running</p>
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
@@ -144,15 +152,28 @@ export default function CustomerDashboard() {
               <span className="material-symbols-outlined text-2xl">pending_actions</span>
             </div>
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">
-              In progress
+              Request status
             </h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{requestsInProgress}</p>
-          <p className="text-xs text-slate-500 mt-1">Rent requests in Submitted state</p>
+          <p className="text-3xl font-black text-slate-900">{requestInProgress}</p>
+          <p className="text-xs text-slate-500 mt-1">{requestCompleted} completed · {pendingConfirmations} waiting confirmation</p>
         </div>
       </div>
 
-      {/* Contract status */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-4">Customer Modules</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {customerModules.map((m) => (
+            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">{m.icon}</span>
+              </div>
+              <p className="text-sm font-bold text-slate-900">{m.title}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Contract status</h2>
         {contracts.length === 0 ? (
@@ -190,67 +211,68 @@ export default function CustomerDashboard() {
         )}
       </section>
 
-      {/* Recent activity (simple view from contracts & rent requests) */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-black text-slate-900">Recent activity</h2>
+          <h2 className="text-lg font-black text-slate-900">Recent inbound/outbound activity</h2>
           <div className="flex gap-4">
             <Link
-              href="/customer/rent-requests"
+              href="/customer/service-requests"
               className="text-sm font-bold text-primary hover:text-primary-dark"
             >
-              Rent requests
+              Service requests
             </Link>
             <Link
-              href="/customer/contracts"
+              href="/customer/inventory-checking"
               className="text-sm font-bold text-primary hover:text-primary-dark"
             >
-              Contracts
+              Inventory checking
             </Link>
           </div>
         </div>
-        {contracts.length === 0 && rentRequests.length === 0 ? (
+        {storageRequests.length === 0 && cycleCounts.length === 0 ? (
           <EmptyState
             icon="history"
             title="No recent activity"
-            message="Your contracts and rent requests will appear here."
+            message="Your storage requests and cycle-count updates will appear here."
           />
         ) : (
           <ul className="space-y-0">
-            {contracts.slice(0, 3).map((c) => (
+            {storageRequests.slice(0, 4).map((r) => (
               <li
-                key={c.id}
+                key={r.request_id}
                 className="flex gap-4 py-3 border-b border-slate-100 last:border-0"
               >
                 <div className="flex flex-col items-center">
                   <div className="size-8 rounded-full flex items-center justify-center bg-primary/10 text-primary">
-                    <span className="material-symbols-outlined text-lg">description</span>
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0 pb-1">
-                  <p className="text-sm font-bold text-slate-900">Contract {c.code}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Status: {c.status} · Updated at {new Date(c.updatedAt).toLocaleString()}
-                  </p>
-                </div>
-              </li>
-            ))}
-            {rentRequests.slice(0, 3).map((r) => (
-              <li
-                key={r.id}
-                className="flex gap-4 py-3 border-b border-slate-100 last:border-0"
-              >
-                <div className="flex flex-col items-center">
-                  <div className="size-8 rounded-full flex items-center justify-center bg-amber-500/10 text-amber-600">
-                    <span className="material-symbols-outlined text-lg">request_quote</span>
+                    <span className="material-symbols-outlined text-lg">{r.request_type === 'IN' ? 'inbox' : 'outbox'}</span>
                   </div>
                 </div>
                 <div className="flex-1 min-w-0 pb-1">
                   <p className="text-sm font-bold text-slate-900">
-                    Rent request · {r.shelves} shelves
+                    {r.request_type === 'IN' ? 'Inbound' : 'Outbound'} · {r.reference || r.request_id.slice(-8)}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Status: {r.status} · Created at {new Date(r.createdAt).toLocaleString()}
+                    Status: {r.status} · Updated at {new Date(r.updated_at || r.created_at).toLocaleString('en-GB')}
+                  </p>
+                </div>
+              </li>
+            ))}
+            {cycleCounts.slice(0, 2).map((c) => (
+              <li
+                key={c.cycle_count_id}
+                className="flex gap-4 py-3 border-b border-slate-100 last:border-0"
+              >
+                <div className="flex flex-col items-center">
+                  <div className="size-8 rounded-full flex items-center justify-center bg-amber-500/10 text-amber-600">
+                    <span className="material-symbols-outlined text-lg">fact_check</span>
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 pb-1">
+                  <p className="text-sm font-bold text-slate-900">
+                    Cycle count · {c.contract_code}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Status: {c.status} · Updated at {new Date(c.updated_at || c.created_at).toLocaleString('en-GB')}
                   </p>
                 </div>
               </li>

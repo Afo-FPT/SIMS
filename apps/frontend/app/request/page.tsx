@@ -7,19 +7,7 @@ export default function RequestPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user is logged in
-    if (typeof window !== 'undefined') {
-      const role = localStorage.getItem('sws_persona');
-      const verified = localStorage.getItem('sws_verified') === 'true';
-
-      if (role === 'CUSTOMER' && verified) {
-        // Redirect to customer dashboard if logged in as customer
-        router.push('/customer/dashboard');
-      } else {
-        // Redirect to login for non-authenticated users
-        router.push('/login');
-      }
-    }
+    router.push('/login');
   }, [router]);
 
   // Show loading state while redirecting

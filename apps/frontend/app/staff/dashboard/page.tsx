@@ -97,12 +97,25 @@ export default function StaffDashboard() {
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 5);
 
+  const moduleCards = [
+    { title: 'Assigned Tasks', href: '/staff/tasks', icon: 'assignment' },
+    { title: 'Inbound Execution', href: '/staff/inbound-requests', icon: 'inbox' },
+    { title: 'Outbound Execution', href: '/staff/outbound-requests', icon: 'outbox' },
+    { title: 'Inventory Update', href: '/staff/inventory', icon: 'inventory_2' },
+    { title: 'Issue Reporting', href: '/staff/report-issue', icon: 'report_problem' },
+    { title: 'Cycle Count', href: '/staff/cycle-count', icon: 'fact_check' },
+    { title: 'Personal History', href: '/staff/history', icon: 'history' },
+    { title: 'Notifications', href: '/staff/notifications', icon: 'notifications' },
+    { title: 'AI Layout Suggestion', href: '/staff/inventory', icon: 'auto_awesome' },
+    { title: 'Profile & Settings', href: '/staff/settings', icon: 'settings' },
+  ];
+
   const formatDate = (s: string) => {
     try {
-    return new Date(s).toLocaleString('vi-VN', {
+      return new Date(s).toLocaleString('en-GB', {
       dateStyle: 'short',
       timeStyle: 'short',
-    });
+      });
     } catch {
       return s;
     }
@@ -125,8 +138,8 @@ export default function StaffDashboard() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Your work status and recent warehouse tasks</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Dashboard</h1>
+        <p className="text-slate-500 mt-1">Daily KPIs, assigned operations, and warehouse execution modules</p>
       </div>
 
       {/* KPI Cards */}
@@ -185,6 +198,20 @@ export default function StaffDashboard() {
           <p className="text-xs text-slate-500 mt-1">Cycle count tasks with stock differences</p>
         </div>
       </div>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-4">Staff Modules</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          {moduleCards.map((m) => (
+            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">{m.icon}</span>
+              </div>
+              <p className="text-sm font-bold text-slate-900">{m.title}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       {/* Recent Tasks */}
       <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">

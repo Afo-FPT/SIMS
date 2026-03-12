@@ -40,13 +40,13 @@ import type {
   ProcessingTimeBoxPlotItem,
 } from '../../../types/manager';
 
-const COLORS = ['#0f172a', '#334155', '#475569', '#94a3b8', '#e2e8f0'];
-const INBOUND_COLOR = '#006c75';
-const OUTBOUND_COLOR = '#0f172a';
+const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+const INBOUND_COLOR = '#0ea5e9';
+const OUTBOUND_COLOR = '#6366f1';
 const APPROVED_COLOR = '#059669';
 const REJECTED_COLOR = '#dc2626';
-const OUTBOUND_TOP_COLOR = '#006c75';
-const GANTT_COLORS = ['#006c75', '#0f172a', '#475569', '#64748b', '#94a3b8'];
+const OUTBOUND_TOP_COLOR = '#0ea5e9';
+const GANTT_COLORS = ['#0ea5e9', '#6366f1', '#22c55e', '#f59e0b', '#14b8a6'];
 
 export default function ManagerReportsPage() {
   const toast = useToastHelpers();
@@ -135,7 +135,7 @@ export default function ManagerReportsPage() {
 
       csvRows.push('SIMS-AI OPERATIONAL REPORT');
       csvRows.push(
-        `Generated Date: ${new Date().toLocaleString('vi-VN', {
+        `Generated Date: ${new Date().toLocaleString('en-GB', {
           day: '2-digit',
           month: '2-digit',
           year: 'numeric',
@@ -749,7 +749,7 @@ export default function ManagerReportsPage() {
                 <XAxis type="number" hide />
                 <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="qty" fill="#0f172a" radius={[0, 8, 8, 0]} barSize={32} />
+                <Bar dataKey="qty" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1060,14 +1060,14 @@ function GanttChart({ contracts }: { contracts: ManagerReportExpiringContractIte
       </div>
       <div className="mt-2 flex justify-between text-[10px] text-slate-400 font-medium">
         <span>
-          {new Date(start).toLocaleDateString('vi-VN', {
+          {new Date(start).toLocaleDateString('en-GB', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
           })}
         </span>
         <span>
-          {new Date(end).toLocaleDateString('vi-VN', {
+          {new Date(end).toLocaleDateString('en-GB', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',

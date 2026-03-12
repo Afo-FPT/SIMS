@@ -44,6 +44,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'PACKAGES': 'packages',
       'SERVICE_REQUESTS': 'service-requests',
       'INVENTORY': 'inventory',
+      'WAREHOUSE_SERVICES': 'warehouse-services',
       'INVENTORY_CHECKING': 'inventory-checking',
       'TASKS': 'tasks',
       'WAREHOUSES': 'warehouses',
@@ -64,6 +65,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'OUTBOUND_REQUESTS': 'outbound-requests',
       'CYCLE_COUNT': 'cycle-count',
       'REPORT_ISSUE': 'report-issue',
+      'NOTIFICATIONS': 'notifications',
     };
 
     const targetPath = pathMap[view] || view.toLowerCase();
@@ -122,6 +124,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'packages': 'PACKAGES',
     'service-requests': 'SERVICE_REQUESTS',
     'inventory': 'INVENTORY',
+    'warehouse-services': 'WAREHOUSE_SERVICES',
     'inventory-checking': 'INVENTORY_CHECKING',
     'cycle-count': 'CYCLE_COUNT',
     'tasks': 'TASKS',
@@ -141,6 +144,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'history': 'HISTORY',
     'inbound-requests': 'INBOUND_REQUESTS',
     'outbound-requests': 'OUTBOUND_REQUESTS',
+    'notifications': 'NOTIFICATIONS',
   };
 
   let activeView = reverseMap[lastPart] || 'DASHBOARD';

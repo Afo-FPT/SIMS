@@ -1,28 +1,12 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isCustomer, setIsCustomer] = useState(false);
-  const [customerName, setCustomerName] = useState('');
-  
-  useEffect(() => {
-    // Check if user is logged in as CUSTOMER
-    if (typeof window !== 'undefined') {
-      const role = localStorage.getItem('sws_persona');
-      const name = localStorage.getItem('sws_name');
-      const verified = localStorage.getItem('sws_verified') === 'true';
-      
-      if (role === 'CUSTOMER' && verified) {
-        setIsCustomer(true);
-        setCustomerName(name || '');
-      }
-    }
-  }, []);
+  const [isCustomer] = useState(false);
   
   const navigateTo = (path: string) => {
     router.push(path);
@@ -35,8 +19,6 @@ export default function LandingPage() {
     localStorage.removeItem('sws_title');
     localStorage.removeItem('sws_avatar');
     localStorage.removeItem('sws_verified');
-    setIsCustomer(false);
-    setCustomerName('');
     router.push('/');
   };
 
@@ -67,7 +49,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-4">
             {isCustomer ? (
               <>
-                <span className="hidden sm:block text-sm font-bold text-slate-900">Welcome, {customerName || 'Customer'}</span>
+                <span className="hidden sm:block text-sm font-bold text-slate-900">Welcome, Customer</span>
                 <button onClick={() => navigateTo('/customer/dashboard')} className="px-6 py-2.5 bg-primary text-white text-[10px] font-black rounded-xl shadow-xl shadow-primary/20 uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95">
                   My Dashboard
                 </button>

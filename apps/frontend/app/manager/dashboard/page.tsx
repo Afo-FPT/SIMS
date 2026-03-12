@@ -1,25 +1,25 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { ManagerDashboardStats } from '../../../types/manager';
-import {
-  getManagerDashboardStats,
-  listServiceRequests,
-  listTasks,
-} from '../../../lib/mockApi/manager.api';
+import { listStorageRequests } from '../../../lib/storage-requests.api';
+import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { getStockInHistory, getStockOutHistory } from '../../../lib/stock-history.api';
+import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
-import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
 export default function ManagerDashboard() {
   const toast = useToastHelpers();
-  const [stats, setStats] = useState<ManagerDashboardStats | null>(null);
-  const [serviceRequests, setServiceRequests] = useState<Awaited<ReturnType<typeof listServiceRequests>>>([]);
-  const [tasks, setTasks] = useState<Awaited<ReturnType<typeof listTasks>>>([]);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [storageRequests, setStorageRequests] = useState<any[]>([]);
+  const [cycleCounts, setCycleCounts] = useState<any[]>([]);
+  const [inboundVolume, setInboundVolume] = useState(0);
+  const [outboundVolume, setOutboundVolume] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,14 +31,29 @@ export default function ManagerDashboard() {
     try {
       setLoading(true);
       setError(null);
-      const [s, sr, t] = await Promise.all([
-        getManagerDashboardStats(),
-        listServiceRequests(),
-        listTasks(),
+      const [contractRows, requestRows, cycleRows, stockIn, stockOut] = await Promise.all([
+        getCustomerContracts(),
+        listStorageRequests(),
+        getCycleCounts(),
+        getStockInHistory({ limit: 300 }),
+        getStockOutHistory({ limit: 300 }),
       ]);
-      setStats(s);
-      setServiceRequests(sr);
-      setTasks(t);
+
+      setContracts(contractRows);
+      setStorageRequests(requestRows);
+      setCycleCounts(cycleRows);
+      setInboundVolume(
+        stockIn.history.reduce(
+          (sum, h) => sum + h.items.reduce((s, i) => s + (i.quantity_actual ?? i.quantity_requested ?? 0), 0),
+          0,
+        ),
+      );
+      setOutboundVolume(
+        stockOut.history.reduce(
+          (sum, h) => sum + h.items.reduce((s, i) => s + (i.quantity_actual ?? i.quantity_requested ?? 0), 0),
+          0,
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
       toast.error('Failed to load dashboard data');
@@ -47,46 +62,82 @@ export default function ManagerDashboard() {
     }
   };
 
+  const stats = useMemo(() => {
+    const contractsActive = contracts.filter((c) => c.status === 'active').length;
+    const pendingApprovals = storageRequests.filter((r) => r.status === 'PENDING').length;
+    const assignedToStaff = storageRequests.filter((r) => r.status === 'APPROVED').length;
+    const discrepancyFlags =
+      cycleCounts.filter((c) => c.status === 'ADJUSTMENT_REQUESTED').length +
+      storageRequests.filter((r) => r.status === 'REJECTED').length;
+
+    const zonesRented = contracts.reduce((sum, c) => sum + (c.rentedZones?.length || 0), 0);
+    const estimatedZoneCapacity = Math.max(zonesRented * 10000, 10000);
+    const utilizationRate = Math.min(
+      100,
+      Math.round(((inboundVolume - outboundVolume > 0 ? inboundVolume - outboundVolume : inboundVolume) / estimatedZoneCapacity) * 100),
+    );
+
+    return {
+      contractsActive,
+      pendingApprovals,
+      assignedToStaff,
+      discrepancyFlags,
+      utilizationRate,
+    };
+  }, [contracts, storageRequests, cycleCounts, inboundVolume, outboundVolume]);
+
+  const recentService = [...storageRequests]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5);
+  const recentTasks = [...cycleCounts]
+    .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+    .slice(0, 5);
+
+  const dashboardModules = [
+    { title: 'Warehouse Structures', href: '/manager/warehouses', icon: 'warehouse' },
+    { title: 'Pricing & Conditions', href: '/manager/packages', icon: 'payments' },
+    { title: 'Contracts Management', href: '/manager/contracts', icon: 'description' },
+    { title: 'Inbound Approval', href: '/manager/inbound-requests', icon: 'inbox' },
+    { title: 'Outbound Management', href: '/manager/outbound-requests', icon: 'outbox' },
+    { title: 'Inventory Oversight', href: '/manager/inventory', icon: 'inventory_2' },
+    { title: 'Cycle Count Coordination', href: '/manager/cycle-count', icon: 'fact_check' },
+    { title: 'AI Insights & Reports', href: '/manager/reports', icon: 'monitoring' },
+    { title: 'Staff Assignment', href: '/manager/tasks', icon: 'assignment_ind' },
+    { title: 'Profile & Settings', href: '/manager/settings', icon: 'settings' },
+  ];
+
   if (loading) {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Operations overview</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
+          <p className="text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
         </div>
         <TableSkeleton rows={4} cols={4} />
       </div>
     );
   }
 
-  if (error || !stats) {
+  if (error) {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-          <p className="text-slate-500 mt-1">Operations overview</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
+          <p className="text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
         </div>
         <ErrorState title="Failed to load dashboard" message={error || 'Unknown error'} onRetry={loadData} />
       </div>
     );
   }
 
-  const recentService = serviceRequests
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-  const recentTasks = tasks
-    .filter((t) => t.status !== 'CANCELLED')
-    .sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime())
-    .slice(0, 5);
-
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Operations overview</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
+        <p className="text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
@@ -99,41 +150,54 @@ export default function ManagerDashboard() {
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-              <span className="material-symbols-outlined text-2xl">view_agenda</span>
+              <span className="material-symbols-outlined text-2xl">approval</span>
             </div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Shelves occupied</h3>
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Pending approvals</h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{stats.shelvesOccupied}</p>
-          <p className="text-xs text-slate-500 mt-1">{stats.shelvesAvailable} available</p>
+          <p className="text-3xl font-black text-slate-900">{stats.pendingApprovals}</p>
         </div>
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600">
               <span className="material-symbols-outlined text-2xl">pending_actions</span>
             </div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Service requests pending</h3>
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Assigned to staff</h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{stats.serviceRequestsPending}</p>
+          <p className="text-3xl font-black text-slate-900">{stats.assignedToStaff}</p>
         </div>
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-600">
-              <span className="material-symbols-outlined text-2xl">assignment</span>
+              <span className="material-symbols-outlined text-2xl">inventory</span>
             </div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Tasks in progress</h3>
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Utilization rate</h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{stats.tasksInProgress}</p>
+          <p className="text-3xl font-black text-slate-900">{stats.utilizationRate}%</p>
         </div>
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <div className="size-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-600">
               <span className="material-symbols-outlined text-2xl">warning</span>
             </div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Discrepancies pending</h3>
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Alerts</h3>
           </div>
-          <p className="text-3xl font-black text-slate-900">{stats.discrepanciesPendingApproval}</p>
+          <p className="text-3xl font-black text-slate-900">{stats.discrepancyFlags}</p>
         </div>
       </div>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-4">Manager Modules</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+          {dashboardModules.map((m) => (
+            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
+              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
+                <span className="material-symbols-outlined">{m.icon}</span>
+              </div>
+              <p className="text-sm font-bold text-slate-900">{m.title}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -149,27 +213,27 @@ export default function ManagerDashboard() {
             <Table>
               <TableHead>
                 <TableHeader>Request</TableHeader>
-                <TableHeader>Customer</TableHeader>
+                <TableHeader>Contract</TableHeader>
                 <TableHeader>Type</TableHeader>
                 <TableHeader>Status</TableHeader>
-                <TableHeader>Preferred</TableHeader>
+                <TableHeader>Updated</TableHeader>
               </TableHead>
               <TableBody>
                 {recentService.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-bold text-slate-900">{r.id}</TableCell>
-                    <TableCell className="text-slate-700">{r.customerName || '—'}</TableCell>
-                    <TableCell><Badge variant="neutral">{r.type}</Badge></TableCell>
+                  <TableRow key={r.request_id}>
+                    <TableCell className="font-bold text-slate-900">{r.reference || r.request_id.slice(-8)}</TableCell>
+                    <TableCell className="text-slate-700">{r.contract_code || r.contract_id.slice(-6)}</TableCell>
+                    <TableCell><Badge variant="neutral">{r.request_type === 'IN' ? 'Inbound' : 'Outbound'}</Badge></TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          r.status === 'Completed' ? 'success' : r.status === 'Processing' ? 'info' : r.status === 'Rejected' ? 'error' : 'warning'
+                          r.status === 'COMPLETED' ? 'success' : r.status === 'APPROVED' ? 'info' : r.status === 'REJECTED' ? 'error' : 'warning'
                         }
                       >
                         {r.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-slate-600 text-sm">{r.preferredDate} {r.preferredTime || ''}</TableCell>
+                    <TableCell className="text-slate-600 text-sm">{new Date(r.updated_at || r.created_at).toLocaleString('en-GB')}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -190,32 +254,26 @@ export default function ManagerDashboard() {
             <Table>
               <TableHead>
                 <TableHeader>Task</TableHeader>
-                <TableHeader>Type</TableHeader>
-                <TableHeader>Assigned</TableHeader>
+                <TableHeader>Contract</TableHeader>
                 <TableHeader>Status</TableHeader>
-                <TableHeader>Due</TableHeader>
+                <TableHeader>Updated</TableHeader>
               </TableHead>
               <TableBody>
                 {recentTasks.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="font-bold text-slate-900">{t.taskCode}</TableCell>
-                    <TableCell><Badge variant="neutral">{t.type}</Badge></TableCell>
-                    <TableCell className="text-slate-700">{t.assignedToStaffName || '—'}</TableCell>
+                  <TableRow key={t.cycle_count_id}>
+                    <TableCell className="font-bold text-slate-900">{t.cycle_count_id.slice(-8).toUpperCase()}</TableCell>
+                    <TableCell><Badge variant="neutral">{t.contract_code}</Badge></TableCell>
                     <TableCell>
                       <Badge
                         variant={
-                          t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'info' : 'warning'
+                          t.status === 'CONFIRMED' ? 'success' : t.status === 'STAFF_SUBMITTED' ? 'info' : 'warning'
                         }
                       >
                         {t.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-slate-600 text-sm">
-                      {new Date(t.dueDate).toLocaleDateString('vi-VN', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                      })}
+                      {new Date(t.updated_at || t.created_at).toLocaleString('en-GB')}
                     </TableCell>
                   </TableRow>
                 ))}
