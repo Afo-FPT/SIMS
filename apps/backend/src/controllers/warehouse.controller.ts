@@ -4,7 +4,9 @@ import {
   CreateWarehouseRequest,
   searchAndFilterWarehouses,
   SearchFilterWarehouseParams,
-  updateWarehouseStatus
+  updateWarehouseStatus,
+  updateWarehouseInfo,
+  UpdateWarehouseRequest
 } from "../services/warehouse.service";
 
 /**
@@ -90,6 +92,53 @@ export async function searchAndFilterWarehousesController(
       data: result
     });
   } catch (error: any) {
+    res.status(500).json({
+      message: error.message || "Internal server error"
+    });
+  }
+}
+
+/**
+ * Update warehouse information
+ * Authorization: Manager only
+ */
+export async function updateWarehouseInfoController(
+  req: Request,
+  res: Response
+) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const { name, address, length, width, description } = req.body;
+
+    const payload: UpdateWarehouseRequest = {
+      name,
+      address,
+      length: length !== undefined ? Number(length) : undefined,
+      width: width !== undefined ? Number(width) : undefined,
+      description
+    };
+
+    const warehouse = await updateWarehouseInfo(id, payload);
+
+    return res.json({
+      message: "Warehouse updated successfully",
+      data: warehouse
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("Invalid") ||
+      error.message.includes("not found") ||
+      error.message.includes("required") ||
+      error.message.includes("must be") ||
+      error.message.includes("already exists")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+
     res.status(500).json({
       message: error.message || "Internal server error"
     });

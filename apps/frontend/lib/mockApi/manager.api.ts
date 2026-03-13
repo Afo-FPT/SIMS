@@ -9,7 +9,7 @@ import {
 } from '../customer-mock';
 import { mockStaffTasks } from '../mock/staff.mock';
 import { MOCK_SHELVES, MOCK_STAFF_USERS } from '../mock/manager.mock';
-import { apiFetchRaw } from '../api-client';
+import { apiFetchRaw, apiJson } from '../api-client';
 
 export type { ManagerWarehouse } from '../../types/manager';
 
@@ -94,6 +94,30 @@ export async function createWarehouse(payload: {
 
   const backendWarehouse = data.data as BackendWarehouseResponse;
   return mapBackendWarehouseToManagerWarehouse(backendWarehouse);
+}
+
+export async function updateWarehouse(
+  warehouseId: string,
+  payload: Partial<{
+    name: string;
+    address: string;
+    length: number;
+    width: number;
+    description?: string;
+  }>
+): Promise<ManagerWarehouse> {
+  const res = await apiJson<{ message?: string; data?: BackendWarehouseResponse } | BackendWarehouseResponse>(
+    `/warehouses/${warehouseId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
+  const backend = (res as any).warehouse_id ? (res as any) : (res as any).data;
+  if (!backend) {
+    throw new Error('Invalid response while updating warehouse');
+  }
+  return mapBackendWarehouseToManagerWarehouse(backend as BackendWarehouseResponse);
 }
 
 // --- Zones (within warehouse) ---

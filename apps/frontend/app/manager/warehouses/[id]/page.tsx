@@ -11,6 +11,7 @@ import {
   type ManagerZoneOption,
   createShelvesForWarehouse,
   listShelvesByWarehouse,
+  updateWarehouse,
 } from '../../../../lib/mockApi/manager.api';
 import { useToastHelpers } from '../../../../lib/toast';
 import { Badge } from '../../../../components/ui/Badge';
@@ -43,6 +44,15 @@ export default function ManagerWarehouseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [creatingZone, setCreatingZone] = useState(false);
   const [creatingShelf, setCreatingShelf] = useState(false);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoForm, setInfoForm] = useState({
+    name: '',
+    address: '',
+    length: '',
+    width: '',
+    description: '',
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +89,18 @@ export default function ManagerWarehouseDetailPage() {
       cancelled = true;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (warehouse && !editingInfo) {
+      setInfoForm({
+        name: warehouse.name,
+        address: warehouse.address,
+        length: String(warehouse.length),
+        width: String(warehouse.width),
+        description: warehouse.description ?? '',
+      });
+    }
+  }, [warehouse, editingInfo]);
 
   const handleCreateZone = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +201,41 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
+  const handleUpdateInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!warehouse) return;
+
+    const lengthNum = Number(infoForm.length);
+    const widthNum = Number(infoForm.width);
+    if (
+      !infoForm.name.trim() ||
+      !infoForm.address.trim() ||
+      isNaN(lengthNum) || lengthNum <= 0 ||
+      isNaN(widthNum) || widthNum <= 0
+    ) {
+      toast.warning('Please provide valid name, address, length and width');
+      return;
+    }
+
+    try {
+      setSavingInfo(true);
+      const updated = await updateWarehouse(warehouse.id, {
+        name: infoForm.name.trim(),
+        address: infoForm.address.trim(),
+        length: lengthNum,
+        width: widthNum,
+        description: infoForm.description.trim() || undefined,
+      });
+      setWarehouse(updated);
+      toast.success('Warehouse information updated');
+      setEditingInfo(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update warehouse');
+    } finally {
+      setSavingInfo(false);
+    }
+  };
+
   if (loading) {
     return <LoadingSkeleton className="h-64 w-full" />;
   }
@@ -215,29 +272,102 @@ export default function ManagerWarehouseDetailPage() {
 
       {/* Warehouse info */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Warehouse information</h2>
-        <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-          <div>
-            <dt className="text-slate-500">Address</dt>
-            <dd className="font-bold text-slate-900">{warehouse.address}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Length × Width</dt>
-            <dd className="font-bold text-slate-900">
-              {warehouse.length}m × {warehouse.width}m
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Area</dt>
-            <dd className="font-bold text-slate-900">{warehouse.area} m²</dd>
-          </div>
-          {warehouse.description && (
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="text-lg font-black text-slate-900">Warehouse information</h2>
+          <Button
+            variant={editingInfo ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setEditingInfo((v) => !v)}
+          >
+            {editingInfo ? 'Cancel edit' : 'Edit'}
+          </Button>
+        </div>
+
+        {!editingInfo ? (
+          <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-slate-500">Name</dt>
+              <dd className="font-bold text-slate-900">{warehouse.name}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Address</dt>
+              <dd className="font-bold text-slate-900">{warehouse.address}</dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Length × Width</dt>
+              <dd className="font-bold text-slate-900">
+                {warehouse.length}m × {warehouse.width}m
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Area</dt>
+              <dd className="font-bold text-slate-900">{warehouse.area} m²</dd>
+            </div>
             <div className="md:col-span-2 lg:col-span-3">
               <dt className="text-slate-500">Description</dt>
-              <dd className="text-slate-700">{warehouse.description}</dd>
+              <dd className="text-slate-700">
+                {warehouse.description && warehouse.description.trim().length > 0
+                  ? warehouse.description
+                  : '—'}
+              </dd>
             </div>
-          )}
-        </dl>
+          </dl>
+        ) : (
+          <form onSubmit={handleUpdateInfo} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <Input
+              label="Name"
+              value={infoForm.name}
+              onChange={(e) => setInfoForm((p) => ({ ...p, name: e.target.value }))}
+              required
+            />
+            <Input
+              label="Address"
+              value={infoForm.address}
+              onChange={(e) => setInfoForm((p) => ({ ...p, address: e.target.value }))}
+              required
+            />
+            <Input
+              label="Length (m)"
+              value={infoForm.length}
+              onChange={(e) => setInfoForm((p) => ({ ...p, length: e.target.value }))}
+              required
+            />
+            <Input
+              label="Width (m)"
+              value={infoForm.width}
+              onChange={(e) => setInfoForm((p) => ({ ...p, width: e.target.value }))}
+              required
+            />
+            <div className="md:col-span-2 lg:col-span-3">
+              <Input
+                label="Description (optional)"
+                value={infoForm.description}
+                onChange={(e) => setInfoForm((p) => ({ ...p, description: e.target.value }))}
+              />
+            </div>
+            <div className="md:col-span-2 lg:col-span-3 flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEditingInfo(false);
+                  setInfoForm({
+                    name: warehouse.name,
+                    address: warehouse.address,
+                    length: String(warehouse.length),
+                    width: String(warehouse.width),
+                    description: warehouse.description ?? '',
+                  });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" isLoading={savingInfo}>
+                Save changes
+              </Button>
+            </div>
+          </form>
+        )}
       </section>
 
       {/* Zones */}
@@ -246,41 +376,9 @@ export default function ManagerWarehouseDetailPage() {
         <p className="text-sm text-slate-600">
           Zones group shelves for location tracking. Contracts are assigned to zones.
         </p>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-100">
-                <th className="py-2 pr-4">Zone code</th>
-                <th className="py-2 pr-4">Name</th>
-                <th className="py-2 pr-4">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {zones.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="py-4 text-slate-500">
-                    No zones yet. Create one below.
-                  </td>
-                </tr>
-              ) : (
-                zones.map((z) => (
-                  <tr key={z.id} className="border-b border-slate-50">
-                    <td className="py-2 pr-4 font-bold text-slate-900">{z.zoneCode}</td>
-                    <td className="py-2 pr-4 text-slate-700">{z.name}</td>
-                    <td className="py-2 pr-4">
-                      <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>
-                        {z.status ?? '—'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
         <form
           onSubmit={handleCreateZone}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100"
+          className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 pb-4 border-b border-slate-100"
         >
           <Input
             label="Zone code"
@@ -308,6 +406,40 @@ export default function ManagerWarehouseDetailPage() {
             </Button>
           </div>
         </form>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-500 border-b border-slate-100">
+                <th className="py-2 pr-4">Zone code</th>
+                <th className="py-2 pr-4">Name</th>
+                <th className="py-2 pr-4">Description</th>
+                <th className="py-2 pr-4">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zones.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-4 text-slate-500">
+                    No zones yet. Create one below.
+                  </td>
+                </tr>
+              ) : (
+                zones.map((z) => (
+                  <tr key={z.id} className="border-b border-slate-50">
+                    <td className="py-2 pr-4 font-bold text-slate-900">{z.zoneCode}</td>
+                    <td className="py-2 pr-4 text-slate-700">{z.name}</td>
+                    <td className="py-2 pr-4 text-slate-700">{z.description || '—'}</td>
+                    <td className="py-2 pr-4">
+                      <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>
+                        {z.status ?? '—'}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* Shelves */}

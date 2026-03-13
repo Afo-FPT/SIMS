@@ -29,6 +29,14 @@ export interface WarehouseResponse {
   updated_at: Date;
 }
 
+export interface UpdateWarehouseRequest {
+  name?: string;
+  address?: string;
+  length?: number;
+  width?: number;
+  description?: string;
+}
+
 /**
  * Validate warehouse creation request
  */
@@ -82,6 +90,25 @@ async function checkWarehouseNameExists(name: string, excludeId?: string): Promi
 
   const existingWarehouse = await Warehouse.findOne(query);
   return !!existingWarehouse;
+}
+
+function validateUpdateWarehouseRequest(data: UpdateWarehouseRequest): void {
+  if (data.name !== undefined && data.name.trim().length === 0) {
+    throw new Error("Warehouse name is required");
+  }
+  if (data.address !== undefined && data.address.trim().length === 0) {
+    throw new Error("Warehouse address is required");
+  }
+  if (data.length !== undefined) {
+    if (data.length <= 0 || typeof data.length !== "number" || isNaN(data.length)) {
+      throw new Error("Warehouse length must be a valid number greater than 0");
+    }
+  }
+  if (data.width !== undefined) {
+    if (data.width <= 0 || typeof data.width !== "number" || isNaN(data.width)) {
+      throw new Error("Warehouse width must be a valid number greater than 0");
+    }
+  }
 }
 
 /**
@@ -256,6 +283,78 @@ export async function updateWarehouseStatus(
   }
 
   // Return response DTO
+  return {
+    warehouse_id: warehouse._id.toString(),
+    name: warehouse.name,
+    address: warehouse.address,
+    length: warehouse.length,
+    width: warehouse.width,
+    area: warehouse.area,
+    description: warehouse.description,
+    status: warehouse.status,
+    created_by: warehouse.createdBy.toString(),
+    created_at: warehouse.createdAt,
+    updated_at: warehouse.updatedAt
+  };
+}
+
+/**
+ * Update warehouse information (name, address, dimensions, description)
+ */
+export async function updateWarehouseInfo(
+  warehouseId: string,
+  data: UpdateWarehouseRequest
+): Promise<WarehouseResponse> {
+  if (!Types.ObjectId.isValid(warehouseId)) {
+    throw new Error("Invalid warehouse ID");
+  }
+
+  // Ensure there is at least one field to update
+  if (
+    data.name === undefined &&
+    data.address === undefined &&
+    data.length === undefined &&
+    data.width === undefined &&
+    data.description === undefined
+  ) {
+    throw new Error("No fields provided for update");
+  }
+
+  validateUpdateWarehouseRequest(data);
+
+  const warehouse = await Warehouse.findById(warehouseId);
+  if (!warehouse) {
+    throw new Error("Warehouse not found");
+  }
+
+  // Check unique name if changed
+  if (data.name && data.name.trim() !== warehouse.name) {
+    const nameExists = await checkWarehouseNameExists(data.name, warehouseId);
+    if (nameExists) {
+      throw new Error("Warehouse name already exists");
+    }
+    warehouse.name = data.name.trim();
+  }
+
+  if (data.address !== undefined) {
+    warehouse.address = data.address.trim();
+  }
+  if (data.length !== undefined) {
+    warehouse.length = data.length;
+  }
+  if (data.width !== undefined) {
+    warehouse.width = data.width;
+  }
+  if (data.description !== undefined) {
+    warehouse.description = data.description.trim();
+  }
+
+  // Recalculate area if dimensions changed
+  warehouse.area = calculateArea(warehouse.length, warehouse.width);
+
+  await warehouse.save();
+  await warehouse.populate("createdBy", "name email");
+
   return {
     warehouse_id: warehouse._id.toString(),
     name: warehouse.name,

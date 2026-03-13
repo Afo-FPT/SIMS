@@ -125,42 +125,110 @@ export default function ManagerTasksPage() {
       )}
 
       {detail && (
-        <Modal open={!!detail} onOpenChange={(o) => !o && setDetail(null)} title={detail.taskCode} size="lg">
+        <Modal
+          open={!!detail}
+          onOpenChange={(o) => !o && setDetail(null)}
+          title={detail.taskCode}
+          size="xl"
+        >
           <div className="space-y-6">
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div><dt className="text-slate-500">Type</dt><dd className="font-bold">{detail.type}</dd></div>
-              <div><dt className="text-slate-500">Customer</dt><dd className="font-bold">{detail.customerName}</dd></div>
-              <div><dt className="text-slate-500">Contract</dt><dd className="font-bold">{detail.contractCode}</dd></div>
-              <div><dt className="text-slate-500">Status</dt><dd><Badge variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'IN_PROGRESS' ? 'info' : 'warning'}>{detail.status}</Badge></dd></div>
-              <div>
-                <dt className="text-slate-500">Due</dt>
-                <dd className="font-bold">
-                  {new Date(detail.dueDate).toLocaleString('vi-VN', {
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  })}
-                </dd>
-              </div>
-              <div><dt className="text-slate-500">Assigned to</dt><dd className="font-bold">{detail.assignedToStaffName || '—'}</dd></div>
-            </dl>
-            {detail.status !== 'COMPLETED' && (
-              <div className="space-y-3">
-                <h4 className="text-sm font-bold text-slate-700">Assign staff</h4>
-                <div className="flex gap-3 items-end">
-                  <Select
-                    label=""
-                    value={assignStaffId}
-                    onChange={(e) => setAssignStaffId(e.target.value)}
-                    options={[{ value: '', label: 'Select staff' }, ...staffUsers.map((s) => ({ value: s.id, label: s.name }))]}
-                    className="min-w-[200px]"
-                  />
-                  <Button onClick={handleAssign} disabled={!assignStaffId || updating}>Assign</Button>
-                </div>
-                <Button variant="ghost" onClick={() => setCancelConfirm(detail)} className="text-red-600">
-                  Cancel task
-                </Button>
-              </div>
-            )}
+            <p className="text-sm text-slate-600">
+              Review task details and assign a staff member. You can also cancel tasks that are no longer needed.
+            </p>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Task summary */}
+              <section className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                  Task summary
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Type</dt>
+                    <dd className="font-bold text-slate-900 text-right">{detail.type}</dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Customer</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {detail.customerName}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Contract</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {detail.contractCode}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Status</dt>
+                    <dd className="text-right">
+                      <Badge
+                        variant={
+                          detail.status === 'COMPLETED'
+                            ? 'success'
+                            : detail.status === 'IN_PROGRESS'
+                              ? 'info'
+                              : 'warning'
+                        }
+                      >
+                        {detail.status}
+                      </Badge>
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Due</dt>
+                    <dd className="font-bold text-slate-900 text-right">
+                      {new Date(detail.dueDate).toLocaleString('en-US', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Assigned to</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {detail.assignedToStaffName || '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              {/* Assignment controls */}
+              {detail.status !== 'COMPLETED' && (
+                <section className="space-y-3">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                    Assign staff
+                  </h3>
+                  <div className="flex flex-col gap-3">
+                    <Select
+                      label="Staff"
+                      value={assignStaffId}
+                      onChange={(e) => setAssignStaffId(e.target.value)}
+                      options={[
+                        { value: '', label: 'Select staff' },
+                        ...staffUsers.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      className="min-w-[220px]"
+                    />
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={handleAssign}
+                        disabled={!assignStaffId || updating}
+                      >
+                        Assign task
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setCancelConfirm(detail)}
+                        className="text-red-600"
+                      >
+                        Cancel task
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+              )}
+            </div>
           </div>
         </Modal>
       )}

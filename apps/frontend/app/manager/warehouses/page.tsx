@@ -256,17 +256,19 @@ export default function ManagerWarehousesPage() {
       </div>
 
       {/* Create warehouse entry point */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex items-center justify-between">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-slate-900">Create warehouse</h2>
           <p className="text-sm text-slate-600 mt-1">
             Define a new warehouse with size and address. You can then add zones and shelves.
           </p>
         </div>
-        <Button onClick={() => setCreateWarehouseModalOpen(true)}>
-          <span className="material-symbols-outlined text-base mr-1">add</span>
-          New warehouse
-        </Button>
+        <div className="sm:flex-shrink-0 sm:self-start">
+          <Button onClick={() => setCreateWarehouseModalOpen(true)}>
+            <span className="material-symbols-outlined text-base mr-1">add</span>
+            New warehouse
+          </Button>
+        </div>
       </div>
 
       {/* Create warehouse modal */}

@@ -2,7 +2,8 @@ import { Router } from "express";
 import {
   createWarehouseController,
   searchAndFilterWarehousesController,
-  updateWarehouseStatusController
+  updateWarehouseStatusController,
+  updateWarehouseInfoController
 } from "../controllers/warehouse.controller";
 import { createShelvesController, listShelvesByWarehouseController } from "../controllers/shelf.controller";
 import zoneRoutes from "./zone.routes";
@@ -32,6 +33,18 @@ router.post(
   authenticate,
   authorizeRoles("manager"),
   createWarehouseController
+);
+
+/**
+ * PATCH /api/warehouses/:id
+ * Update warehouse information
+ * Authorization: Manager only
+ */
+router.patch(
+  "/:id",
+  authenticate,
+  authorizeRoles("manager"),
+  updateWarehouseInfoController
 );
 
 /**

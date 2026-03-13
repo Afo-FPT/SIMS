@@ -166,56 +166,147 @@ export default function ManagerOutboundRequestsPage() {
             if (!open) setAssigning(null);
           }}
           title={`Assign staff – ${assigning.reference ?? assigning.request_id}`}
-          size="md"
+          size="xl"
         >
-          <div className="space-y-4">
+          <div className="space-y-6">
             <p className="text-sm text-slate-600">
-              Select one or more staff members to perform pick & dispatch. Only selected staff will see the task.
+              Review the outbound request details and assign one or more staff members to perform pick & dispatch.
             </p>
-            <div className="space-y-2 relative">
-              <p className="text-xs font-bold text-slate-600">Select staff</p>
-              {staffError && <p className="text-xs text-red-500 mb-1">{staffError}</p>}
-              <button
-                type="button"
-                onClick={() => setOpenStaffDropdown(!openStaffDropdown)}
-                className="w-full px-3 py-2 rounded-2xl border border-slate-200 text-sm text-left bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              >
-                {assignStaffIds.length > 0
-                  ? `Selected ${assignStaffIds.length} staff`
-                  : 'Choose staff'}
-              </button>
-              {openStaffDropdown && (
-                <div className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-md">
-                  {staffUsers.map((s) => (
-                    <label
-                      key={s.user_id}
-                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer text-sm"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={assignStaffIds.includes(s.user_id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setAssignStaffIds([...assignStaffIds, s.user_id]);
-                          } else {
-                            setAssignStaffIds(assignStaffIds.filter((id) => id !== s.user_id));
-                          }
-                        }}
-                      />
-                      <span>
-                        {s.name} <span className="text-xs text-slate-400">({s.email})</span>
-                      </span>
-                    </label>
-                  ))}
-                </div>
-              )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Request summary */}
+              <section className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                  Request summary
+                </h3>
+                <dl className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Outbound reference</dt>
+                    <dd className="font-bold text-slate-900 text-right">
+                      {assigning.reference ?? assigning.request_id}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Contract</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {assigning.contract_code ?? assigning.contract_id}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Items</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {assigning.items.length}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Created at</dt>
+                    <dd className="text-slate-800 text-right">
+                      {new Date(assigning.created_at).toLocaleString('en-US', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                    </dd>
+                  </div>
+                </dl>
+                {assigning.items.length > 0 && (
+                  <div className="mt-3 border-t border-slate-200 pt-3">
+                    <p className="text-xs font-bold text-slate-600 mb-2">
+                      Item preview (first {Math.min(assigning.items.length, 3)})
+                    </p>
+                    <ul className="space-y-1.5 text-xs text-slate-700">
+                      {assigning.items.slice(0, 3).map((it, idx) => (
+                        <li key={idx} className="flex justify-between gap-3">
+                          <span className="font-medium truncate">{it.item_name ?? it.sku}</span>
+                          <span className="text-slate-500">
+                            {it.quantity_requested} {it.unit}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+
+              {/* Staff selection */}
+              <section className="space-y-3 relative">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
+                  Assign to staff
+                </h3>
+                {staffError && <p className="text-xs text-red-500 mb-1">{staffError}</p>}
+                <button
+                  type="button"
+                  onClick={() => setOpenStaffDropdown(!openStaffDropdown)}
+                  className="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-sm text-left bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                >
+                  {assignStaffIds.length > 0
+                    ? `Selected ${assignStaffIds.length} staff`
+                    : 'Choose staff'}
+                </button>
+                {assignStaffIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {assignStaffIds.map((id) => {
+                      const staff = staffUsers.find((s) => s.user_id === id);
+                      if (!staff) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/5 text-primary border border-primary/20"
+                        >
+                          {staff.name}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAssignStaffIds((prev) => prev.filter((x) => x !== id))
+                            }
+                            className="text-slate-400 hover:text-slate-600"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {openStaffDropdown && (
+                  <div className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-md">
+                    {staffUsers.map((s) => (
+                      <label
+                        key={s.user_id}
+                        className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={assignStaffIds.includes(s.user_id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setAssignStaffIds((prev) => [...prev, s.user_id]);
+                            } else {
+                              setAssignStaffIds((prev) =>
+                                prev.filter((id) => id !== s.user_id),
+                              );
+                            }
+                          }}
+                        />
+                        <span className="flex flex-col">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-xs text-slate-400">{s.email}</span>
+                        </span>
+                      </label>
+                    ))}
+                    {staffUsers.length === 0 && (
+                      <p className="text-xs text-slate-500 px-2 py-1">No staff available.</p>
+                    )}
+                  </div>
+                )}
+              </section>
             </div>
+
             <div className="flex gap-3 justify-end pt-2">
               <Button variant="ghost" onClick={() => setAssigning(null)}>
                 Cancel
               </Button>
               <Button onClick={handleAssign} disabled={assignStaffIds.length === 0}>
-                Assign
+                Assign task
               </Button>
             </div>
           </div>
