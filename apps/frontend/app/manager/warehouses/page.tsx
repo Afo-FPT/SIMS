@@ -264,9 +264,14 @@ export default function ManagerWarehousesPage() {
           </p>
         </div>
         <div className="sm:flex-shrink-0 sm:self-start">
-          <Button onClick={() => setCreateWarehouseModalOpen(true)}>
-            <span className="material-symbols-outlined text-base mr-1">add</span>
-            New warehouse
+          <Button
+            onClick={() => setCreateWarehouseModalOpen(true)}
+            className="inline-flex items-center gap-2 leading-none shadow-sm"
+          >
+            <span className="inline-flex size-5 items-center justify-center rounded-full bg-white/20 text-xs font-black leading-none">
+              +
+            </span>
+            <span className="leading-none">New warehouse</span>
           </Button>
         </div>
       </div>
