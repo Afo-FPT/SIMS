@@ -100,7 +100,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             section: 'Requests', items: [
               { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
               { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
-              { id: 'INVENTORY_CHECKING', label: 'Inventory Checking', icon: 'fact_check' },
             ]
           },
           {

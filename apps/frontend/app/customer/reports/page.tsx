@@ -5,12 +5,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,20 +15,15 @@ import {
 } from 'recharts';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
-import { getCycleCounts } from '../../../lib/cycle-count.api';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Badge } from '../../../components/ui/Badge';
-
-const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
 type ReportTab =
   | 'current_inventory'
   | 'io_history'
   | 'turnover'
-  | 'discrepancy'
-  | 'contract_usage'
+  | 'request_status'
   | 'alerts';
 
 function monthKey(ts: string): string {
@@ -45,8 +37,6 @@ export default function CustomerReportsPage() {
   const [tab, setTab] = useState<ReportTab>('current_inventory');
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
-  const [cycleCounts, setCycleCounts] = useState<any[]>([]);
-  const [contracts, setContracts] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,17 +44,13 @@ export default function CustomerReportsPage() {
       try {
         setLoading(true);
         setError(null);
-        const [items, req, cc, contractRows] = await Promise.all([
+        const [items, req] = await Promise.all([
           listMyStoredItems(),
           listStorageRequests(),
-          getCycleCounts(),
-          getCustomerContracts(),
         ]);
         if (cancelled) return;
         setStoredItems(items);
         setRequests(req);
-        setCycleCounts(cc);
-        setContracts(contractRows);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
@@ -121,53 +107,41 @@ export default function CustomerReportsPage() {
     });
   }, [requests, storedItems]);
 
-  const discrepancyRows = useMemo(() => {
-    return cycleCounts.map((c) => {
-      const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
-      const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
-      return {
-        id: c.cycle_count_id.slice(-8).toUpperCase(),
-        system,
-        actual,
-        discrepancy: Math.abs(actual - system),
-        status: c.status,
-      };
-    });
-  }, [cycleCounts]);
-
-  const discrepancyPie = useMemo(() => {
-    const under = discrepancyRows.filter((r) => r.actual < r.system).length;
-    const over = discrepancyRows.filter((r) => r.actual > r.system).length;
-    const equal = discrepancyRows.filter((r) => r.actual === r.system).length;
-    return [
-      { name: 'Missing', value: under },
-      { name: 'Excess', value: over },
-      { name: 'Matched', value: equal },
-    ];
-  }, [discrepancyRows]);
-
-  const contractUsageRows = useMemo(() => {
-    return contracts.map((c) => {
-      const rentedZones = c.rentedZones?.length || 1;
-      const used = storedItems.filter((i) => i.contract_id === c.id).reduce((s, i) => s + i.quantity, 0);
-      const capacity = rentedZones * 5000;
-      const utilization = Math.min(100, Math.round((used / Math.max(1, capacity)) * 100));
-      return {
-        contract: c.code,
-        utilization,
-        used,
-        capacity,
-      };
-    });
-  }, [contracts, storedItems]);
-
   const alertsData = useMemo(() => {
     const lowStock = storedItems.filter((i) => i.quantity < 50).length;
-    const discrepancy = discrepancyRows.filter((r) => r.discrepancy > 0).length;
-    const pendingConfirm = cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
     const pendingRequests = requests.filter((r) => r.status === 'PENDING').length;
-    return { lowStock, discrepancy, pendingConfirm, pendingRequests };
-  }, [storedItems, discrepancyRows, cycleCounts, requests]);
+    return { lowStock, pendingRequests };
+  }, [storedItems, requests]);
+
+  const requestStatusReport = useMemo(() => {
+    const statusMap = new Map<string, number>([
+      ['Pending', 0],
+      ['In Progress', 0],
+      ['Completed', 0],
+      ['Cancelled', 0],
+      ['Other', 0],
+    ]);
+
+    requests.forEach((r) => {
+      const raw = String(r.status || '').trim().toUpperCase();
+      if (raw === 'PENDING') statusMap.set('Pending', (statusMap.get('Pending') || 0) + 1);
+      else if (raw === 'IN_PROGRESS' || raw === 'PROCESSING') {
+        statusMap.set('In Progress', (statusMap.get('In Progress') || 0) + 1);
+      } else if (raw === 'COMPLETED' || raw === 'DONE' || raw === 'APPROVED') {
+        statusMap.set('Completed', (statusMap.get('Completed') || 0) + 1);
+      } else if (raw === 'CANCELLED' || raw === 'REJECTED') {
+        statusMap.set('Cancelled', (statusMap.get('Cancelled') || 0) + 1);
+      } else {
+        statusMap.set('Other', (statusMap.get('Other') || 0) + 1);
+      }
+    });
+
+    const data = [...statusMap.entries()].map(([status, count]) => ({ status, count }));
+    const total = data.reduce((sum, row) => sum + row.count, 0);
+    const top = data.reduce((best, row) => (row.count > best.count ? row : best), data[0] || { status: 'N/A', count: 0 });
+
+    return { data, total, top };
+  }, [requests]);
 
   if (loading) {
     return (
@@ -194,8 +168,7 @@ export default function CustomerReportsPage() {
           ['current_inventory', 'Current Inventory'],
           ['io_history', 'Inbound/Outbound History'],
           ['turnover', 'Inventory Level & Turnover'],
-          ['discrepancy', 'Checking & Discrepancy'],
-          ['contract_usage', 'Contract Usage Summary'],
+          ['request_status', 'Request Status Overview'],
           ['alerts', 'Alerts & Trend Insights'],
         ].map(([id, label]) => (
           <button
@@ -316,69 +289,48 @@ export default function CustomerReportsPage() {
         </section>
       )}
 
-      {tab === 'discrepancy' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Checking & Discrepancy Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
+      {tab === 'request_status' && (
+        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-6">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Request Status Overview Report</h2>
+              <p className="text-sm text-slate-500 mt-1">See how your service requests are distributed by processing status.</p>
+            </div>
+            <Badge variant="info">Total requests: {requestStatusReport.total}</Badge>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            <div className="lg:col-span-3 h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={discrepancyRows}>
+                <BarChart data={requestStatusReport.data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="id" />
-                  <YAxis />
+                  <XAxis dataKey="status" />
+                  <YAxis allowDecimals={false} />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="system" fill="#0ea5e9" />
-                  <Bar dataKey="actual" fill="#22c55e" />
+                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={discrepancyPie} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                    {discrepancyPie.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {tab === 'contract_usage' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-5">
-          <h2 className="text-lg font-black text-slate-900">Contract Usage Summary Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              {contractUsageRows.length === 0 ? (
-                <p className="text-sm text-slate-500">No active contract usage data.</p>
-              ) : (
-                contractUsageRows.map((c) => (
-                  <div key={c.contract} className="rounded-2xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-bold text-slate-900">{c.contract}</p>
-                      <Badge variant={c.utilization >= 90 ? 'error' : c.utilization >= 75 ? 'warning' : 'success'}>{c.utilization}%</Badge>
+            <div className="lg:col-span-2 space-y-3">
+              {requestStatusReport.data.map((row) => {
+                const pct = requestStatusReport.total > 0 ? Math.round((row.count / requestStatusReport.total) * 100) : 0;
+                return (
+                  <div key={row.status} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <p className="font-bold text-slate-900">{row.status}</p>
+                      <p className="font-bold text-slate-700">{row.count}</p>
                     </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`${c.utilization >= 90 ? 'bg-red-500' : c.utilization >= 75 ? 'bg-amber-500' : 'bg-emerald-500'} h-full`} style={{ width: `${c.utilization}%` }} />
+                    <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-sky-500" style={{ width: `${pct}%` }} />
                     </div>
+                    <p className="mt-1 text-xs text-slate-500">{pct}% of all requests</p>
                   </div>
-                ))
-              )}
-            </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={contractUsageRows.map((c) => ({ name: c.contract, value: c.used }))} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                    {contractUsageRows.map((c, i) => <Cell key={c.contract} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+                );
+              })}
+              <div className="rounded-2xl bg-sky-50 border border-sky-100 p-3 text-sm text-slate-700">
+                Most common status: <span className="font-bold">{requestStatusReport.top.status}</span> ({requestStatusReport.top.count} requests)
+              </div>
             </div>
           </div>
         </section>
@@ -387,10 +339,8 @@ export default function CustomerReportsPage() {
       {tab === 'alerts' && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Alerts & Trend Insights</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 mb-6">
             <KpiCard title="Low Stock Alerts" value={alertsData.lowStock} icon="warning" />
-            <KpiCard title="Discrepancy Events" value={alertsData.discrepancy} icon="report_problem" />
-            <KpiCard title="Pending Confirmations" value={alertsData.pendingConfirm} icon="fact_check" />
             <KpiCard title="Pending Requests" value={alertsData.pendingRequests} icon="pending_actions" />
           </div>
           <div className="h-72">
