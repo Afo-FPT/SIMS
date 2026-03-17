@@ -197,7 +197,7 @@ export const MOCK_ADJUSTMENTS: AdjustmentRequest[] = [
 ];
 
 export function getActiveContract(contracts: Contract[]): Contract | undefined {
-  return contracts.find((c) => c.status === 'Active');
+  return contracts.find((c) => c.status === 'active');
 }
 
 export function getContractById(id: string): Contract | undefined {
@@ -216,12 +216,7 @@ export function getConfirmedContractIds(): string[] {
   }
 }
 
-/** Active = status Active OR (Pending confirmation + user confirmed) */
+/** "Active" contracts for customer view */
 export function getActiveContractsForCustomer(): Contract[] {
-  const confirmed = getConfirmedContractIds();
-  return MOCK_CONTRACTS.filter(
-    (c) =>
-      c.status === 'Active' ||
-      (c.status === 'Pending confirmation' && confirmed.includes(c.id))
-  );
+  return MOCK_CONTRACTS.filter((c) => c.status === 'active' || c.status === 'pending_payment');
 }
