@@ -672,10 +672,12 @@ export async function getProcessingTimeStats(
 
   const boxPlotData: ProcessingTimeBoxPlotItem[] = [];
 
-  for (const [type, arr] of [
-    ["IN" as const, inboundHours],
-    ["OUT" as const, outboundHours]
-  ]) {
+  const groups: Array<["IN" | "OUT", number[]]> = [
+    ["IN", inboundHours],
+    ["OUT", outboundHours]
+  ];
+
+  for (const [type, arr] of groups) {
     const sorted = [...arr].sort((a, b) => a - b);
     const count = sorted.length;
     const avgHours = count > 0 ? sorted.reduce((s, x) => s + x, 0) / count : 0;
