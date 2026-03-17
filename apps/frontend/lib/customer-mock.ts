@@ -61,7 +61,7 @@ export const MOCK_CONTRACTS: Contract[] = [
     shelvesRented: 12,
     startDate: '2025-02-01',
     endDate: '2025-08-01',
-    status: 'Active',
+    status: 'active',
     countingUnit: 'box',
     conversionRule: { boxToPiece: 24 },
     customerName: 'Alex Sterling',
