@@ -1,12 +1,14 @@
 FROM node:20-alpine AS deps
+# This Dockerfile is resilient to Render using repo-root build context.
+# We install and build using apps/frontend.
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY apps/frontend/package.json apps/frontend/package-lock.json ./
 RUN npm ci
 
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY apps/frontend/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
@@ -14,7 +16,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY package.json package-lock.json ./
+COPY apps/frontend/package.json apps/frontend/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
