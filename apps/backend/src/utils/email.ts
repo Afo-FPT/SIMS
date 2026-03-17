@@ -36,7 +36,10 @@ const createTransporter = () => {
     return null; // Sẽ fallback sang console.log
   }
 
-  throw new Error("Email service not configured. Please set SMTP or Gmail credentials in .env");
+  // Production mode: do not crash the whole server if email is not configured.
+  // Some deployments may not need email features enabled.
+  console.warn("⚠️  Email service not configured. Email features will be disabled.");
+  return null;
 };
 
 export async function sendEmail(params: {
