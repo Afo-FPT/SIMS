@@ -216,7 +216,7 @@ export default function ManagerOutboundRequestsPage() {
                     <ul className="space-y-1.5 text-xs text-slate-700">
                       {assigning.items.slice(0, 3).map((it, idx) => (
                         <li key={idx} className="flex justify-between gap-3">
-                          <span className="font-medium truncate">{it.item_name ?? it.sku}</span>
+                          <span className="font-medium truncate">{it.item_name}</span>
                           <span className="text-slate-500">
                             {it.quantity_requested} {it.unit}
                           </span>
