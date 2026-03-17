@@ -4,6 +4,7 @@ services:
     env: docker
     rootDir: apps/backend
     dockerfilePath: ./Dockerfile
+    dockerCommand: node --experimental-specifier-resolution=node dist/index.js
     plan: free
     autoDeploy: true
     healthCheckPath: /
