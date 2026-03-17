@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import type { Contract } from '../../../lib/customer-types';
+import { Pagination } from '../../../components/ui/Pagination';
 
 /**
  * Format date for display
@@ -87,7 +88,9 @@ function getDateRangeDisplay(contract: Contract): string {
 }
 
 export default function ContractsPage() {
+  const PAGE_SIZE = 10;
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,12 +104,17 @@ export default function ContractsPage() {
       setError(null);
       const data = await getCustomerContracts();
       setContracts(data);
+      setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contracts');
     } finally {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(contracts.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = contracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="space-y-8">
@@ -156,7 +164,7 @@ export default function ContractsPage() {
                 </tr>
               </thead>
               <tbody>
-                {contracts.map((c) => (
+                {paged.map((c) => (
                   <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                     <td className="px-6 py-4 font-bold text-slate-900">{c.code}</td>
                     <td className="px-6 py-4 text-slate-700">{getZonesRentedDisplay(c)}</td>
@@ -206,6 +214,24 @@ export default function ContractsPage() {
             </table>
           </div>
         </section>
+      )}
+
+      {!loading && !error && contracts.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, contracts.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(safePage * PAGE_SIZE, contracts.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{contracts.length}</span>
+          </p>
+          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
+        </div>
       )}
     </div>
   );

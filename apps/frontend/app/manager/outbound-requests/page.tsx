@@ -21,10 +21,13 @@ import { Modal } from '../../../components/ui/Modal';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Pagination } from '../../../components/ui/Pagination';
 
 export default function ManagerOutboundRequestsPage() {
   const toast = useToastHelpers();
+  const PAGE_SIZE = 10;
   const [items, setItems] = useState<StorageRequestView[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<StorageRequestView | null>(null);
@@ -44,6 +47,7 @@ export default function ManagerOutboundRequestsPage() {
         listStorageRequests({ requestType: 'OUT', status: 'APPROVED' }),
       ]);
       setItems([...pending, ...approved]);
+      setPage(1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load outbound requests';
       setError(msg);
@@ -52,6 +56,10 @@ export default function ManagerOutboundRequestsPage() {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const loadStaff = async () => {
     try {
@@ -126,7 +134,7 @@ export default function ManagerOutboundRequestsPage() {
               <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
-              {items.map((r) => (
+              {paged.map((r) => (
                 <TableRow key={r.request_id}>
                   <TableCell className="font-bold text-slate-900">
                     {r.reference ?? r.request_id}
@@ -156,6 +164,24 @@ export default function ManagerOutboundRequestsPage() {
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {!loading && !error && items.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, items.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(safePage * PAGE_SIZE, items.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{items.length}</span>
+          </p>
+          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
 

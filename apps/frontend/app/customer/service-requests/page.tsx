@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import type {
   ServiceRequest,
   ServiceRequestType,
@@ -22,6 +23,7 @@ import { useToastHelpers } from '../../../lib/toast';
 import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
+import { Pagination } from '../../../components/ui/Pagination';
 import {
   type CycleCountResponse,
   createCycleCount,
@@ -37,6 +39,7 @@ const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
 export default function ServiceRequestsPage() {
   const toast = useToastHelpers();
   const searchParams = useSearchParams();
+  const PAGE_SIZE = 10;
   const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
   const [contractsError, setContractsError] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export default function ServiceRequestsPage() {
   const [trackingRequests, setTrackingRequests] = useState<StorageRequestView[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackingPage, setTrackingPage] = useState(1);
   const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
   const [detailRequest, setDetailRequest] = useState<StorageRequestView | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -99,6 +103,7 @@ export default function ServiceRequestsPage() {
   const [cycleCounts, setCycleCounts] = useState<CycleCountResponse[]>([]);
   const [cycleLoading, setCycleLoading] = useState(false);
   const [cycleError, setCycleError] = useState<string | null>(null);
+  const [cyclePage, setCyclePage] = useState(1);
 
   // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
@@ -153,6 +158,7 @@ export default function ServiceRequestsPage() {
       setTrackingError(null);
       const data = await listStorageRequests();
       setTrackingRequests(data);
+      setTrackingPage(1);
     } catch (err) {
       setTrackingError(err instanceof Error ? err.message : 'Failed to load request list');
       toast.error('Failed to load request list');
@@ -167,6 +173,7 @@ export default function ServiceRequestsPage() {
       setCycleError(null);
       const data = await getCycleCountsApi();
       setCycleCounts(data);
+      setCyclePage(1);
     } catch (err) {
       setCycleError(err instanceof Error ? err.message : 'Failed to load cycle counts');
       toast.error('Failed to load cycle counts');
@@ -181,6 +188,28 @@ export default function ServiceRequestsPage() {
       loadCycleCounts();
     }
   }, [mainTab, hasActive]);
+
+  const trackingTotalPages = Math.max(1, Math.ceil(trackingRequests.length / PAGE_SIZE));
+  const trackingSafePage = Math.min(trackingPage, trackingTotalPages);
+  const trackingPaged = useMemo(
+    () =>
+      trackingRequests.slice(
+        (trackingSafePage - 1) * PAGE_SIZE,
+        trackingSafePage * PAGE_SIZE,
+      ),
+    [trackingRequests, trackingSafePage],
+  );
+
+  const cycleTotalPages = Math.max(1, Math.ceil(cycleCounts.length / PAGE_SIZE));
+  const cycleSafePage = Math.min(cyclePage, cycleTotalPages);
+  const cyclePaged = useMemo(
+    () =>
+      cycleCounts.slice(
+        (cycleSafePage - 1) * PAGE_SIZE,
+        cycleSafePage * PAGE_SIZE,
+      ),
+    [cycleCounts, cycleSafePage],
+  );
 
   useEffect(() => {
     if (!detailRequestId) {
@@ -543,7 +572,7 @@ export default function ServiceRequestsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {trackingRequests.map((r) => (
+                    {trackingPaged.map((r) => (
                       <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
                         <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
                         <td className="px-6 py-4 text-slate-700">
@@ -566,13 +595,12 @@ export default function ServiceRequestsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <button
-                            type="button"
-                            onClick={() => setDetailRequestId(r.request_id)}
+                          <Link
+                            href={`/customer/service-requests/${r.request_id}`}
                             className="text-sm font-bold text-primary hover:underline"
                           >
                             View details
-                          </button>
+                          </Link>
                         </td>
                       </tr>
                     ))}
@@ -586,6 +614,28 @@ export default function ServiceRequestsPage() {
               </div>
             )}
           </section>
+
+          {!trackingLoading && !trackingError && trackingRequests.length > 0 && (
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <p className="text-sm text-slate-500">
+                Showing{' '}
+                <span className="font-bold text-slate-700">
+                  {Math.min((trackingSafePage - 1) * PAGE_SIZE + 1, trackingRequests.length)}
+                </span>
+                {' '}to{' '}
+                <span className="font-bold text-slate-700">
+                  {Math.min(trackingSafePage * PAGE_SIZE, trackingRequests.length)}
+                </span>
+                {' '}of{' '}
+                <span className="font-bold text-slate-700">{trackingRequests.length}</span>
+              </p>
+              <Pagination
+                currentPage={trackingSafePage}
+                totalPages={trackingTotalPages}
+                onPageChange={(p) => setTrackingPage(Math.min(Math.max(1, p), trackingTotalPages))}
+              />
+            </div>
+          )}
 
           <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Cycle Count (Inventory Checking)</h2>
@@ -616,7 +666,7 @@ export default function ServiceRequestsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {cycleCounts.map((cc) => (
+                    {cyclePaged.map((cc) => (
                       <tr key={cc.cycle_count_id} className="border-b border-slate-100 hover:bg-slate-50/50">
                         <td className="px-6 py-4 font-bold text-slate-900">{cc.contract_code}</td>
                         <td className="px-6 py-4 text-slate-700">{cc.warehouse_name || '—'}</td>
@@ -627,12 +677,12 @@ export default function ServiceRequestsPage() {
                             : '—'}
                         </td>
                         <td className="px-6 py-4">
-                          <a
+                          <Link
                             href={`/customer/cycle-count/${cc.cycle_count_id}`}
                             className="text-sm font-bold text-primary hover:underline"
                           >
                             View details
-                          </a>
+                          </Link>
                         </td>
                       </tr>
                     ))}
@@ -641,6 +691,27 @@ export default function ServiceRequestsPage() {
               </div>
             )}
           </section>
+          {!cycleLoading && !cycleError && cycleCounts.length > 0 && (
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <p className="text-sm text-slate-500">
+                Showing{' '}
+                <span className="font-bold text-slate-700">
+                  {Math.min((cycleSafePage - 1) * PAGE_SIZE + 1, cycleCounts.length)}
+                </span>
+                {' '}to{' '}
+                <span className="font-bold text-slate-700">
+                  {Math.min(cycleSafePage * PAGE_SIZE, cycleCounts.length)}
+                </span>
+                {' '}of{' '}
+                <span className="font-bold text-slate-700">{cycleCounts.length}</span>
+              </p>
+              <Pagination
+                currentPage={cycleSafePage}
+                totalPages={cycleTotalPages}
+                onPageChange={(p) => setCyclePage(Math.min(Math.max(1, p), cycleTotalPages))}
+              />
+            </div>
+          )}
         </>
       ) : (
         <form

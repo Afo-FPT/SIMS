@@ -9,6 +9,7 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import { Badge } from '../../../components/ui/Badge';
 import { Input } from '../../../components/ui/Input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/Table';
+import { Pagination } from '../../../components/ui/Pagination';
 
 type HistoryType = 'ALL' | 'INBOUND' | 'OUTBOUND' | 'CYCLE_COUNT';
 
@@ -22,12 +23,14 @@ type HistoryRow = {
 };
 
 export default function CustomerHistoryPage() {
+  const PAGE_SIZE = 10;
   const [rows, setRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<HistoryType>('ALL');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +85,17 @@ export default function CustomerHistoryPage() {
     });
   }, [rows, typeFilter, fromDate, toDate]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+
+  const paginatedRows = useMemo(() => {
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, page, totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [typeFilter, fromDate, toDate]);
   if (loading) {
     return (
       <div className="space-y-8">
@@ -113,6 +127,9 @@ export default function CustomerHistoryPage() {
             <option value="OUTBOUND">Outbound</option>
             <option value="CYCLE_COUNT">Cycle Count</option>
           </select>
+          <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 flex items-center px-3 text-sm text-slate-600">
+            Rows per page: {PAGE_SIZE}
+          </div>
           <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
           <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 flex items-center px-3 text-sm text-slate-600">
@@ -136,7 +153,7 @@ export default function CustomerHistoryPage() {
               <TableHeader>Updated at</TableHeader>
             </TableHead>
             <TableBody>
-              {filteredRows.map((r) => (
+              {paginatedRows.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell>
                     <Badge variant="neutral">{r.type}</Badge>
@@ -151,6 +168,27 @@ export default function CustomerHistoryPage() {
           </Table>
         )}
       </section>
+      {filteredRows.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((Math.min(page, totalPages) - 1) * PAGE_SIZE + 1, filteredRows.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(Math.min(page, totalPages) * PAGE_SIZE, filteredRows.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{filteredRows.length}</span>
+          </p>
+          <Pagination
+            currentPage={Math.min(page, totalPages)}
+            totalPages={totalPages}
+            onPageChange={(p) => setPage(Math.min(Math.max(1, p), totalPages))}
+          />
+        </div>
+      )}
     </div>
   );
 }

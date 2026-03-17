@@ -22,6 +22,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Pagination } from '../../../components/ui/Pagination';
 
 /**
  * Format date for display
@@ -105,7 +106,9 @@ type RentedZoneRow = { zoneId: string; startDate: string; endDate: string; price
 
 export default function ManagerContractsPage() {
   const toast = useToastHelpers();
+  const PAGE_SIZE = 10;
   const [contracts, setContracts] = useState<Contract[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<Contract | null>(null);
@@ -173,6 +176,7 @@ export default function ManagerContractsPage() {
       setError(null);
       const data = await listContracts();
       setContracts(data);
+      setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contracts');
       toast.error('Failed to load contracts');
@@ -180,6 +184,10 @@ export default function ManagerContractsPage() {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(contracts.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = contracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const handleStatusChange = async (id: string, status: Contract['status']) => {
     try {
@@ -304,7 +312,7 @@ export default function ManagerContractsPage() {
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
-              {contracts.map((c) => (
+              {paged.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
                   <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
@@ -332,6 +340,24 @@ export default function ManagerContractsPage() {
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {!loading && !error && contracts.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, contracts.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(safePage * PAGE_SIZE, contracts.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{contracts.length}</span>
+          </p>
+          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
 

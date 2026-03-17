@@ -7,6 +7,7 @@ import { useToast } from '../../../lib/toast';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { Pagination } from '../../../components/ui/Pagination';
 
 type ProductRow = StoredProductOverview & {
   contractCode?: string;
@@ -14,11 +15,13 @@ type ProductRow = StoredProductOverview & {
 
 export default function CustomerInventoryPage() {
   const { showToast } = useToast();
+  const PAGE_SIZE = 10;
   const [search, setSearch] = useState('');
   const [contracts, setContracts] = useState<Array<{ id: string; code: string; status: string }>>([]);
   const [contractFilter, setContractFilter] = useState<'ALL' | string>('ALL');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +79,17 @@ export default function CustomerInventoryPage() {
     }
     return list;
   }, [products, search, lowStockOnly]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, contractFilter, lowStockOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = useMemo(() => {
+    const p = Math.min(Math.max(1, page), totalPages);
+    const start = (p - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page, totalPages]);
 
   const showContractColumn = contractFilter === 'ALL';
 
@@ -158,7 +172,7 @@ export default function CustomerInventoryPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((i) => (
+                paged.map((i) => (
                   <tr
                     key={`${i.contract_id}-${i.product_id}`}
                     className="border-b border-slate-100 hover:bg-slate-50/50"
@@ -204,6 +218,28 @@ export default function CustomerInventoryPage() {
           </table>
         </div>
       </section>
+
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((page - 1) * PAGE_SIZE + 1, filtered.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(page * PAGE_SIZE, filtered.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{filtered.length}</span>
+          </p>
+          <Pagination
+            currentPage={Math.min(page, totalPages)}
+            totalPages={totalPages}
+            onPageChange={(p) => setPage(Math.min(Math.max(1, p), totalPages))}
+          />
+        </div>
+      )}
     </div>
   );
 }

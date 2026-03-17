@@ -22,9 +22,11 @@ import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSk
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Modal } from '../../../components/ui/Modal';
+import { Pagination } from '../../../components/ui/Pagination';
 
 export default function ManagerWarehousesPage() {
   const toast = useToastHelpers();
+  const PAGE_SIZE = 10;
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [warehouses, setWarehouses] = useState<ManagerWarehouse[]>([]);
   const [zones, setZones] = useState<ManagerZoneOption[]>([]);
@@ -49,6 +51,7 @@ export default function ManagerWarehousesPage() {
   });
   const [creatingShelf, setCreatingShelf] = useState(false);
   const [createWarehouseModalOpen, setCreateWarehouseModalOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     load();
@@ -60,6 +63,7 @@ export default function ManagerWarehousesPage() {
       setError(null);
       const w = await listWarehouses().catch(() => [] as ManagerWarehouse[]);
       setWarehouses(w);
+      setPage(1);
       if (w.length > 0) {
         const defaultWarehouseId = w[0].id;
         setSelectedWarehouseId(defaultWarehouseId);
@@ -80,6 +84,10 @@ export default function ManagerWarehousesPage() {
       setLoading(false);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(warehouses.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pagedWarehouses = warehouses.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const loadZonesForWarehouse = async (warehouseId: string) => {
     try {
@@ -352,7 +360,7 @@ export default function ManagerWarehousesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {warehouses.map((w) => (
+                  {pagedWarehouses.map((w) => (
                     <tr key={w.id} className="border-b border-slate-50">
                       <td className="py-2 pr-4 font-bold text-slate-900">{w.name}</td>
                       <td className="py-2 pr-4 text-slate-700">{w.address}</td>
@@ -375,6 +383,24 @@ export default function ManagerWarehousesPage() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {warehouses.length > 0 && (
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <p className="text-sm text-slate-500">
+            Showing{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, warehouses.length)}
+            </span>
+            {' '}to{' '}
+            <span className="font-bold text-slate-700">
+              {Math.min(safePage * PAGE_SIZE, warehouses.length)}
+            </span>
+            {' '}of{' '}
+            <span className="font-bold text-slate-700">{warehouses.length}</span>
+          </p>
+          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
 

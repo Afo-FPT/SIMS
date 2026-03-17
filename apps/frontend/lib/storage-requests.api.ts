@@ -82,6 +82,17 @@ export async function getStorageRequestById(id: string): Promise<StorageRequestV
 }
 
 /**
+ * Customer confirms a staff-completed storage request.
+ * PATCH /storage-requests/:id/confirm
+ */
+export async function confirmStorageRequest(requestId: string) {
+  return await apiJson<{ request_id: string; final_status: string; customer_confirmed_at: string; updated_at: string }>(
+    `/storage-requests/${requestId}/confirm`,
+    { method: 'PATCH' },
+  );
+}
+
+/**
  * Manager assigns a PENDING storage request to one or more staff.
  * PATCH /storage-requests/:id/assign  body: { staffIds: string[] }
  */
