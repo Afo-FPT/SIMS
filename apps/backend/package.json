@@ -20,7 +20,6 @@
     "mongoose": "^8.21.0",
     "nodemailer": "^7.0.12",
     "qrcode": "^1.5.4",
-    "sims-ai": "file:../..",
     "socket.io": "^4.8.3",
     "zod": "^3.22.4"
   },
