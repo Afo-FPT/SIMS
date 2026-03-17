@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/fix-esm-imports.mjs",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "mongoose": "^8.21.0",
     "nodemailer": "^7.0.12",
     "qrcode": "^1.5.4",
+    "sims-ai": "file:../..",
     "socket.io": "^4.8.3",
     "zod": "^3.22.4"
   },
