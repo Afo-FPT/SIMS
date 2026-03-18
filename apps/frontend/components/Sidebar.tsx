@@ -8,9 +8,11 @@ interface SidebarProps {
   onNavigate: (view: string) => void;
   user: User | null;
   onLogout: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user, onLogout, collapsed = false, onToggleCollapsed }) => {
   const getSections = () => {
     switch (persona) {
       case 'ADMIN':
@@ -125,27 +127,49 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
   const sections = getSections();
 
   return (
-    <aside className="w-80 bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 shrink-0 z-50">
-      <div className="p-8 border-b border-slate-50 flex items-center gap-4 group cursor-pointer" onClick={() => onNavigate('DASHBOARD')}>
+    <aside className={`${collapsed ? 'w-[88px]' : 'w-80'} bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 shrink-0 z-50 transition-[width] duration-200`}>
+      <div className={`${collapsed ? 'p-5' : 'p-8'} border-b border-slate-50 flex items-center gap-4`}>
         <div className="size-11 bg-primary rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-primary/30 group-hover:scale-110 transition-transform duration-500">
-          <span className="material-symbols-outlined !text-2xl">warehouse</span>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center w-full h-full"
+            onClick={() => onNavigate('DASHBOARD')}
+            title="Home"
+          >
+            <span className="material-symbols-outlined !text-2xl">warehouse</span>
+          </button>
         </div>
-        <div className="flex flex-col">
-          <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SWSMS-AI</h1>
-          <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">{persona} NODE</p>
-        </div>
+        {!collapsed && (
+          <div className="flex flex-col flex-1">
+            <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SWSMS-AI</h1>
+            <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">{persona} NODE</p>
+          </div>
+        )}
+        {onToggleCollapsed && (
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className={`ml-auto inline-flex items-center justify-center ${collapsed ? 'size-9' : 'size-10'} rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors`}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <span className="material-symbols-outlined">{collapsed ? 'chevron_right' : 'chevron_left'}</span>
+          </button>
+        )}
       </div>
 
-      <nav className="flex-1 p-6 space-y-10 overflow-y-auto no-scrollbar">
+      <nav className={`flex-1 ${collapsed ? 'p-4' : 'p-6'} space-y-10 overflow-y-auto no-scrollbar`}>
         {sections.map((sec, i) => (
           <div key={i} className="space-y-3">
-            <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{sec.section}</h3>
+            {!collapsed && (
+              <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{sec.section}</h3>
+            )}
             <div className="space-y-1">
               {sec.items.map((item) => (
                 <button
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
-                  className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all group relative ${activeView === item.id
+                  title={collapsed ? item.label : undefined}
+                  className={`w-full flex items-center ${collapsed ? 'justify-center' : ''} gap-4 ${collapsed ? 'px-0' : 'px-4'} py-3.5 rounded-2xl transition-all group relative ${activeView === item.id
                       ? 'bg-primary/5 text-primary font-bold'
                       : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                     }`}
@@ -157,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
                     }`}>
                     {item.icon}
                   </span>
-                  <span className="text-sm tracking-tight">{item.label}</span>
+                  {!collapsed && <span className="text-sm tracking-tight">{item.label}</span>}
                 </button>
               ))}
             </div>
@@ -166,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
       </nav>
 
       {user && (
-        <div className="px-5 pb-5 pt-4 border-t border-slate-50">
+        <div className={`${collapsed ? 'px-3 pb-4 pt-4' : 'px-5 pb-5 pt-4'} border-t border-slate-50`}>
           <div className="bg-primary text-white rounded-2xl px-4 py-3 shadow-lg shadow-primary/30 relative overflow-hidden group">
             <div className="relative z-10 flex items-center gap-3">
               <div className="relative shrink-0">
@@ -174,21 +198,27 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
                   alt={user.name}
                   className="size-9 rounded-2xl object-cover border-2 border-white/10 shadow-sm transition-transform group-hover:scale-105"
                   src={user.avatar}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = `https://picsum.photos/seed/${user.role.toLowerCase()}/100/100`;
+                  }}
                 />
                 <span className="absolute -bottom-1 -right-1 size-2.5 bg-emerald-500 rounded-full border-2 border-primary"></span>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-black truncate">{user.name}</p>
-                <p className="text-[9px] text-primary-light/90 bg-white/10 px-2 py-0.5 rounded-full font-bold uppercase tracking-[0.18em] truncate">
-                  {user.title}
-                </p>
-              </div>
+              {!collapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black truncate">{user.name}</p>
+                  <p className="text-[9px] text-primary-light/90 bg-white/10 px-2 py-0.5 rounded-full font-bold uppercase tracking-[0.18em] truncate">
+                    {user.title}
+                  </p>
+                </div>
+              )}
               <button
                 onClick={onLogout}
-                className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[9px] font-black uppercase tracking-[0.18em] transition-colors shrink-0"
+                title="Logout"
+                className={`inline-flex items-center justify-center gap-1 ${collapsed ? 'px-2 py-2' : 'px-2.5 py-1.5'} bg-white/10 hover:bg-white/20 rounded-lg ${collapsed ? '' : 'text-[9px] font-black uppercase tracking-[0.18em]'} transition-colors shrink-0`}
               >
                 <span className="material-symbols-outlined text-[16px]">logout</span>
-                <span>Out</span>
+                {!collapsed && <span>Out</span>}
               </button>
             </div>
           </div>

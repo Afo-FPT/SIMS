@@ -7,6 +7,7 @@ export interface BackendUser {
   email: string;
   role: 'admin' | 'manager' | 'staff' | 'customer';
   isActive: boolean;
+  avatarUrl?: string | null;
 }
 
 export interface LoginResponse {
@@ -121,6 +122,11 @@ export function persistAuth(login: LoginResponse) {
   localStorage.setItem('sws_name', user.name);
   localStorage.setItem('sws_verified', 'true');
   localStorage.setItem('sws_token', token);
+  if (user.avatarUrl) {
+    localStorage.setItem('sws_avatar', user.avatarUrl);
+  } else {
+    localStorage.removeItem('sws_avatar');
+  }
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   deactivateUser,
   updateUser,
   deleteUser,
+  updateMyProfile,
   getActiveStaffUsers
 } from "../services/user.service";
 
@@ -152,5 +153,32 @@ export const getStaffUsersForManager = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+/**
+ * Update current user's profile (any authenticated role)
+ * PATCH /api/users/me
+ */
+export const updateMe = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { name, phone, companyName, avatarUrl } = req.body || {};
+    const user = await updateMyProfile(req.user.userId, { name, phone, companyName, avatarUrl });
+    res.json({ data: user });
+  } catch (error: any) {
+    const msg = error?.message || "Failed to update profile";
+    if (
+      msg.includes("Invalid user id") ||
+      msg.includes("User not found") ||
+      msg.includes("at least") ||
+      msg.includes("too large")
+    ) {
+      return res.status(400).json({ message: msg });
+    }
+    res.status(500).json({ message: msg });
   }
 };

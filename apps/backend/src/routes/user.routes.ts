@@ -2,6 +2,7 @@ import express from "express";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 import {
   getMe,
+  updateMe,
   getUsers,
   getUser,
   activateUserAccount,
@@ -15,6 +16,8 @@ const router = express.Router();
 
 // Lấy thông tin user hiện tại (bất kỳ role nào đã đăng nhập)
 router.get("/me", authenticate, getMe);
+// Cập nhật thông tin user hiện tại (bất kỳ role nào đã đăng nhập)
+router.patch("/me", authenticate, updateMe);
 
 // Quản lý users - Chỉ Admin mới có quyền
 router.get(

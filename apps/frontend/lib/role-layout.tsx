@@ -19,6 +19,8 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
   const toast = useToastHelpers();
   const [persona, setPersona] = useState<Persona>(requiredRole);
   const [loading, setLoading] = useState(true);
+  const [userTick, setUserTick] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const savedRole = localStorage.getItem('sws_persona') as Persona;
@@ -34,6 +36,37 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     }
     setLoading(false);
   }, [router, requiredRole]);
+
+  useEffect(() => {
+    const v = localStorage.getItem('sws_sidebar_collapsed');
+    setSidebarCollapsed(v === 'true');
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'sws_avatar' || e.key === 'sws_name' || e.key === 'sws_title') {
+        setUserTick((x) => x + 1);
+      }
+      if (e.key === 'sws_sidebar_collapsed') {
+        setSidebarCollapsed(e.newValue === 'true');
+      }
+    };
+
+    const onProfileUpdated = () => setUserTick((x) => x + 1);
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('sws:profile-updated', onProfileUpdated as any);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('sws:profile-updated', onProfileUpdated as any);
+    };
+  }, []);
+
+  const handleToggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('sws_sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   const handleNavigate = (view: string) => {
     const rolePrefix = requiredRole.toLowerCase();
@@ -113,6 +146,9 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     };
   };
 
+  // Re-evaluate user data when profile changes in localStorage
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _ = userTick;
   const user = getUserData();
   const pathParts = pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1] || 'dashboard';
@@ -160,6 +196,8 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
         onNavigate={handleNavigate}
         user={user}
         onLogout={handleLogout}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={handleToggleSidebar}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header activeView={activeView} persona={persona} />

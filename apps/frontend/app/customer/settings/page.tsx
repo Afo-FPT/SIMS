@@ -1,30 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useToastHelpers } from '../../../lib/toast';
 import { ChangePasswordForm } from '../../../components/ChangePasswordForm';
+import { ProfileSettingsCard } from '../../../components/ProfileSettingsCard';
 
 type VerifyStatus = 'unverified' | 'pending' | 'verified';
 
 export default function CustomerSettingsPage() {
   const toast = useToastHelpers();
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [company, setCompany] = useState('');
   const [docUploaded, setDocUploaded] = useState(false);
   const [status, setStatus] = useState<VerifyStatus>('unverified');
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    const n = localStorage.getItem('sws_name') || '';
-    setName(n);
-  }, []);
-
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('sws_name', name);
-    }
     setSaved(true);
     toast.success('Settings saved successfully');
     setTimeout(() => setSaved(false), 3000);
@@ -37,45 +27,13 @@ export default function CustomerSettingsPage() {
         <p className="text-slate-500 mt-1">Account verification & profile</p>
       </div>
 
+      <ProfileSettingsCard />
+
       <form
         onSubmit={handleSave}
         className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm space-y-6 max-w-2xl"
       >
-        <h2 className="text-lg font-black text-slate-900">Basic account</h2>
-
-        <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">Full name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
-            className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">Phone</label>
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+84 ..."
-            className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            Company name (optional)
-          </label>
-          <input
-            type="text"
-            value={company}
-            onChange={(e) => setCompany(e.target.value)}
-            placeholder="Company"
-            className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          />
-        </div>
-
+        <h2 className="text-lg font-black text-slate-900">Verification (mock)</h2>
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-2">
             ID / Business document upload (mock)
@@ -132,7 +90,6 @@ export default function CustomerSettingsPage() {
       </form>
 
       <div>
-        <h2 className="text-lg font-black text-slate-900 mb-4">Change password</h2>
         <ChangePasswordForm />
       </div>
     </div>

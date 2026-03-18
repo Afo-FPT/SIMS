@@ -149,3 +149,50 @@ export async function deleteUser(userId: string) {
   
   return { message: "User deleted successfully" };
 }
+
+/**
+ * Update profile fields for the currently authenticated user.
+ * Allows basic self-service profile updates for any role.
+ */
+export async function updateMyProfile(
+  userId: string,
+  data: { name?: string; phone?: string; companyName?: string; avatarUrl?: string }
+) {
+  if (!Types.ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  if (data.name != null) {
+    const name = String(data.name).trim();
+    if (name.length < 2) throw new Error("Name must be at least 2 characters");
+    user.name = name;
+  }
+
+  if (data.phone !== undefined) {
+    const phone = data.phone ? String(data.phone).trim() : "";
+    user.phone = phone ? phone : (null as any);
+  }
+
+  if (data.companyName !== undefined) {
+    const companyName = data.companyName ? String(data.companyName).trim() : "";
+    user.companyName = companyName ? companyName : (null as any);
+  }
+
+  if (data.avatarUrl !== undefined) {
+    const avatarUrl = data.avatarUrl ? String(data.avatarUrl).trim() : "";
+    // Avoid storing extremely large strings (e.g. very large data URLs)
+    if (avatarUrl && avatarUrl.length > 300_000) {
+      throw new Error("Avatar image is too large");
+    }
+    user.avatarUrl = avatarUrl ? avatarUrl : (null as any);
+  }
+
+  await user.save();
+  const safe = await User.findById(userId).select("-password");
+  return safe;
+}

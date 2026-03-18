@@ -61,7 +61,16 @@ export async function loginUser(email: string, password: string) {
     role: user.role
   });
 
-  return { user, token };
+  const safeUser = {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    avatarUrl: (user as any).avatarUrl ?? null,
+  };
+
+  return { user: safeUser, token };
 }
 
 /**
