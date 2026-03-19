@@ -118,8 +118,11 @@ export default function RentRequestsPage() {
   }, []);
 
   const selectedPackage = useMemo(
-    () => packages.find((p) => p.id === selectedPackageId) ?? null,
-    [packages, selectedPackageId]
+    () =>
+      durationMode === 'package'
+        ? packages.find((p) => p.id === selectedPackageId) ?? null
+        : null,
+    [packages, selectedPackageId, durationMode]
   );
 
   useEffect(() => {
@@ -180,7 +183,7 @@ export default function RentRequestsPage() {
   const estimatedContractPrice = useMemo(() => {
     if (!rentalDays || !zoneCount) return 0;
     // If using a package, treat package price as price per zone for the whole period
-    if (selectedPackage) {
+    if (durationMode === 'package' && selectedPackage) {
       const perZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
       return perZone * zoneCount;
     }
@@ -216,7 +219,7 @@ export default function RentRequestsPage() {
       return;
     }
     let pricePerZone: number | undefined;
-    if (selectedPackage) {
+    if (durationMode === 'package' && selectedPackage) {
       pricePerZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : undefined;
     } else if (rentalDays > 0 && zoneCount > 0) {
       // Custom: total = 100,000 VND * rentalDays
@@ -385,7 +388,10 @@ export default function RentRequestsPage() {
                 <input
                   type="radio"
                   checked={durationMode === 'custom'}
-                  onChange={() => setDurationMode('custom')}
+                  onChange={() => {
+                    setDurationMode('custom');
+                    setSelectedPackageId(null);
+                  }}
                 />
                 <span>Custom</span>
               </label>
