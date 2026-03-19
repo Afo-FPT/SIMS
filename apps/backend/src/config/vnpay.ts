@@ -51,14 +51,20 @@ export interface VNPayPaymentUrlResult {
   vnp_ExpireDate: string;
 }
 
-function formatDateYYYYMMDDHHmmss(date: Date): string {
+/**
+ * VNPay expects dates in Vietnam time (GMT+7) format: YYYYMMDDHHmmss.
+ * Render containers often run in UTC, so we normalize to GMT+7 explicitly.
+ */
+function formatDateYYYYMMDDHHmmssGMT7(date: Date): string {
   const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-  const yyyy = date.getFullYear();
-  const MM = pad(date.getMonth() + 1);
-  const dd = pad(date.getDate());
-  const HH = pad(date.getHours());
-  const mm = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
+  // shift to GMT+7, then read via UTC getters to avoid host timezone differences
+  const d = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  const yyyy = d.getUTCFullYear();
+  const MM = pad(d.getUTCMonth() + 1);
+  const dd = pad(d.getUTCDate());
+  const HH = pad(d.getUTCHours());
+  const mm = pad(d.getUTCMinutes());
+  const ss = pad(d.getUTCSeconds());
   return `${yyyy}${MM}${dd}${HH}${mm}${ss}`;
 }
 
@@ -82,8 +88,8 @@ export function buildVNPayPaymentUrl(params: BuildVNPayUrlParams): VNPayPaymentU
     vnp_Locale: config.locale || "vn",
     vnp_ReturnUrl: config.returnUrl,
     vnp_IpAddr: params.ipAddr || "0.0.0.0",
-    vnp_CreateDate: formatDateYYYYMMDDHHmmss(createDate),
-    vnp_ExpireDate: formatDateYYYYMMDDHHmmss(expireDate)
+    vnp_CreateDate: formatDateYYYYMMDDHHmmssGMT7(createDate),
+    vnp_ExpireDate: formatDateYYYYMMDDHHmmssGMT7(expireDate)
   };
 
   if (config.ipnUrl) {
