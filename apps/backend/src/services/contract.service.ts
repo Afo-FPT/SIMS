@@ -284,6 +284,7 @@ export async function createContract(
   }
 }
 
+// Base price per zone per day (VND)
 export const DEFAULT_PRICE_PER_ZONE = 100000;
 
 /**
@@ -364,12 +365,20 @@ async function createDraftContractWithRequestOnly(
     price: number;
   }[] = [];
   if (data.zoneIds && data.zoneIds.length > 0) {
+    // Compute fallback pricePerZone based on duration if not provided
+    const diffMs = endDate.getTime() - startDate.getTime();
+    const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    const fallbackPricePerZone = DEFAULT_PRICE_PER_ZONE * rentalDays;
+
     const uniqueZoneIds = Array.from(new Set(data.zoneIds));
     const draftRentedZones = uniqueZoneIds.map((zid) => ({
       zoneId: zid,
       startDate,
       endDate,
-      price: data.pricePerZone && data.pricePerZone > 0 ? data.pricePerZone : DEFAULT_PRICE_PER_ZONE
+      price:
+        data.pricePerZone && data.pricePerZone > 0
+          ? data.pricePerZone
+          : fallbackPricePerZone
     }));
     // Validate against overlaps and zone/warehouse consistency
     await validateRentedZones(
@@ -541,7 +550,10 @@ export async function updateContractStatus(
           );
         }
       }
-      const price = DEFAULT_PRICE_PER_ZONE;
+      // Price per zone = base daily price * rentalDays
+      const diffMs = endDate.getTime() - startDate.getTime();
+      const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+      const price = DEFAULT_PRICE_PER_ZONE * rentalDays;
       contract.rentedZones = [
         {
           zoneId: zoneIdToAssign,

@@ -175,6 +175,8 @@ export default function RentRequestsPage() {
     [zones, selectedZoneIds],
   );
 
+  const BASE_DAILY_PRICE_PER_ZONE = 100000; // VND per day per zone
+
   const estimatedContractPrice = useMemo(() => {
     if (!rentalDays || !zoneCount) return 0;
     // If using a package, treat package price as price per zone for the whole period
@@ -182,9 +184,9 @@ export default function RentRequestsPage() {
       const perZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
       return perZone * zoneCount;
     }
-    // Custom duration: simple model = baseDailyPrice * days * number of zones
-    const baseDailyPricePerZone = 100000; // VND per zone per day (fallback)
-    return baseDailyPricePerZone * rentalDays * zoneCount;
+    // Custom duration: price per zone = baseDailyPricePerZone * rentalDays
+    const pricePerZone = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
+    return pricePerZone * zoneCount;
   }, [rentalDays, zoneCount, selectedPackage]);
 
   const validate = (): boolean => {
@@ -214,14 +216,22 @@ export default function RentRequestsPage() {
       toast.warning('Please fix the errors below');
       return;
     }
+    let pricePerZone: number | undefined;
+    if (selectedPackage) {
+      pricePerZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : undefined;
+    } else if (rentalDays > 0) {
+      // Custom: 100000 VND per day per zone
+      pricePerZone = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
+    }
+
     const payload: CreateDraftContractPayload = {
       warehouseId,
       startDate,
       endDate: endDate!,
       // Send all selected zones so backend can save as rented_zones
       zoneIds: Array.from(selectedZoneIds),
-      // If customer chose a package, use its price as price per zone
-      pricePerZone: selectedPackage ? selectedPackage.price : undefined,
+      // pricePerZone: for package or custom duration
+      pricePerZone,
     };
     try {
       setLoading(true);
