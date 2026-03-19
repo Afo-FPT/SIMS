@@ -184,9 +184,8 @@ export default function RentRequestsPage() {
       const perZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
       return perZone * zoneCount;
     }
-    // Custom duration: price per zone = baseDailyPricePerZone * rentalDays
-    const pricePerZone = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
-    return pricePerZone * zoneCount;
+    // Custom duration: total = 100,000 VND * rentalDays (independent of zone count)
+    return BASE_DAILY_PRICE_PER_ZONE * rentalDays;
   }, [rentalDays, zoneCount, selectedPackage]);
 
   const validate = (): boolean => {
@@ -219,9 +218,11 @@ export default function RentRequestsPage() {
     let pricePerZone: number | undefined;
     if (selectedPackage) {
       pricePerZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : undefined;
-    } else if (rentalDays > 0) {
-      // Custom: 100000 VND per day per zone
-      pricePerZone = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
+    } else if (rentalDays > 0 && zoneCount > 0) {
+      // Custom: total = 100,000 VND * rentalDays
+      // Distribute equally per zone so that sum(pricePerZone * zoneCount) = total
+      const total = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
+      pricePerZone = total / zoneCount;
     }
 
     const payload: CreateDraftContractPayload = {
