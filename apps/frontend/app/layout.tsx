@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { ToastProvider } from '../lib/toast';
-import AuthResetOnLoad from '../components/AuthResetOnLoad';
 
 export const metadata: Metadata = {
   title: 'SWSMS-AI | Enterprise Logistics',
@@ -21,7 +20,6 @@ export default function RootLayout({
       </head>
       <body className="antialiased selection:bg-primary/10 selection:text-primary bg-slate-50 text-slate-900 overflow-x-hidden">
         <ToastProvider>
-          <AuthResetOnLoad />
           {children}
         </ToastProvider>
       </body>
