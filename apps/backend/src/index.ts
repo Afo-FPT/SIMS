@@ -66,8 +66,13 @@ const startServer = async () => {
   // Tự động tạo Admin account nếu chưa có
   await initializeAdmin();
 
-  // Verify email configuration
-  await verifyEmailConfig();
+  // Verify email configuration only when explicitly enabled.
+  // Many cloud platforms restrict outbound SMTP and this can timeout on startup.
+  if (process.env.EMAIL_VERIFY_ON_STARTUP === "true") {
+    await verifyEmailConfig();
+  } else {
+    console.log("[Email] Skipping SMTP verify on startup (set EMAIL_VERIFY_ON_STARTUP=true to enable).");
+  }
 
   // Start email worker (if Redis configured)
   startEmailWorker();
