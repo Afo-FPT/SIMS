@@ -181,6 +181,9 @@ export async function handleVNPayReturn(
     message = `Payment failed with code ${vnp_ResponseCode}`;
   }
 
+  // Diagnostics for request credit payments (helps understand why it becomes "false")
+  console.log("[VNPay][RequestCredit] txnRef=", txnRef, "isValid=", isValid, "vnp_ResponseCode=", vnp_ResponseCode, "=>", message);
+
   requestCreditPayment.status = newStatus;
   requestCreditPayment.vnpResponseCode = vnp_ResponseCode;
   requestCreditPayment.vnpPayDate = query["vnp_PayDate"] as string | undefined;

@@ -234,6 +234,7 @@ export default function ServiceRequestsPage() {
   useEffect(() => {
     const creditResult = searchParams.get('creditResult');
     if (creditResult) {
+      const creditMessage = searchParams.get('message') || undefined;
       // Prevent toast spam on re-renders.
       if (processedCreditRef.current === creditResult) return;
       processedCreditRef.current = creditResult;
@@ -241,7 +242,9 @@ export default function ServiceRequestsPage() {
       toast.success(
         creditResult === 'success'
           ? 'Credit payment successful. You can submit one more request.'
-          : 'Credit payment failed.'
+          : creditMessage
+            ? `Credit payment failed: ${creditMessage}`
+            : 'Credit payment failed.'
       );
       setMainTab('new');
       // Remove query params to avoid repeating the effect.
