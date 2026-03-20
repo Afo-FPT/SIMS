@@ -226,6 +226,43 @@ async function validateRentedZones(
   }
 }
 
+/**
+ * Prevent a single customer from creating multiple drafts/pending/active contracts
+ * for the same zone during overlapping periods.
+ *
+ * This avoids stacking "y chang" contracts for the same zone.
+ */
+async function validateCustomerZoneDraftUniqueness(params: {
+  customerId: string;
+  zoneIds: string[];
+  startDate: Date;
+  endDate: Date;
+}): Promise<void> {
+  const { customerId, zoneIds, startDate, endDate } = params;
+  if (!zoneIds.length) return;
+
+  const customerOid = new Types.ObjectId(customerId);
+  const zoneOids = zoneIds.map((z) => new Types.ObjectId(z));
+
+  const existing = await Contract.findOne({
+    customerId: customerOid,
+    status: { $in: ["draft", "pending_payment", "active"] },
+    rentedZones: {
+      $elemMatch: {
+        zoneId: { $in: zoneOids },
+        startDate: { $lte: endDate },
+        endDate: { $gte: startDate }
+      }
+    }
+  }).select("contractCode status rentedZones");
+
+  if (existing) {
+    throw new Error(
+      `You already have a ${existing.status.replace("_", " ")} contract for the selected zone during this period (${existing.contractCode}). Please check your existing contracts.`
+    );
+  }
+}
+
 export async function createContract(
   data: CreateContractRequest,
   createdBy: string
@@ -357,6 +394,21 @@ async function createDraftContractWithRequestOnly(
   if (data.requestedZoneId) {
     await validateZone(data.requestedZoneId, data.warehouseId);
     requestedZoneObjectId = new Types.ObjectId(data.requestedZoneId);
+
+    // Block duplicates for the same customer + requested zone during overlapping periods.
+    const existing = await Contract.findOne({
+      customerId: new Types.ObjectId(customerId),
+      status: { $in: ["draft", "pending_payment", "active"] },
+      requestedZoneId: new Types.ObjectId(data.requestedZoneId),
+      requestedStartDate: { $lte: endDate },
+      requestedEndDate: { $gte: startDate }
+    }).select("contractCode status");
+
+    if (existing) {
+      throw new Error(
+        `You already have a ${existing.status.replace("_", " ")} contract for the selected zone during this period (${existing.contractCode}). Please check your existing contracts.`
+      );
+    }
   }
 
   // If customer selected specific zones (multi-select), prepare rentedZones upfront
@@ -367,6 +419,15 @@ async function createDraftContractWithRequestOnly(
     price: number;
   }[] = [];
   if (data.zoneIds && data.zoneIds.length > 0) {
+    // Block duplicates for the same customer + zone during overlapping periods.
+    // This is independent from the global "zone reservation" rule.
+    await validateCustomerZoneDraftUniqueness({
+      customerId,
+      zoneIds: Array.from(new Set(data.zoneIds)),
+      startDate,
+      endDate
+    });
+
     // Compute fallback pricePerZone based on duration if not provided
     const diffMs = endDate.getTime() - startDate.getTime();
     const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
