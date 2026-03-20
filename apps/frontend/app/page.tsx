@@ -37,7 +37,7 @@ export default function LandingPage() {
             <div className="bg-primary size-10 rounded-xl text-white flex items-center justify-center shadow-lg shadow-primary/20">
               <span className="material-symbols-outlined !text-2xl">warehouse</span>
             </div>
-            <span className="text-xl font-black tracking-tighter text-slate-900 uppercase">SWSMS-AI</span>
+            <span className="text-xl font-black tracking-tighter text-slate-900 uppercase">SIMS-AI</span>
           </div>
           
           <div className="hidden md:flex items-center gap-8">
@@ -196,7 +196,7 @@ export default function LandingPage() {
               <div className="bg-slate-900 size-10 rounded-xl text-white flex items-center justify-center">
                 <span className="material-symbols-outlined">warehouse</span>
               </div>
-              <span className="text-xl font-black tracking-tighter text-slate-900">SWSMS-AI</span>
+              <span className="text-xl font-black tracking-tighter text-slate-900">SIMS-AI</span>
             </div>
             <p className="text-sm text-slate-500 font-medium max-w-xs">Building the future of physical resource management with AI and automation.</p>
           </div>
@@ -218,7 +218,7 @@ export default function LandingPage() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto mt-20 pt-8 border-t border-slate-50 flex justify-between items-center">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© 2024 SWSMS-AI Logistics. All rights reserved.</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">© 2024 SIMS-AI Logistics. All rights reserved.</p>
           <div className="flex gap-6">
              <div className="size-5 bg-slate-200 rounded-full"></div>
              <div className="size-5 bg-slate-200 rounded-full"></div>

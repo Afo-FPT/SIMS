@@ -90,7 +90,7 @@ export default function VerifyClient() {
         sessionStorage.removeItem('signup_name');
         sessionStorage.removeItem('signup_password');
 
-        toast.success('Email verified successfully! Welcome to SWSMS-AI.');
+        toast.success('Email verified successfully! Welcome to SIMS-AI.');
         router.push('/');
       } else {
         const errorMsg = 'Invalid verification code. Please try again.';

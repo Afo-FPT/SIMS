@@ -75,7 +75,7 @@ export default function SignupPage() {
             <span className="material-symbols-outlined text-3xl">warehouse</span>
           </Link>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">Create Account</h1>
-          <p className="text-slate-500 font-medium">Sign up for SWSMS-AI</p>
+          <p className="text-slate-500 font-medium">Sign up for SIMS-AI</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">

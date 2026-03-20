@@ -84,17 +84,6 @@ export default function CustomerDashboard() {
   const requestCompleted = storageRequests.filter((r) => r.status === 'COMPLETED').length;
   const pendingConfirmations = cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
 
-  const customerModules = [
-    { title: 'Warehouse & Services', href: '/customer/warehouse-services', icon: 'warehouse' },
-    { title: 'My Contracts', href: '/customer/contracts', icon: 'description' },
-    { title: 'Submit Requests', href: '/customer/service-requests', icon: 'post_add' },
-    { title: 'In/Out Tracking', href: '/customer/service-requests', icon: 'local_shipping' },
-    { title: 'Checking Requests', href: '/customer/inventory-checking', icon: 'fact_check' },
-    { title: 'History', href: '/customer/history', icon: 'history' },
-    { title: 'Reports', href: '/customer/reports', icon: 'monitoring' },
-    { title: 'Profile & Settings', href: '/customer/settings', icon: 'settings' },
-  ];
-
   const recentContracts = [...contracts]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, 4);
@@ -159,20 +148,6 @@ export default function CustomerDashboard() {
           <p className="text-xs text-slate-500 mt-1">{requestCompleted} completed · {pendingConfirmations} waiting confirmation</p>
         </div>
       </div>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Customer Modules</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {customerModules.map((m) => (
-            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
-              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <span className="material-symbols-outlined">{m.icon}</span>
-              </div>
-              <p className="text-sm font-bold text-slate-900">{m.title}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Contract status</h2>

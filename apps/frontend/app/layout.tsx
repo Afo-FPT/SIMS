@@ -3,7 +3,7 @@ import './globals.css';
 import { ToastProvider } from '../lib/toast';
 
 export const metadata: Metadata = {
-  title: 'SWSMS-AI | Enterprise Logistics',
+  title: 'SIMS-AI | Enterprise Logistics',
   description: 'Decentralized per-shelf warehousing powered by Gemini 3',
 };
 

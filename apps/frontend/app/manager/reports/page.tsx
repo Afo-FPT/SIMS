@@ -298,27 +298,12 @@ export default function ManagerReportsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8 p-8 bg-slate-50 min-h-screen">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <LoadingSkeleton className="h-10 w-64" />
-          <div className="flex gap-3">
-            <LoadingSkeleton className="h-10 w-36" />
-            <LoadingSkeleton className="h-10 w-36" />
-            <LoadingSkeleton className="h-10 w-44" />
-          </div>
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
+          <p className="text-slate-500 mt-1">Operational analytics, approvals, outbound products, processing time, and anomalies</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <LoadingSkeleton key={i} className="h-28 rounded-3xl" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <LoadingSkeleton className="h-80 rounded-3xl" />
-          <LoadingSkeleton className="h-80 rounded-3xl" />
-        </div>
-        <LoadingSkeleton className="h-80 rounded-3xl" />
-        <LoadingSkeleton className="h-40 rounded-3xl" />
-        <LoadingSkeleton className="h-96 rounded-3xl" />
+        <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
     );
   }
@@ -328,17 +313,28 @@ export default function ManagerReportsPage() {
   }
 
   return (
-    <div className="space-y-8 p-8 bg-slate-50 min-h-screen">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900">Operations Analytics</h1>
-          <p className="text-slate-500 mt-1">Real-time data from SIMS-AI infrastructure</p>
-        </div>
-        <div className="flex flex-wrap gap-3 items-end">
-          <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
-          <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
-          <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
+        <p className="text-slate-500 mt-1">Operational analytics, approvals, outbound products, processing time, and anomalies</p>
+      </div>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
+            <p className="text-sm text-slate-500 mt-1">Adjust time range and granularity for all modules</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
             <button
               type="button"
               onClick={() => {
@@ -365,8 +361,8 @@ export default function ManagerReportsPage() {
             >
               Last 90 days
             </button>
-          </div>
-          <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+            </div>
+            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
             <button
               type="button"
               onClick={() => setGranularity('day')}
@@ -381,10 +377,11 @@ export default function ManagerReportsPage() {
             >
               By week
             </button>
+            </div>
+            <Button onClick={handleExportCSV}>Download CSV Report</Button>
           </div>
-          <Button onClick={handleExportCSV}>Download CSV Report</Button>
         </div>
-      </div>
+      </section>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -400,7 +397,7 @@ export default function ManagerReportsPage() {
       </div>
 
       {/* Approval Rate by Manager - KPI Cards + Horizontal Bar Chart */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Approval Rate by Manager
         </h3>
@@ -518,7 +515,7 @@ export default function ManagerReportsPage() {
       </div>
 
       {/* Top 10 Outbound Products - Horizontal Bar Chart + Detail Table */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Top 10 Outbound Products
         </h3>
@@ -614,7 +611,7 @@ export default function ManagerReportsPage() {
       </div>
 
       {/* Average Processing Time - Line Chart + Box Plot */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Average Processing Time
         </h3>
@@ -722,7 +719,7 @@ export default function ManagerReportsPage() {
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Pie Chart - Space Utilization */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -740,7 +737,7 @@ export default function ManagerReportsPage() {
         </div>
 
         {/* Bar Chart - Stock by Category */}
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -757,7 +754,7 @@ export default function ManagerReportsPage() {
       </div>
 
       {/* Inbound/Outbound Trend - Line Chart */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
           Inbound / Outbound Trend {granularity === 'week' ? '(by week)' : '(by day)'}
         </h3>
@@ -811,7 +808,7 @@ export default function ManagerReportsPage() {
 
       {/* Expiring contracts & capacity risk */}
       {expiringAndCapacity && (
-        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
             Contracts expiring & capacity risk
           </h3>
@@ -844,7 +841,7 @@ export default function ManagerReportsPage() {
       )}
 
       {/* Anomaly detection */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
           Anomaly Detection
         </h3>
@@ -893,9 +890,9 @@ function StatCard({ title, value, unit, isWarning = false }: {
   isWarning?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:border-slate-300 transition-colors">
-      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">{title}</h3>
-      <p className={`text-3xl font-black ${isWarning ? 'text-red-600' : 'text-slate-900'}`}>
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <h3 className="text-xs uppercase font-black tracking-wider text-slate-500">{title}</h3>
+      <p className={`text-2xl font-black mt-1 ${isWarning ? 'text-red-600' : 'text-slate-900'}`}>
         {value}
       </p>
       {unit && <p className="text-xs text-slate-400 mt-1 font-medium">{unit}</p>}

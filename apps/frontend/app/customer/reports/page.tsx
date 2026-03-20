@@ -19,19 +19,15 @@ import {
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { Badge } from '../../../components/ui/Badge';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
 type ReportTab =
-  | 'current_inventory'
   | 'io_history'
   | 'turnover'
   | 'discrepancy'
-  | 'contract_usage'
   | 'alerts';
 
 function monthKey(ts: string): string {
@@ -42,11 +38,10 @@ function monthKey(ts: string): string {
 export default function CustomerReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<ReportTab>('current_inventory');
+  const [tab, setTab] = useState<ReportTab>('io_history');
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
-  const [contracts, setContracts] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,17 +49,15 @@ export default function CustomerReportsPage() {
       try {
         setLoading(true);
         setError(null);
-        const [items, req, cc, contractRows] = await Promise.all([
+        const [items, req, cc] = await Promise.all([
           listMyStoredItems(),
           listStorageRequests(),
           getCycleCounts(),
-          getCustomerContracts(),
         ]);
         if (cancelled) return;
         setStoredItems(items);
         setRequests(req);
         setCycleCounts(cc);
-        setContracts(contractRows);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
@@ -76,15 +69,6 @@ export default function CustomerReportsPage() {
       cancelled = true;
     };
   }, []);
-
-  const inventoryByWarehouseType = useMemo(() => {
-    const map = new Map<string, number>();
-    storedItems.forEach((i) => {
-      const warehouseType = (i.shelf_code || 'STANDARD').includes('COLD') ? 'Cold' : 'Normal';
-      map.set(warehouseType, (map.get(warehouseType) || 0) + i.quantity);
-    });
-    return [...map.entries()].map(([name, quantity]) => ({ name, quantity }));
-  }, [storedItems]);
 
   const ioTrend = useMemo(() => {
     const map = new Map<string, { month: string; inbound: number; outbound: number }>();
@@ -146,21 +130,6 @@ export default function CustomerReportsPage() {
     ];
   }, [discrepancyRows]);
 
-  const contractUsageRows = useMemo(() => {
-    return contracts.map((c) => {
-      const rentedZones = c.rentedZones?.length || 1;
-      const used = storedItems.filter((i) => i.contract_id === c.id).reduce((s, i) => s + i.quantity, 0);
-      const capacity = rentedZones * 5000;
-      const utilization = Math.min(100, Math.round((used / Math.max(1, capacity)) * 100));
-      return {
-        contract: c.code,
-        utilization,
-        used,
-        capacity,
-      };
-    });
-  }, [contracts, storedItems]);
-
   const alertsData = useMemo(() => {
     const lowStock = storedItems.filter((i) => i.quantity < 50).length;
     const discrepancy = discrepancyRows.filter((r) => r.discrepancy > 0).length;
@@ -191,11 +160,9 @@ export default function CustomerReportsPage() {
 
       <div className="flex flex-wrap gap-2">
         {[
-          ['current_inventory', 'Current Inventory'],
           ['io_history', 'Inbound/Outbound History'],
           ['turnover', 'Inventory Level & Turnover'],
           ['discrepancy', 'Checking & Discrepancy'],
-          ['contract_usage', 'Contract Usage Summary'],
           ['alerts', 'Alerts & Trend Insights'],
         ].map(([id, label]) => (
           <button
@@ -209,45 +176,6 @@ export default function CustomerReportsPage() {
           </button>
         ))}
       </div>
-
-      {tab === 'current_inventory' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-6">
-          <h2 className="text-lg font-black text-slate-900">Current Inventory Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={inventoryByWarehouseType}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="quantity" fill="#0ea5e9" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="space-y-3">
-              {storedItems.slice(0, 6).map((item) => {
-                const min = 50;
-                const max = 300;
-                const ratio = Math.min(100, Math.round((item.quantity / max) * 100));
-                const color = item.quantity < min ? 'bg-red-500' : item.quantity < min * 1.5 ? 'bg-amber-500' : 'bg-emerald-500';
-                return (
-                  <div key={item.stored_item_id} className="rounded-2xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <p className="font-bold text-slate-900">{item.item_name}</p>
-                      <Badge variant={item.quantity < min ? 'error' : item.quantity < min * 1.5 ? 'warning' : 'success'}>{item.quantity} {item.unit}</Badge>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`h-full ${color}`} style={{ width: `${ratio}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
 
       {tab === 'io_history' && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
@@ -338,42 +266,6 @@ export default function CustomerReportsPage() {
                 <PieChart>
                   <Pie data={discrepancyPie} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
                     {discrepancyPie.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {tab === 'contract_usage' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-5">
-          <h2 className="text-lg font-black text-slate-900">Contract Usage Summary Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              {contractUsageRows.length === 0 ? (
-                <p className="text-sm text-slate-500">No active contract usage data.</p>
-              ) : (
-                contractUsageRows.map((c) => (
-                  <div key={c.contract} className="rounded-2xl border border-slate-200 p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-bold text-slate-900">{c.contract}</p>
-                      <Badge variant={c.utilization >= 90 ? 'error' : c.utilization >= 75 ? 'warning' : 'success'}>{c.utilization}%</Badge>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div className={`${c.utilization >= 90 ? 'bg-red-500' : c.utilization >= 75 ? 'bg-amber-500' : 'bg-emerald-500'} h-full`} style={{ width: `${c.utilization}%` }} />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={contractUsageRows.map((c) => ({ name: c.contract, value: c.used }))} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                    {contractUsageRows.map((c, i) => <Cell key={c.contract} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
                   <Tooltip />
                   <Legend />

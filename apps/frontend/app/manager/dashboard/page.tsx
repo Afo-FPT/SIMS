@@ -93,19 +93,6 @@ export default function ManagerDashboard() {
     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
     .slice(0, 5);
 
-  const dashboardModules = [
-    { title: 'Warehouse Structures', href: '/manager/warehouses', icon: 'warehouse' },
-    { title: 'Pricing & Conditions', href: '/manager/packages', icon: 'payments' },
-    { title: 'Contracts Management', href: '/manager/contracts', icon: 'description' },
-    { title: 'Inbound Approval', href: '/manager/inbound-requests', icon: 'inbox' },
-    { title: 'Outbound Management', href: '/manager/outbound-requests', icon: 'outbox' },
-    { title: 'Inventory Oversight', href: '/manager/inventory', icon: 'inventory_2' },
-    { title: 'Cycle Count Coordination', href: '/manager/cycle-count', icon: 'fact_check' },
-    { title: 'AI Insights & Reports', href: '/manager/reports', icon: 'monitoring' },
-    { title: 'Staff Assignment', href: '/manager/tasks', icon: 'assignment_ind' },
-    { title: 'Profile & Settings', href: '/manager/settings', icon: 'settings' },
-  ];
-
   if (loading) {
     return (
       <div className="space-y-8">
@@ -185,24 +172,10 @@ export default function ManagerDashboard() {
         </div>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Manager Modules</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-          {dashboardModules.map((m) => (
-            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
-              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <span className="material-symbols-outlined">{m.icon}</span>
-              </div>
-              <p className="text-sm font-bold text-slate-900">{m.title}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between p-6 pb-0">
-            <h2 className="text-lg font-black text-slate-900">Recent service requests</h2>
+          <div className="flex items-center justify-between p-6">
+            <h2 className="text-lg font-black text-slate-900">Recent Service Requests</h2>
             <Link href="/manager/service-requests" className="text-sm font-bold text-primary hover:underline">
               View all
             </Link>
@@ -242,8 +215,8 @@ export default function ManagerDashboard() {
         </section>
 
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="flex items-center justify-between p-6 pb-0">
-            <h2 className="text-lg font-black text-slate-900">Recent tasks</h2>
+          <div className="flex items-center justify-between p-6">
+            <h2 className="text-lg font-black text-slate-900">Recent Tasks</h2>
             <Link href="/manager/tasks" className="text-sm font-bold text-primary hover:underline">
               View all
             </Link>

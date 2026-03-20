@@ -102,7 +102,7 @@ export default function LoginPage() {
           <Link href="/" className="inline-flex bg-primary p-3 rounded-2xl text-white shadow-xl shadow-primary/20 mb-6 cursor-pointer">
             <span className="material-symbols-outlined text-3xl">warehouse</span>
           </Link>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">SWSMS-AI Access</h1>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight mb-2">SIMS-AI Access</h1>
           <p className="text-slate-500 font-medium">Sign in to your workspace</p>
         </div>
 

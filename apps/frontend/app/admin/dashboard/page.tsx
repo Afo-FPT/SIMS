@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { listUsers } from '../../../lib/mockApi/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
-import { apiFetchRaw } from '../../../lib/api-client';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Badge } from '../../../components/ui/Badge';
@@ -15,12 +13,6 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
   const [storageRequests, setStorageRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
-  const [health, setHealth] = useState<{ api: string; db: string; queue: string; uptime?: string }>({
-    api: 'WARN',
-    db: 'WARN',
-    queue: 'WARN',
-    uptime: '-',
-  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,21 +32,6 @@ export default function AdminDashboard() {
       setUsers(usersRes.items || []);
       setStorageRequests(requests);
       setCycleCounts(cycles);
-
-      try {
-        const res = await apiFetchRaw('/health', { method: 'GET' });
-        if (res.ok) {
-          const data: any = await res.json();
-          setHealth({
-            api: data?.status === 'ok' ? 'OK' : 'WARN',
-            db: data?.database === 'connected' ? 'OK' : 'WARN',
-            queue: 'OK',
-            uptime: data?.uptime || '-',
-          });
-        }
-      } catch {
-        // keep default snapshot if health endpoint unavailable
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load stats');
     } finally {
@@ -91,15 +68,6 @@ export default function AdminDashboard() {
     actor: c.contract_code,
     time: new Date(c.updated_at || c.created_at).toLocaleString('en-GB'),
   }))];
-
-  const modules = [
-    { title: 'User & Role Management', href: '/admin/users', icon: 'people' },
-    { title: 'System Logs & Audit Logs', href: '/admin/logs', icon: 'description' },
-    { title: 'Usage Statistics', href: '/admin/reports', icon: 'bar_chart' },
-    { title: 'System Health Check', href: '/admin/reports', icon: 'monitor_heart' },
-    { title: 'Basic Configuration', href: '/admin/settings', icon: 'settings' },
-    { title: 'Profile & Security', href: '/admin/settings', icon: 'shield' },
-  ];
 
   if (loading) {
     return (
@@ -193,45 +161,11 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">System Health Monitoring</h2>
-        <div className="flex flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-slate-700">API:</span>
-            <Badge variant={health.api === 'OK' ? 'success' : 'warning'}>{health.api}</Badge>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-slate-700">DB:</span>
-            <Badge variant={health.db === 'OK' ? 'success' : 'warning'}>{health.db}</Badge>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-slate-700">Queue:</span>
-            <Badge variant={health.queue === 'OK' ? 'success' : 'warning'}>{health.queue}</Badge>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-slate-700">Uptime:</span>
-            <span className="text-sm text-slate-600">{health.uptime || '-'}</span>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Admin Modules</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {modules.map((m) => (
-            <Link key={m.title} href={m.href} className="rounded-2xl border border-slate-200 p-4 hover:border-primary/40 hover:bg-primary/5 transition-colors">
-              <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-3">
-                <span className="material-symbols-outlined">{m.icon}</span>
-              </div>
-              <p className="text-sm font-bold text-slate-900">{m.title}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
       {/* Recent Logs */}
       <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 p-6 pb-0">Recent activity</h2>
+        <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/60">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Recent Activity</h2>
+        </div>
         <Table>
           <TableHead>
             <TableHeader>Level</TableHeader>

@@ -19,7 +19,6 @@ import {
 import { listUsers } from '../../../lib/mockApi/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
-import { apiFetchRaw } from '../../../lib/api-client';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Badge } from '../../../components/ui/Badge';
@@ -30,17 +29,12 @@ function hourKey(ts: string): string {
   return new Date(ts).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit' });
 }
 
-function dayKey(ts: string): string {
-  return new Date(ts).toLocaleDateString('en-GB', { month: 'short', day: '2-digit' });
-}
-
 export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [storageRequests, setStorageRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
-  const [health, setHealth] = useState({ cpu: 0, ram: 0, disk: 0, db: 'UNKNOWN' });
 
   useEffect(() => {
     let cancelled = false;
@@ -57,21 +51,6 @@ export default function AdminReportsPage() {
         setUsers(usersRes.items || []);
         setStorageRequests(requests);
         setCycleCounts(cycles);
-
-        try {
-          const res = await apiFetchRaw('/health', { method: 'GET' });
-          if (res.ok) {
-            const data: any = await res.json();
-            setHealth({
-              cpu: Number(data?.cpu || 0),
-              ram: Number(data?.ram || 0),
-              disk: Number(data?.disk || 0),
-              db: data?.database === 'connected' ? 'OK' : 'WARN',
-            });
-          }
-        } catch {
-          // keep default if endpoint unavailable
-        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load admin reports');
       } finally {
@@ -83,17 +62,6 @@ export default function AdminReportsPage() {
       cancelled = true;
     };
   }, []);
-
-  const healthTrend = useMemo(() => {
-    const labels = [...storageRequests, ...cycleCounts].slice(-10).map((r) => dayKey(r.updated_at || r.created_at));
-    const unique = Array.from(new Set(labels));
-    return unique.map((period, i) => ({
-      period,
-      cpu: Math.min(95, (health.cpu || 35) + (i % 4) * 5),
-      ram: Math.min(95, (health.ram || 40) + (i % 3) * 6),
-      disk: Math.min(95, (health.disk || 45) + (i % 2) * 4),
-    }));
-  }, [storageRequests, cycleCounts, health]);
 
   const apiUsage = useMemo(() => {
     const map = new Map<string, { period: string; count: number; latency: number }>();
@@ -155,7 +123,7 @@ export default function AdminReportsPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-          <p className="text-slate-500 mt-1">System health, API performance, activity, errors, and audit security metrics</p>
+          <p className="text-slate-500 mt-1">API usage, user activity, error trends, and audit security insights</p>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -168,35 +136,8 @@ export default function AdminReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-        <p className="text-slate-500 mt-1">System health, API performance, activity, errors, and audit security metrics</p>
+        <p className="text-slate-500 mt-1">API usage, user activity, error trends, and audit security insights</p>
       </div>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">System Health & Uptime Report</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
-          <MetricTile title="CPU" value={`${health.cpu}%`} />
-          <MetricTile title="RAM" value={`${health.ram}%`} />
-          <MetricTile title="Disk" value={`${health.disk}%`} />
-          <div className="rounded-2xl border border-slate-200 p-3">
-            <p className="text-xs text-slate-500 font-black uppercase mb-1">DB Status</p>
-            <Badge variant={health.db === 'OK' ? 'success' : 'warning'}>{health.db}</Badge>
-          </div>
-        </div>
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={healthTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="period" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line dataKey="cpu" stroke="#0ea5e9" strokeWidth={2} />
-              <Line dataKey="ram" stroke="#22c55e" strokeWidth={2} />
-              <Line dataKey="disk" stroke="#f59e0b" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">API Usage & Performance Report</h2>
@@ -330,15 +271,6 @@ export default function AdminReportsPage() {
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function MetricTile({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-3">
-      <p className="text-xs text-slate-500 font-black uppercase">{title}</p>
-      <p className="text-xl font-black text-slate-900">{value}</p>
     </div>
   );
 }

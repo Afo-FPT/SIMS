@@ -70,18 +70,30 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
       case 'STAFF':
         return [
           {
-            section: 'Work', items: [
+            section: 'Overview', items: [
               { id: 'DASHBOARD', label: 'Dashboard', icon: 'dashboard' },
+            ]
+          },
+          {
+            section: 'Work', items: [
               { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
-              { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
               { id: 'INBOUND_REQUESTS', label: 'Inbound Putaway', icon: 'inbox' },
               { id: 'OUTBOUND_REQUESTS', label: 'Outbound Picking', icon: 'outbox' },
+              { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
+              { id: 'SCANNER', label: 'Scanner', icon: 'barcode_scanner' },
+            ]
+          },
+          {
+            section: 'Operations', items: [
               { id: 'INVENTORY', label: 'Inventory Movement', icon: 'inventory_2' },
+              { id: 'REPORT_ISSUE', label: 'Report Issue', icon: 'report_problem' },
+              { id: 'NOTIFICATIONS', label: 'Notifications', icon: 'notifications' },
+            ]
+          },
+          {
+            section: 'Insights', items: [
               { id: 'HISTORY', label: 'History', icon: 'history' },
               { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
-              { id: 'NOTIFICATIONS', label: 'Notifications', icon: 'notifications' },
-              { id: 'SCANNER', label: 'Scanner', icon: 'barcode_scanner' },
-              { id: 'REPORT_ISSUE', label: 'Report Issue', icon: 'report_problem' },
             ]
           },
           {
@@ -102,7 +114,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             section: 'Requests', items: [
               { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
               { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
-              { id: 'INVENTORY_CHECKING', label: 'Inventory Checking', icon: 'fact_check' },
             ]
           },
           {
@@ -141,7 +152,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
         </div>
         {!collapsed && (
           <div className="flex flex-col flex-1">
-            <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SWSMS-AI</h1>
+            <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SIMS-AI</h1>
             <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">{persona} NODE</p>
           </div>
         )}
