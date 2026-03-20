@@ -139,7 +139,8 @@ async function checkZoneAvailability(
 ): Promise<{ available: boolean; conflictingContract?: any }> {
   const zoneOid = new Types.ObjectId(zoneId);
   const query: any = {
-    status: { $in: ["draft", "pending_payment", "active"] },
+    // Draft should NOT reserve zone. Only pending_payment (payment window) and active reserve it.
+    status: { $in: ["pending_payment", "active"] },
     rentedZones: {
       $elemMatch: {
         zoneId: zoneOid,
@@ -519,6 +520,72 @@ export async function updateContractStatus(
   session.startTransaction();
 
   try {
+    // When manager approves (draft -> pending_payment):
+    // - reserve the zone(s) for the payment window
+    // - allow other customers to create drafts, but not approve/purchase into the same zone during this window
+    if (newStatus === "pending_payment") {
+      // If rentedZones are not set yet, assign zone similarly to activation logic.
+      if (!contract.rentedZones || contract.rentedZones.length === 0) {
+        const reqStart = contract.requestedStartDate;
+        const reqEnd = contract.requestedEndDate;
+        if (!reqStart || !reqEnd) {
+          throw new Error("Contract has no requested period; cannot reserve zone for pending payment.");
+        }
+        const startDate = new Date(reqStart);
+        const endDate = new Date(reqEnd);
+        if (startDate >= endDate) {
+          throw new Error("Requested start date must be before end date.");
+        }
+
+        const warehouseId = contract.warehouseId.toString();
+        let zoneIdToAssign: Types.ObjectId | null = null;
+
+        if (contract.requestedZoneId) {
+          const check = await checkZoneAvailability(contract.requestedZoneId.toString(), startDate, endDate, contractId);
+          if (!check.available) {
+            const conflictCode = check.conflictingContract?.contractCode || "another contract";
+            throw new Error(
+              `Requested zone is not available: the period overlaps with a pending/active contract ${conflictCode}.`
+            );
+          }
+          zoneIdToAssign = contract.requestedZoneId;
+        } else {
+          zoneIdToAssign = await findAvailableZoneInWarehouse(warehouseId, startDate, endDate, contractId);
+          if (!zoneIdToAssign) {
+            throw new Error("No zone available in this warehouse for the requested period (pending/active).");
+          }
+        }
+
+        const diffMs = endDate.getTime() - startDate.getTime();
+        const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        const price = DEFAULT_PRICE_PER_ZONE * rentalDays;
+
+        contract.rentedZones = [
+          {
+            zoneId: zoneIdToAssign!,
+            startDate,
+            endDate,
+            price
+          }
+        ];
+      }
+
+      // Validate that every rentedZone is still available for pending payment.
+      // (drafts do not reserve, only pending_payment/active do)
+      for (const rz of contract.rentedZones || []) {
+        const rzStart = new Date(rz.startDate);
+        const rzEnd = new Date(rz.endDate);
+        const check = await checkZoneAvailability(rz.zoneId.toString(), rzStart, rzEnd, contractId);
+        if (!check.available) {
+          const zoneCode = (await Zone.findById(rz.zoneId))?.zoneCode || rz.zoneId.toString();
+          const conflictCode = check.conflictingContract?.contractCode || "another contract";
+          throw new Error(
+            `Zone ${zoneCode} is not available for pending payment: overlaps with contract ${conflictCode}.`
+          );
+        }
+      }
+    }
+
     // When manager approves (draft -> active): auto-assign a zone (requested or first available in warehouse)
     if (newStatus === "active" && (!contract.rentedZones || contract.rentedZones.length === 0)) {
       const reqStart = contract.requestedStartDate;
