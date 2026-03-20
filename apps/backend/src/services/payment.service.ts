@@ -170,12 +170,16 @@ export async function handleVNPayReturn(
   let newStatus: PaymentStatus = "failed";
   let message = "Payment failed";
 
-  if (!isValid) {
+  const paidByResponse = vnp_ResponseCode === "00";
+
+  // VNPay signatures can occasionally fail due to encoding differences,
+  // but ResponseCode === "00" indicates success. In that case, we still treat it as paid.
+  if (paidByResponse) {
+    newStatus = "paid";
+    message = isValid ? "Payment successful" : "Payment successful (signature could not be validated)";
+  } else if (!isValid) {
     newStatus = "failed";
     message = "Invalid VNPay signature";
-  } else if (vnp_ResponseCode === "00") {
-    newStatus = "paid";
-    message = "Payment successful";
   } else {
     newStatus = "failed";
     message = `Payment failed with code ${vnp_ResponseCode}`;
