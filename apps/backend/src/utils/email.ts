@@ -62,19 +62,66 @@ const createTransporter = () => {
   return null;
 };
 
+type EmailPayload = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+};
+
+const getDefaultFrom = (): string =>
+  process.env.EMAIL_FROM ||
+  process.env.RESEND_FROM ||
+  process.env.SMTP_USER ||
+  process.env.GMAIL_USER ||
+  "noreply@sims.ai";
+
+const sendViaResend = async (payload: EmailPayload): Promise<boolean> => {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return false;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: getDefaultFrom(),
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Resend API error (${response.status}): ${errorText}`);
+  }
+
+  return true;
+};
+
 export async function sendEmail(params: {
   to: string;
   subject: string;
   html: string;
   text?: string;
 }): Promise<void> {
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+    });
+    return;
+  }
+
   const transporter = createTransporter();
   const mailOptions = {
-    from:
-      process.env.EMAIL_FROM ||
-      process.env.SMTP_USER ||
-      process.env.GMAIL_USER ||
-      "noreply@sims.ai",
+    from: getDefaultFrom(),
     to: params.to,
     subject: params.subject,
     html: params.html,
@@ -158,6 +205,17 @@ export async function sendPasswordResetEmail(
     `,
   };
 
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({
+      to: email,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+    });
+    console.log(`Password reset email sent via Resend to ${email}`);
+    return;
+  }
+
   const transporter = createTransporter();
 
   // Nếu không có transporter (development mode), log ra console
@@ -183,6 +241,11 @@ export async function sendPasswordResetEmail(
  * Verify email configuration
  */
 export async function verifyEmailConfig(): Promise<boolean> {
+  if (process.env.RESEND_API_KEY) {
+    console.log("✅ Email service configured with Resend API");
+    return true;
+  }
+
   const transporter = createTransporter();
   
   if (!transporter) {
