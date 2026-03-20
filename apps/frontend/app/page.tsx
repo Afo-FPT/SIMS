@@ -1,13 +1,45 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { listContractPackages, type ContractPackage } from '../lib/contract-packages.api';
+import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
+import { ErrorState } from '../components/ui/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Badge } from '../components/ui/Badge';
 
 export default function LandingPage() {
   const router = useRouter();
   const [isCustomer] = useState(false);
-  
+
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const [pricingError, setPricingError] = useState<string | null>(null);
+  const [packages, setPackages] = useState<ContractPackage[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPackages() {
+      try {
+        setPricingLoading(true);
+        setPricingError(null);
+        const list = await listContractPackages();
+        if (cancelled) return;
+        setPackages(list);
+      } catch (e) {
+        if (cancelled) return;
+        setPricingError(e instanceof Error ? e.message : 'Failed to load pricing packages');
+      } finally {
+        if (!cancelled) setPricingLoading(false);
+      }
+    }
+
+    loadPackages();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const navigateTo = (path: string) => {
     router.push(path);
   };
@@ -171,6 +203,104 @@ export default function LandingPage() {
                <div className="absolute inset-0 bg-primary/10 pointer-events-none"></div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className="py-24 px-6 border-y border-slate-100 bg-slate-50/40">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+              Pricing Packages
+            </p>
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight">
+              Available rental packages
+            </h2>
+            <p className="text-slate-500 font-medium">
+              Choose a predefined package to get an instant rental period and price. If none fits, you can switch to
+              Custom when you submit your request.
+            </p>
+          </div>
+
+          {pricingLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+                  <LoadingSkeleton className="h-6 w-2/3" />
+                  <LoadingSkeleton className="h-4 w-5/6" />
+                  <LoadingSkeleton className="h-4 w-3/4" />
+                  <div className="pt-6 border-t border-slate-100 space-y-3">
+                    <LoadingSkeleton className="h-4 w-1/3" />
+                    <LoadingSkeleton className="h-10 w-2/3" />
+                    <LoadingSkeleton className="h-10 w-full" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : pricingError ? (
+            <ErrorState
+              title="Failed to load pricing packages"
+              message={pricingError}
+              onRetry={() => window.location.reload()}
+            />
+          ) : packages.length === 0 ? (
+            <EmptyState
+              icon="inventory_2"
+              title="No package available"
+              message="No predefined packages have been configured yet. You can still submit a rental request with a Custom time period."
+              action={
+                <button
+                  onClick={() => navigateTo('/request')}
+                  className="px-6 py-3 bg-primary text-white font-black rounded-2xl hover:bg-primary-dark transition-colors"
+                >
+                  Request custom period
+                </button>
+              }
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {packages.map((p) => (
+                <div
+                  key={p._id}
+                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</p>
+                      <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
+                        {p.name}
+                      </h3>
+                    </div>
+                    <Badge variant="info">
+                      {p.duration} {p.unit}
+                    </Badge>
+                  </div>
+
+                  <p className="text-sm text-slate-500 font-medium mt-3">
+                    {p.description || 'Warehouse service package'}
+                  </p>
+
+                  <div className="mt-6 pt-6 border-t border-slate-100 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Price
+                      </p>
+                      <p className="text-3xl font-black text-primary tracking-tight">
+                        {Number(p.price).toLocaleString('vi-VN')} VND
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => navigateTo('/request')}
+                      className="px-4 py-3 bg-primary text-white font-black rounded-2xl hover:bg-primary-dark transition-colors active:scale-[0.98]"
+                    >
+                      Use this package
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

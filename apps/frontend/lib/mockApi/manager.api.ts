@@ -283,26 +283,36 @@ interface BackendContractResponse {
 
 function mapBackendContractToContract(c: BackendContractResponse): Contract {
   const rentedZones = (c.rented_zones || []).map((rz) => ({
-    zoneId: rz.zone_id,
-    zoneCode: rz.zone_code,
-    zoneName: rz.zone_name,
+    zoneId: (rz as any).zone_id ?? (rz as any).zoneId,
+    zoneCode: (rz as any).zone_code ?? (rz as any).zoneCode,
+    zoneName: (rz as any).zone_name ?? (rz as any).zoneName,
     startDate: typeof rz.start_date === 'string' ? rz.start_date : new Date(rz.start_date).toISOString(),
     endDate: typeof rz.end_date === 'string' ? rz.end_date : new Date(rz.end_date).toISOString(),
     price: rz.price,
   }));
+
+  const anyContract = c as any;
 
   return {
     id: c.contract_id,
     code: c.contract_code,
     customerId: c.customer_id,
     customerName: c.customer_name,
-    warehouseId: c.warehouse_id,
-    warehouseName: c.warehouse_name,
-    warehouseAddress: c.warehouse_address,
+    warehouseId: anyContract.warehouse_id ?? anyContract.warehouseId,
+    warehouseName: anyContract.warehouse_name ?? anyContract.warehouseName,
+    warehouseAddress: anyContract.warehouse_address ?? anyContract.warehouseAddress,
     rentedZones,
-    requestedZoneId: c.requested_zone_id,
-    requestedStartDate: c.requested_start_date ? (typeof c.requested_start_date === 'string' ? c.requested_start_date : new Date(c.requested_start_date).toISOString()) : undefined,
-    requestedEndDate: c.requested_end_date ? (typeof c.requested_end_date === 'string' ? c.requested_end_date : new Date(c.requested_end_date).toISOString()) : undefined,
+    requestedZoneId: anyContract.requested_zone_id ?? anyContract.requestedZoneId,
+    requestedStartDate: anyContract.requested_start_date
+      ? (typeof anyContract.requested_start_date === 'string'
+          ? anyContract.requested_start_date
+          : new Date(anyContract.requested_start_date).toISOString())
+      : undefined,
+    requestedEndDate: anyContract.requested_end_date
+      ? (typeof anyContract.requested_end_date === 'string'
+          ? anyContract.requested_end_date
+          : new Date(anyContract.requested_end_date).toISOString())
+      : undefined,
     status: c.status,
     createdBy: c.created_by,
     createdAt: typeof c.created_at === 'string' ? c.created_at : new Date(c.created_at).toISOString(),

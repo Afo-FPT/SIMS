@@ -197,12 +197,23 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneOpt
   const data = await apiJson<any>(`/warehouses/${warehouseId}/zones`, { method: 'GET' });
   const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
   return list.map((z: any) => ({
-    id: z.zone_id ?? z.id,
+    // Ensure every zone has a stable id; some backends may not return `id` consistently.
+    // If `id` is missing, fall back to other common fields to avoid treating many zones as one.
+    id: (() => {
+      const idRaw =
+        z.zone_id ??
+        z.id ??
+        z._id ??
+        z.zoneId ??
+        z.zone_code ??
+        z.zoneCode;
+      return idRaw != null ? String(idRaw) : '';
+    })(),
     zoneCode: z.zone_code ?? z.zoneCode ?? '',
     name: z.name ?? '',
     warehouseId: z.warehouse_id ?? z.warehouseId ?? warehouseId,
     description: z.description,
-    status: z.status,
+    status: z.status ?? z.zone_status ?? z.state,
   }));
 }
 

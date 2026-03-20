@@ -191,6 +191,15 @@ export default function RentRequestsPage() {
     return BASE_DAILY_PRICE_PER_ZONE * rentalDays;
   }, [rentalDays, zoneCount, selectedPackage]);
 
+  const estimatedPerZonePrice = useMemo(() => {
+    if (!zoneCount) return 0;
+    if (durationMode === 'package' && selectedPackage) {
+      return typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
+    }
+    // For custom duration, distribute total price evenly per zone
+    return estimatedContractPrice / zoneCount;
+  }, [durationMode, selectedPackage, zoneCount, estimatedContractPrice]);
+
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (!warehouseId) e.warehouseId = 'Please select a warehouse';
@@ -310,21 +319,22 @@ export default function RentRequestsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {zones.map((z) => {
-                  const disabled = z.status !== 'ACTIVE';
-                  const checked = selectedZoneIds.has(z.id);
+                  const disabled = z.status ? z.status !== 'ACTIVE' : false;
+                  const zoneId = z.id || z.zoneCode;
+                  const checked = selectedZoneIds.has(zoneId);
                   return (
                     <button
-                      key={z.id}
+                      key={zoneId}
                       type="button"
                       disabled={disabled}
                       onClick={() => {
                         if (disabled) return;
                         setSelectedZoneIds((prev) => {
                           const next = new Set(prev);
-                          if (next.has(z.id)) {
-                            next.delete(z.id);
+                          if (next.has(zoneId)) {
+                            next.delete(zoneId);
                           } else {
-                            next.add(z.id);
+                            next.add(zoneId);
                           }
                           return next;
                         });
@@ -366,75 +376,107 @@ export default function RentRequestsPage() {
             {errors.zoneId && <p className="text-xs text-red-500 mt-1">{errors.zoneId}</p>}
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             <h3 className="text-sm font-bold text-slate-700 uppercase">Rental period</h3>
-            <div className="flex flex-wrap gap-4 items-center">
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                <input
-                  type="radio"
-                  checked={durationMode === 'package'}
-                  onChange={() => setDurationMode('package')}
+
+            <div className="flex items-center gap-3">
+              <div className="flex w-full p-1 rounded-2xl border border-slate-200 bg-slate-100">
+                <button
+                  type="button"
+                  className={`flex-1 px-4 py-3 rounded-2xl text-sm font-bold transition-colors ${
+                    durationMode === 'package'
+                      ? 'bg-primary text-white'
+                      : 'bg-transparent text-slate-700 hover:bg-white/60'
+                  } ${packages.length === 0 && durationMode !== 'package' ? 'opacity-60' : ''}`}
+                  onClick={() => setDurationMode('package')}
                   disabled={packages.length === 0}
-                />
-                <span>Use package</span>
-                {loadingPackages && (
-                  <span className="text-xs text-slate-400">(Loading packages…)</span>
-                )}
-                {!loadingPackages && packages.length === 0 && (
-                  <span className="text-xs text-slate-400">(No packages defined)</span>
-                )}
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                <input
-                  type="radio"
-                  checked={durationMode === 'custom'}
-                  onChange={() => {
+                >
+                  Predefined package
+                  {loadingPackages && durationMode !== 'package' && (
+                    <span className="block text-xs font-bold text-white/90 mt-0.5">Loading...</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-4 py-3 rounded-2xl text-sm font-bold transition-colors ${
+                    durationMode === 'custom'
+                      ? 'bg-primary text-white'
+                      : 'bg-transparent text-slate-700 hover:bg-white/60'
+                  }`}
+                  onClick={() => {
                     setDurationMode('custom');
                     setSelectedPackageId(null);
                   }}
-                />
-                <span>Custom</span>
-              </label>
+                >
+                  Custom
+                </button>
+              </div>
             </div>
 
-            {durationMode === 'package' && packages.length > 0 && (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  {packages.map((pkg) => (
-                    <button
-                      key={pkg.id}
-                      type="button"
-                      onClick={() => setSelectedPackageId(pkg.id)}
-                      className={`px-4 py-2.5 rounded-2xl border text-sm font-bold transition-colors ${
-                        selectedPackageId === pkg.id
-                          ? 'bg-primary text-white border-primary'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pkg.duration} {pkg.unit}
-                      {pkg.duration > 1 ? 's' : ''}
-                    </button>
-                  ))}
-                </div>
-                {selectedPackage && (
-                  <div className="mt-3 pt-3 border-t border-slate-100">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Price</p>
-                    <p className="text-lg font-bold text-slate-900">
-                      {typeof selectedPackage.price === 'number'
-                        ? selectedPackage.price.toLocaleString()
-                        : selectedPackage.price ?? '—'}
-                    </p>
+            {packagesError && <p className="text-xs text-red-500">{packagesError}</p>}
+
+            {durationMode === 'package' && (
+              <div className="space-y-3">
+                {loadingPackages ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-200" />
+                    ))}
+                  </div>
+                ) : packages.length === 0 ? (
+                  <p className="text-xs text-amber-600">
+                    No predefined packages are configured yet. Please use <span className="font-bold">Custom</span>.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {packages.map((pkg) => {
+                      const active = selectedPackageId === pkg.id;
+                      return (
+                        <button
+                          key={pkg.id}
+                          type="button"
+                          onClick={() => setSelectedPackageId(pkg.id)}
+                          className={`rounded-2xl border p-4 text-left transition-colors ${
+                            active
+                              ? 'border-primary bg-primary/5'
+                              : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                          aria-pressed={active}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-black text-slate-900 truncate">
+                                {pkg.name || 'Rental package'}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Duration: <span className="font-bold text-slate-700">{pkg.duration} {pkg.unit}{pkg.duration > 1 ? 's' : ''}</span>
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Price / zone</p>
+                              <p className="text-lg font-black text-primary">
+                                {typeof pkg.price === 'number' ? pkg.price.toLocaleString('vi-VN') : '—'} VND
+                              </p>
+                            </div>
+                          </div>
+                          {pkg.description && (
+                            <p className="text-xs text-slate-500 mt-3 leading-relaxed line-clamp-3">
+                              {pkg.description}
+                            </p>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
-              </>
+              </div>
             )}
 
-            {packagesError && (
-              <p className="text-xs text-red-500">{packagesError}</p>
-            )}
-
-            <p className="text-xs text-slate-500 mb-2">
-              At least 1 day from today{durationMode === 'package' ? '. End date is set automatically from the package.' : ''}
+            <p className="text-xs text-slate-500">
+              At least 1 day from today.{' '}
+              {durationMode === 'package'
+                ? 'End date is set automatically from the selected package.'
+                : 'Pick an end date to define your rental duration.'}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -474,6 +516,33 @@ export default function RentRequestsPage() {
                 {errors.endDate && <p className="text-xs text-red-500 mt-1">{errors.endDate}</p>}
               </div>
             </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pricing summary</p>
+              <div className="flex items-start justify-between gap-4 mt-2">
+                <div className="space-y-1 text-sm text-slate-600">
+                  <p>
+                    Zones: <span className="font-bold text-primary">{zoneCount}</span>
+                  </p>
+                  <p>
+                    Rental days: <span className="font-bold text-primary">{rentalDays || 0}</span>
+                  </p>
+                  <p>
+                    {durationMode === 'package' ? 'Price per zone:' : 'Est. per-zone price:'}{' '}
+                    <span className="font-bold text-primary">
+                      {estimatedPerZonePrice > 0 ? estimatedPerZonePrice.toLocaleString('vi-VN') : '—'} VND
+                    </span>
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estimated total</p>
+                  <p className="text-3xl font-black text-primary tracking-tight">
+                    {estimatedContractPrice > 0 ? estimatedContractPrice.toLocaleString('vi-VN') : '—'} VND
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -488,14 +557,6 @@ export default function RentRequestsPage() {
             {rentalDays > 0 && (
               <>
                 {' '}| Rental days: <span className="text-primary">{rentalDays}</span>
-              </>
-            )}
-            {estimatedContractPrice > 0 && (
-              <>
-                {' '}| Estimated contract price:{' '}
-                <span className="text-primary">
-                  {estimatedContractPrice.toLocaleString('vi-VN')} đ
-                </span>
               </>
             )}
           </p>
