@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type {
   ServiceRequest,
@@ -40,6 +40,8 @@ const REQUEST_TYPES: { id: ServiceRequestType; label: string }[] = [
 export default function ServiceRequestsPage() {
   const toast = useToastHelpers();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const processedCreditRef = useRef<string | null>(null);
   const PAGE_SIZE = 10;
   const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
@@ -223,19 +225,29 @@ export default function ServiceRequestsPage() {
   };
 
   useEffect(() => {
-    if (mainTab === 'list' && hasActive) {
-      loadTrackingRequests();
-      loadCycleCounts();
-    }
-  }, [mainTab, hasActive]);
+    if (!hasActive) return;
+    // Always load data so the weekly quota/banner is accurate even on "New request" tab.
+    loadTrackingRequests();
+    loadCycleCounts();
+  }, [hasActive]);
 
   useEffect(() => {
     const creditResult = searchParams.get('creditResult');
     if (creditResult) {
-      toast.success(creditResult === 'success' ? 'Credit payment successful. You can submit one more request.' : 'Credit payment failed.');
+      // Prevent toast spam on re-renders.
+      if (processedCreditRef.current === creditResult) return;
+      processedCreditRef.current = creditResult;
+
+      toast.success(
+        creditResult === 'success'
+          ? 'Credit payment successful. You can submit one more request.'
+          : 'Credit payment failed.'
+      );
       setMainTab('new');
+      // Remove query params to avoid repeating the effect.
+      router.replace('/customer/service-requests');
     }
-  }, [searchParams, toast]);
+  }, [searchParams, toast, router]);
 
   const handleBuyExtraRequest = async () => {
     try {
