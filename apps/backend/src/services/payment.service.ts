@@ -3,7 +3,7 @@ import Contract from "../models/Contract";
 import Payment, { IPayment, PaymentStatus } from "../models/Payment";
 import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
-import RequestCreditPayment from "../models/RequestCreditPayment";
+import RequestCreditPayment, { type IRequestCreditPayment } from "../models/RequestCreditPayment";
 import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
 
 export interface StartVNPayPaymentResult {
@@ -210,7 +210,7 @@ export async function handleVNPayReturn(
 export async function startVNPayPaymentForRequestCredits(
   customerId: string,
   clientIp: string
-): Promise<{ payment: RequestCreditPayment; paymentUrl: string; expireAt: string }> {
+): Promise<{ payment: IRequestCreditPayment; paymentUrl: string; expireAt: string }> {
   if (!Types.ObjectId.isValid(customerId)) {
     throw new Error("Invalid customer ID");
   }
