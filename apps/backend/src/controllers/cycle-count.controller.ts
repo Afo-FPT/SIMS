@@ -50,6 +50,7 @@ export async function createCycleCountController(req: Request, res: Response) {
     const now = new Date();
     const reservation = await reserveRequestCreditIfNeeded({
       customerId,
+      contractId: contractId,
       now,
       entityType: "CYCLE"
     });

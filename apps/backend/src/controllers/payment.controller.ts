@@ -56,12 +56,17 @@ export async function startVNPayRequestCreditPaymentController(req: Request, res
       return res.status(401).json({ message: "Unauthorized" });
     }
 
+    const { contractId } = req.body || {};
+    if (!contractId) {
+      return res.status(400).json({ message: "contractId is required" });
+    }
+
     const clientIp =
       (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
       req.socket.remoteAddress ||
       "0.0.0.0";
 
-    const result = await startVNPayPaymentForRequestCredits(req.user.userId, clientIp);
+    const result = await startVNPayPaymentForRequestCredits(req.user.userId, contractId, clientIp);
 
     res.status(201).json({
       message: "VNPay request credit payment created",

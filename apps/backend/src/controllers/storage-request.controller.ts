@@ -61,6 +61,7 @@ export async function createInboundRequestController(
     const now = new Date();
     const reservation = await reserveRequestCreditIfNeeded({
       customerId,
+      contractId,
       now,
       entityType: "IN"
     });
@@ -157,6 +158,7 @@ export async function createOutboundRequestController(
     const now = new Date();
     const reservation = await reserveRequestCreditIfNeeded({
       customerId,
+      contractId,
       now,
       entityType: "OUT"
     });

@@ -100,11 +100,12 @@ export interface StartRequestCreditPaymentResponse {
   expireAt: string;
 }
 
-export async function startRequestCreditVNPayPayment(): Promise<StartRequestCreditPaymentResponse> {
+export async function startRequestCreditVNPayPayment(contractId: string): Promise<StartRequestCreditPaymentResponse> {
   const data = await apiJson<StartRequestCreditPaymentResponse>(
     `/payments/request-credits/vnpay/start`,
     {
       method: 'POST',
+      body: JSON.stringify({ contractId }),
     }
   );
   return data;

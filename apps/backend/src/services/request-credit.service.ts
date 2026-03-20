@@ -27,10 +27,12 @@ function getWeekEndInGMT7(weekStart: Date): Date {
 
 export async function countCustomerCompletedRequestsInWeek(
   customerId: string,
+  contractId: string,
   now: Date,
   session?: ClientSession
 ): Promise<number> {
   const customerOid = new Types.ObjectId(customerId);
+  const contractOid = new Types.ObjectId(contractId);
   const weekStart = getWeekStartInGMT7(now);
   const weekEnd = getWeekEndInGMT7(weekStart);
 
@@ -38,6 +40,7 @@ export async function countCustomerCompletedRequestsInWeek(
     StorageRequest.countDocuments(
       {
         customerId: customerOid,
+        contractId: contractOid,
         status: "DONE_BY_STAFF",
         updatedAt: { $gte: weekStart, $lt: weekEnd }
       },
@@ -46,6 +49,7 @@ export async function countCustomerCompletedRequestsInWeek(
     CycleCount.countDocuments(
       {
         createdByCustomerId: customerOid,
+        contractId: contractOid,
         status: "STAFF_SUBMITTED",
         completedAt: { $gte: weekStart, $lt: weekEnd }
       },
@@ -62,6 +66,7 @@ export function getCurrentWeekStart(now: Date): Date {
 
 export async function reserveRequestCreditIfNeeded(params: {
   customerId: string;
+  contractId: string;
   now: Date;
   entityType: RequestCreditEntityType;
   session?: ClientSession;
@@ -69,8 +74,8 @@ export async function reserveRequestCreditIfNeeded(params: {
   reservedCreditId?: string;
   reservationToken?: string;
 }> {
-  const { customerId, now, entityType, session } = params;
-  const completedCount = await countCustomerCompletedRequestsInWeek(customerId, now, session);
+  const { customerId, contractId, now, entityType, session } = params;
+  const completedCount = await countCustomerCompletedRequestsInWeek(customerId, contractId, now, session);
 
   // Free quota still available
   if (completedCount < WEEKLY_FREE_REQUEST_LIMIT) {
@@ -79,10 +84,12 @@ export async function reserveRequestCreditIfNeeded(params: {
 
   const weekStart = getWeekStartInGMT7(now);
   const token = new Types.ObjectId().toString();
+  const contractOid = new Types.ObjectId(contractId);
 
   const credit = await RequestCredit.findOneAndUpdate(
     {
       customerId: new Types.ObjectId(customerId),
+      contractId: contractOid,
       weekStart,
       status: "available"
     },
@@ -165,17 +172,20 @@ export async function releaseReservedCredit(params: {
 
 export async function consumeReservedCreditForEntity(params: {
   customerId: string;
+  contractId: string;
   entityType: RequestCreditEntityType;
   entityId: string;
   now?: Date;
   session?: ClientSession;
 }): Promise<void> {
-  const { customerId, entityType, entityId, now, session } = params;
+  const { customerId, contractId, entityType, entityId, now, session } = params;
   const at = now ?? new Date();
+  const contractOid = new Types.ObjectId(contractId);
 
   await RequestCredit.findOneAndUpdate(
     {
       customerId: new Types.ObjectId(customerId),
+      contractId: contractOid,
       status: "reserved",
       reservedEntityType: entityType,
       reservedEntityId: new Types.ObjectId(entityId)
@@ -195,16 +205,19 @@ export async function consumeReservedCreditForEntity(params: {
 
 export async function grantRequestCredits(params: {
   customerId: string;
+  contractId: string;
   credits: number;
   paidAt: Date;
   session?: ClientSession;
 }): Promise<void> {
-  const { customerId, credits, paidAt, session } = params;
+  const { customerId, contractId, credits, paidAt, session } = params;
   const weekStart = getWeekStartInGMT7(paidAt);
+  const contractOid = new Types.ObjectId(contractId);
   await RequestCredit.create(
     [
       {
         customerId: new Types.ObjectId(customerId),
+        contractId: contractOid,
         weekStart,
         credits,
         status: "available"

@@ -298,6 +298,7 @@ export async function staffCompleteStorageRequest(
     // consume exactly one reserved credit when staff completes it.
     await consumeReservedCreditForEntity({
       customerId: request.customerId.toString(),
+      contractId: request.contractId.toString(),
       entityType: request.requestType as any,
       entityId: request._id.toString(),
       now: new Date(),

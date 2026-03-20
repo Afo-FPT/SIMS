@@ -4,6 +4,7 @@ export type RequestCreditPaymentStatus = "pending" | "paid" | "failed" | "expire
 
 export interface IRequestCreditPayment extends Document {
   customerId: Types.ObjectId;
+  contractId: Types.ObjectId;
   creditsGranted: number;
   amount: number;
   gateway: "vnpay";
@@ -21,6 +22,7 @@ export interface IRequestCreditPayment extends Document {
 const RequestCreditPaymentSchema = new Schema<IRequestCreditPayment>(
   {
     customerId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    contractId: { type: Schema.Types.ObjectId, ref: "Contract", required: true, index: true },
     creditsGranted: { type: Number, default: 1, required: true, min: 1 },
     amount: { type: Number, required: true, min: 0 },
 
@@ -43,7 +45,7 @@ const RequestCreditPaymentSchema = new Schema<IRequestCreditPayment>(
   { timestamps: true }
 );
 
-RequestCreditPaymentSchema.index({ customerId: 1, status: 1 });
+RequestCreditPaymentSchema.index({ customerId: 1, contractId: 1, status: 1 });
 
 const RequestCreditPayment = mongoose.model<IRequestCreditPayment>(
   "RequestCreditPayment",

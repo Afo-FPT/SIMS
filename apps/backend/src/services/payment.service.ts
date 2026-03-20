@@ -200,6 +200,7 @@ export async function handleVNPayReturn(
   if (newStatus === "paid") {
     await grantRequestCredits({
       customerId: requestCreditPayment.customerId.toString(),
+      contractId: requestCreditPayment.contractId.toString(),
       credits: requestCreditPayment.creditsGranted || 1,
       paidAt: new Date()
     });
@@ -216,6 +217,7 @@ export async function handleVNPayReturn(
 
 export async function startVNPayPaymentForRequestCredits(
   customerId: string,
+  contractId: string,
   clientIp: string
 ): Promise<{ payment: IRequestCreditPayment; paymentUrl: string; expireAt: string }> {
   if (!Types.ObjectId.isValid(customerId)) {
@@ -224,6 +226,7 @@ export async function startVNPayPaymentForRequestCredits(
 
   const existingPending = await RequestCreditPayment.findOne({
     customerId: new Types.ObjectId(customerId),
+    contractId: new Types.ObjectId(contractId),
     status: "pending"
   });
   if (existingPending) {
@@ -245,6 +248,7 @@ export async function startVNPayPaymentForRequestCredits(
 
   const payment = await RequestCreditPayment.create({
     customerId: new Types.ObjectId(customerId),
+    contractId: new Types.ObjectId(contractId),
     creditsGranted,
     amount,
     gateway: "vnpay",

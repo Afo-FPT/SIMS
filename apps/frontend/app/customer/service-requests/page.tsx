@@ -136,13 +136,13 @@ export default function ServiceRequestsPage() {
 
   const weeklyCompletedCount = useMemo(() => {
     const inOutDone = trackingRequests.filter(
-      (r) => r.status === 'DONE_BY_STAFF' && isInThisWeek(r.updated_at)
+      (r) => r.status === 'DONE_BY_STAFF' && r.contract_id === contractId && isInThisWeek(r.updated_at)
     ).length;
     const cycleSubmitted = cycleCounts.filter(
-      (c) => c.status === 'STAFF_SUBMITTED' && isInThisWeek(c.completed_at)
+      (c) => c.status === 'STAFF_SUBMITTED' && c.contract_id === contractId && isInThisWeek(c.completed_at)
     ).length;
     return inOutDone + cycleSubmitted;
-  }, [trackingRequests, cycleCounts]);
+  }, [trackingRequests, cycleCounts, contractId]);
 
   const canUseFreeQuota = weeklyCompletedCount < REQUEST_WEEKLY_LIMIT;
   const creditPurchaseNeeded = weeklyCompletedCount >= REQUEST_WEEKLY_LIMIT;
@@ -254,7 +254,7 @@ export default function ServiceRequestsPage() {
 
   const handleBuyExtraRequest = async () => {
     try {
-      const result = await startRequestCreditVNPayPayment();
+      const result = await startRequestCreditVNPayPayment(contractId);
       window.location.href = result.paymentUrl;
     } catch (e: any) {
       toast.error(e instanceof Error ? e.message : 'Failed to start credit payment');

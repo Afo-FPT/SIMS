@@ -582,6 +582,7 @@ export async function submitCycleCountResult(
     // Consume one reserved request credit (if any) when staff submits results.
     await consumeReservedCreditForEntity({
       customerId: cycleCount.createdByCustomerId.toString(),
+      contractId: cycleCount.contractId.toString(),
       entityType: "CYCLE",
       entityId: cycleCount._id.toString(),
       now: completedAt,
