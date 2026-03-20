@@ -60,6 +60,45 @@ export async function countCustomerCompletedRequestsInWeek(
   return storageCompletedCount + cycleCompletedCount;
 }
 
+/**
+ * Count requests that are submitted but NOT yet staff-completed within this week.
+ * Used for the "in progress" quota rule: pending (staff not finished yet) + used (staff finished).
+ */
+export async function countCustomerUnfinishedRequestsInWeek(
+  customerId: string,
+  contractId: string,
+  now: Date,
+  session?: ClientSession
+): Promise<number> {
+  const customerOid = new Types.ObjectId(customerId);
+  const contractOid = new Types.ObjectId(contractId);
+  const weekStart = getWeekStartInGMT7(now);
+  const weekEnd = getWeekEndInGMT7(weekStart);
+
+  const [storagePendingCount, cyclePendingCount] = await Promise.all([
+    StorageRequest.countDocuments(
+      {
+        customerId: customerOid,
+        contractId: contractOid,
+        status: { $in: ["PENDING", "APPROVED"] },
+        createdAt: { $gte: weekStart, $lt: weekEnd }
+      },
+      session ? { session } : undefined
+    ),
+    CycleCount.countDocuments(
+      {
+        createdByCustomerId: customerOid,
+        contractId: contractOid,
+        status: { $in: ["PENDING_MANAGER_APPROVAL", "ASSIGNED_TO_STAFF"] },
+        createdAt: { $gte: weekStart, $lt: weekEnd }
+      },
+      session ? { session } : undefined
+    )
+  ]);
+
+  return storagePendingCount + cyclePendingCount;
+}
+
 export function getCurrentWeekStart(now: Date): Date {
   return getWeekStartInGMT7(now);
 }
@@ -75,10 +114,16 @@ export async function reserveRequestCreditIfNeeded(params: {
   reservationToken?: string;
 }> {
   const { customerId, contractId, now, entityType, session } = params;
-  const completedCount = await countCustomerCompletedRequestsInWeek(customerId, contractId, now, session);
+  const [completedCount, unfinishedCount] = await Promise.all([
+    countCustomerCompletedRequestsInWeek(customerId, contractId, now, session),
+    countCustomerUnfinishedRequestsInWeek(customerId, contractId, now, session)
+  ]);
 
-  // Free quota still available
-  if (completedCount < WEEKLY_FREE_REQUEST_LIMIT) {
+  // In progress quota rule:
+  // (unfinished + used) >= quota => need extra credit/payment to create new request
+  const totalUsed = completedCount + unfinishedCount;
+
+  if (totalUsed < WEEKLY_FREE_REQUEST_LIMIT) {
     return {};
   }
 

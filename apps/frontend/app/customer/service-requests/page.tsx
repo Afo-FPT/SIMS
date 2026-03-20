@@ -134,18 +134,44 @@ export default function ServiceRequestsPage() {
     return dt >= weekStart && dt < weekEnd;
   }
 
-  const weeklyCompletedCount = useMemo(() => {
+  const weeklyUsedCount = useMemo(() => {
+    // Used quota = staff-completed within week
     const inOutDone = trackingRequests.filter(
-      (r) => r.status === 'DONE_BY_STAFF' && r.contract_id === contractId && isInThisWeek(r.updated_at)
+      (r) =>
+        r.status === 'DONE_BY_STAFF' &&
+        r.contract_id === contractId &&
+        isInThisWeek(r.updated_at)
     ).length;
     const cycleSubmitted = cycleCounts.filter(
-      (c) => c.status === 'STAFF_SUBMITTED' && c.contract_id === contractId && isInThisWeek(c.completed_at)
+      (c) =>
+        c.status === 'STAFF_SUBMITTED' &&
+        c.contract_id === contractId &&
+        isInThisWeek(c.completed_at)
     ).length;
     return inOutDone + cycleSubmitted;
   }, [trackingRequests, cycleCounts, contractId]);
 
-  const canUseFreeQuota = weeklyCompletedCount < REQUEST_WEEKLY_LIMIT;
-  const creditPurchaseNeeded = weeklyCompletedCount >= REQUEST_WEEKLY_LIMIT;
+  const weeklyUnfinishedCount = useMemo(() => {
+    // Unfinished quota = submitted but staff not finished yet within week
+    const inOutPending = trackingRequests.filter(
+      (r) =>
+        ['PENDING', 'APPROVED'].includes(r.status) &&
+        r.contract_id === contractId &&
+        isInThisWeek(r.created_at)
+    ).length;
+    const cyclePending = cycleCounts.filter(
+      (c) =>
+        ['PENDING_MANAGER_APPROVAL', 'ASSIGNED_TO_STAFF'].includes(c.status) &&
+        c.contract_id === contractId &&
+        isInThisWeek(c.created_at)
+    ).length;
+    return inOutPending + cyclePending;
+  }, [trackingRequests, cycleCounts, contractId]);
+
+  const weeklyTotalUsedPlusUnfinished = weeklyUsedCount + weeklyUnfinishedCount;
+
+  const canUseFreeQuota = weeklyTotalUsedPlusUnfinished < REQUEST_WEEKLY_LIMIT;
+  const creditPurchaseNeeded = weeklyTotalUsedPlusUnfinished >= REQUEST_WEEKLY_LIMIT;
 
   // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
@@ -1186,9 +1212,10 @@ export default function ServiceRequestsPage() {
         {creditPurchaseNeeded && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-4">
             <div>
-              <p className="font-bold">Đã dùng hết 3 lượt request trong tuần</p>
+              <p className="font-bold">Đã đạt giới hạn 3 lượt request trong tuần</p>
               <p className="text-amber-800 mt-1">
-                Bạn đã hoàn thành {weeklyCompletedCount}/{REQUEST_WEEKLY_LIMIT} lượt. Để gửi thêm request, cần thanh toán{" "}
+                Trong tuần này (tính cả request chưa hoàn thành), bạn đang có{" "}
+                <span className="font-bold">{weeklyTotalUsedPlusUnfinished}/{REQUEST_WEEKLY_LIMIT}</span> lượt. Để gửi thêm request, cần thanh toán{" "}
                 <span className="font-bold">{REQUEST_EXTRA_PRICE_VND.toLocaleString('vi-VN')}đ</span>.
               </p>
             </div>
