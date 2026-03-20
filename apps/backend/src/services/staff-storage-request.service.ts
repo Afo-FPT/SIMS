@@ -3,6 +3,7 @@ import StorageRequest from "../models/StorageRequest";
 import StorageRequestDetail from "../models/StorageRequestDetail";
 import StoredItem from "../models/StoredItem";
 import { notifyStorageRequestEvent } from "./notification.service";
+import { consumeReservedCreditForEntity } from "./request-credit.service";
 
 export interface StaffCompleteRequestItemDTO {
   requestDetailId: string;
@@ -292,6 +293,16 @@ export async function staffCompleteStorageRequest(
 
     request.status = "DONE_BY_STAFF";
     await request.save({ session });
+
+    // If this request was created as an extra (paid) quota slot,
+    // consume exactly one reserved credit when staff completes it.
+    await consumeReservedCreditForEntity({
+      customerId: request.customerId.toString(),
+      entityType: request.requestType as any,
+      entityId: request._id.toString(),
+      now: new Date(),
+      session
+    });
 
     const updatedDetails = await StorageRequestDetail.find({ requestId: request._id }).session(
       session

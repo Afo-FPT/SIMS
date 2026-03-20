@@ -7,6 +7,7 @@ import Contract from "../models/Contract";
 import StoredItem from "../models/StoredItem";
 import User from "../models/User";
 import Shelf from "../models/Shelf";
+import { consumeReservedCreditForEntity } from "./request-credit.service";
 
 /**
  * DTOs for Cycle Count
@@ -574,8 +575,18 @@ export async function submitCycleCountResult(
     // Update cycle count status:
     // Sau khi staff submit, chờ customer review: approve hoặc yêu cầu điều chỉnh tồn kho
     cycleCount.status = "STAFF_SUBMITTED";
-    cycleCount.completedAt = new Date();
+    const completedAt = new Date();
+    cycleCount.completedAt = completedAt;
     await cycleCount.save({ session });
+
+    // Consume one reserved request credit (if any) when staff submits results.
+    await consumeReservedCreditForEntity({
+      customerId: cycleCount.createdByCustomerId.toString(),
+      entityType: "CYCLE",
+      entityId: cycleCount._id.toString(),
+      now: completedAt,
+      session
+    });
 
     await session.commitTransaction();
 

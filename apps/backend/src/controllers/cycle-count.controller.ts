@@ -15,6 +15,11 @@ import {
   requestInventoryAdjustment,
   applyCycleCountAdjustment
 } from "../services/cycle-count.service";
+import {
+  attachReservedCreditToEntity,
+  releaseReservedCredit,
+  reserveRequestCreditIfNeeded
+} from "../services/request-credit.service";
 
 /**
  * Create cycle count request
@@ -41,7 +46,32 @@ export async function createCycleCountController(req: Request, res: Response) {
     };
 
     const customerId = req.user.userId;
+
+    const now = new Date();
+    const reservation = await reserveRequestCreditIfNeeded({
+      customerId,
+      now,
+      entityType: "CYCLE"
+    });
+
     const cycleCount = await createCycleCount(dto, customerId);
+
+    if (reservation.reservedCreditId && reservation.reservationToken) {
+      try {
+        await attachReservedCreditToEntity({
+          creditId: reservation.reservedCreditId,
+          entityType: "CYCLE",
+          entityId: cycleCount.cycle_count_id,
+          reservationToken: reservation.reservationToken
+        });
+      } catch (e) {
+        await releaseReservedCredit({
+          creditId: reservation.reservedCreditId,
+          reservationToken: reservation.reservationToken
+        });
+        throw e;
+      }
+    }
 
     res.status(201).json({
       message: "Cycle count request created successfully",
@@ -54,7 +84,8 @@ export async function createCycleCountController(req: Request, res: Response) {
       error.message.includes("not found") ||
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
-      error.message.includes("past")
+      error.message.includes("past") ||
+      error.message.includes("Weekly request limit")
     ) {
       return res.status(400).json({ message: error.message });
     }

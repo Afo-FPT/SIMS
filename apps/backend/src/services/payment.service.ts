@@ -3,6 +3,8 @@ import Contract from "../models/Contract";
 import Payment, { IPayment, PaymentStatus } from "../models/Payment";
 import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
+import RequestCreditPayment from "../models/RequestCreditPayment";
+import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
 
 export interface StartVNPayPaymentResult {
   payment: IPayment;
@@ -78,10 +80,12 @@ export async function startVNPayPaymentForContract(
 }
 
 export interface HandleVNPayReturnResult {
-  payment: IPayment;
-  contractId: string;
   success: boolean;
+  type: "contract" | "request_credit";
   message: string;
+  contractId?: string;
+  customerId?: string;
+  paymentId: string;
 }
 
 export async function handleVNPayReturn(
@@ -94,15 +98,70 @@ export async function handleVNPayReturn(
     throw new Error("Missing vnp_TxnRef");
   }
 
-  const payment = await Payment.findOne({ vnpTxnRef: txnRef });
-  if (!payment) {
+  const contractPayment = await Payment.findOne({ vnpTxnRef: txnRef });
+  if (contractPayment) {
+    if (contractPayment.status === "paid") {
+      return {
+        type: "contract",
+        paymentId: contractPayment._id.toString(),
+        contractId: contractPayment.contractId.toString(),
+        success: true,
+        message: "Payment already completed"
+      };
+    }
+
+    let newStatus: PaymentStatus = "failed";
+    let message = "Payment failed";
+
+    if (!isValid) {
+      newStatus = "failed";
+      message = "Invalid VNPay signature";
+    } else if (vnp_ResponseCode === "00") {
+      newStatus = "paid";
+      message = "Payment successful";
+    } else {
+      newStatus = "failed";
+      message = `Payment failed with code ${vnp_ResponseCode}`;
+    }
+
+    contractPayment.status = newStatus;
+    contractPayment.vnpResponseCode = vnp_ResponseCode;
+    contractPayment.vnpPayDate = query["vnp_PayDate"] as string | undefined;
+    contractPayment.rawData = query;
+    if (newStatus === "paid") {
+      contractPayment.paidAt = new Date();
+    }
+    await contractPayment.save();
+
+    const contractId = contractPayment.contractId.toString();
+
+    if (newStatus === "paid") {
+      const contract = await Contract.findById(contractId);
+      if (contract && contract.status === "pending_payment") {
+        contract.status = "active";
+        await contract.save();
+      }
+    }
+
+    return {
+      type: "contract",
+      paymentId: contractPayment._id.toString(),
+      contractId,
+      success: newStatus === "paid",
+      message
+    };
+  }
+
+  const requestCreditPayment = await RequestCreditPayment.findOne({ vnpTxnRef: txnRef });
+  if (!requestCreditPayment) {
     throw new Error("Payment not found");
   }
 
-  if (payment.status === "paid") {
+  if (requestCreditPayment.status === "paid") {
     return {
-      payment,
-      contractId: payment.contractId.toString(),
+      type: "request_credit",
+      paymentId: requestCreditPayment._id.toString(),
+      customerId: requestCreditPayment.customerId.toString(),
       success: true,
       message: "Payment already completed"
     };
@@ -122,31 +181,72 @@ export async function handleVNPayReturn(
     message = `Payment failed with code ${vnp_ResponseCode}`;
   }
 
-  payment.status = newStatus;
-  payment.vnpResponseCode = vnp_ResponseCode;
-  payment.vnpPayDate = query["vnp_PayDate"] as string | undefined;
-  payment.rawData = query;
+  requestCreditPayment.status = newStatus;
+  requestCreditPayment.vnpResponseCode = vnp_ResponseCode;
+  requestCreditPayment.vnpPayDate = query["vnp_PayDate"] as string | undefined;
+  requestCreditPayment.rawData = query;
   if (newStatus === "paid") {
-    payment.paidAt = new Date();
+    requestCreditPayment.paidAt = new Date();
   }
-  await payment.save();
-
-  const contractId = payment.contractId.toString();
+  await requestCreditPayment.save();
 
   if (newStatus === "paid") {
-    const contract = await Contract.findById(contractId);
-    if (contract && contract.status === "pending_payment") {
-      contract.status = "active";
-      await contract.save();
-    }
+    await grantRequestCredits({
+      customerId: requestCreditPayment.customerId.toString(),
+      credits: requestCreditPayment.creditsGranted || 1,
+      paidAt: new Date()
+    });
   }
 
   return {
-    payment,
-    contractId,
+    type: "request_credit",
+    paymentId: requestCreditPayment._id.toString(),
+    customerId: requestCreditPayment.customerId.toString(),
     success: newStatus === "paid",
     message
   };
+}
+
+export async function startVNPayPaymentForRequestCredits(
+  customerId: string,
+  clientIp: string
+): Promise<{ payment: RequestCreditPayment; paymentUrl: string; expireAt: string }> {
+  if (!Types.ObjectId.isValid(customerId)) {
+    throw new Error("Invalid customer ID");
+  }
+
+  const existingPending = await RequestCreditPayment.findOne({
+    customerId: new Types.ObjectId(customerId),
+    status: "pending"
+  });
+  if (existingPending) {
+    throw new Error("There is already a pending request-credit payment. Please complete it first.");
+  }
+
+  const creditsGranted = 1;
+  const amount = REQUEST_CREDIT_PRICE_VND;
+
+  const orderInfo = `Thanh toan request credit (${creditsGranted}x)`;
+  const txnRef = `RC-${customerId}-${Date.now()}`;
+
+  const vnpResult = buildVNPayPaymentUrl({
+    amount,
+    orderInfo,
+    orderId: txnRef,
+    ipAddr: clientIp || "0.0.0.0"
+  });
+
+  const payment = await RequestCreditPayment.create({
+    customerId: new Types.ObjectId(customerId),
+    creditsGranted,
+    amount,
+    gateway: "vnpay",
+    status: "pending",
+    vnpTxnRef: vnpResult.vnp_TxnRef,
+    vnpOrderInfo: orderInfo
+  });
+
+  return { payment, paymentUrl: vnpResult.url, expireAt: vnpResult.vnp_ExpireDate };
 }
 
 export async function getPaymentsForManager(): Promise<IPayment[]> {

@@ -9,6 +9,12 @@ import {
   assignStorageRequest
 } from "../services/storage-request.service";
 
+import {
+  attachReservedCreditToEntity,
+  releaseReservedCredit,
+  reserveRequestCreditIfNeeded
+} from "../services/request-credit.service";
+
 /**
  * Create inbound request
  * Only CUSTOMER can access this endpoint
@@ -52,11 +58,33 @@ export async function createInboundRequestController(
     // Get customer ID from authenticated user
     const customerId = req.user.userId;
 
+    const now = new Date();
+    const reservation = await reserveRequestCreditIfNeeded({
+      customerId,
+      now,
+      entityType: "IN"
+    });
+
     // Create inbound request using service
-    const inboundRequest = await createInboundRequest(
-      createRequest,
-      customerId
-    );
+    const inboundRequest = await createInboundRequest(createRequest, customerId);
+
+    // If we had to reserve an extra quota credit, attach it to this request
+    if (reservation.reservedCreditId && reservation.reservationToken) {
+      try {
+        await attachReservedCreditToEntity({
+          creditId: reservation.reservedCreditId,
+          entityType: "IN",
+          entityId: inboundRequest.requestId,
+          reservationToken: reservation.reservationToken
+        });
+      } catch (e) {
+        await releaseReservedCredit({
+          creditId: reservation.reservedCreditId,
+          reservationToken: reservation.reservationToken
+        });
+        throw e;
+      }
+    }
 
     // Return success response
     res.status(201).json({
@@ -72,7 +100,8 @@ export async function createInboundRequestController(
       error.message.includes("not found") ||
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
-      error.message.includes("empty")
+      error.message.includes("empty") ||
+      error.message.includes("Weekly request limit")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -125,10 +154,31 @@ export async function createOutboundRequestController(
     };
 
     const customerId = req.user.userId;
-    const outboundRequest = await createOutboundRequest(
-      createRequest,
-      customerId
-    );
+    const now = new Date();
+    const reservation = await reserveRequestCreditIfNeeded({
+      customerId,
+      now,
+      entityType: "OUT"
+    });
+
+    const outboundRequest = await createOutboundRequest(createRequest, customerId);
+
+    if (reservation.reservedCreditId && reservation.reservationToken) {
+      try {
+        await attachReservedCreditToEntity({
+          creditId: reservation.reservedCreditId,
+          entityType: "OUT",
+          entityId: outboundRequest.requestId,
+          reservationToken: reservation.reservationToken
+        });
+      } catch (e) {
+        await releaseReservedCredit({
+          creditId: reservation.reservedCreditId,
+          reservationToken: reservation.reservationToken
+        });
+        throw e;
+      }
+    }
 
     res.status(201).json({
       message: "Outbound request created successfully",
@@ -142,7 +192,8 @@ export async function createOutboundRequestController(
       error.message.includes("not found") ||
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
-      error.message.includes("empty")
+      error.message.includes("empty") ||
+      error.message.includes("Weekly request limit")
     ) {
       return res.status(400).json({ message: error.message });
     }

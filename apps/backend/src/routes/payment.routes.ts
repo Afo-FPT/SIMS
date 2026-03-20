@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   listPaymentsForManagerController,
   startVNPayPaymentController,
+  startVNPayRequestCreditPaymentController,
   vnpayReturnController
 } from "../controllers/payment.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
@@ -17,6 +18,17 @@ router.post(
   authenticate,
   authorizeRoles("customer"),
   startVNPayPaymentController
+);
+
+/**
+ * POST /api/payments/request-credits/vnpay/start
+ * Customer purchases 1 extra request credit (100,000 VND)
+ */
+router.post(
+  "/request-credits/vnpay/start",
+  authenticate,
+  authorizeRoles("customer"),
+  startVNPayRequestCreditPaymentController
 );
 
 /**
