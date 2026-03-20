@@ -7,25 +7,45 @@ import nodemailer from "nodemailer";
 const createTransporter = () => {
   // Nếu có SMTP config trong .env, sử dụng nó
   if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
+    const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+    const smtpSecure =
+      process.env.SMTP_SECURE === "true" || (!process.env.SMTP_SECURE && smtpPort === 465);
+    const smtpPassword = process.env.SMTP_PASSWORD || process.env.SMTP_PASS;
+
+    if (!process.env.SMTP_USER || !smtpPassword) {
+      console.warn("⚠️  SMTP_USER/SMTP_PASSWORD (or SMTP_PASS) missing. Email disabled.");
+      return null;
+    }
+
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_SECURE === "true", // true for 465, false for other ports
+      port: smtpPort,
+      secure: smtpSecure, // true for 465, false for other ports
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
+        pass: smtpPassword,
       },
+      // Avoid very long startup hangs if outbound network is restricted
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
   }
 
   // Nếu có Gmail config, sử dụng Gmail
   if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
     return nodemailer.createTransport({
-      service: "gmail",
+      // Use explicit SMTP settings to reduce provider-specific defaults issues
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false, // STARTTLS on 587
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD, // App Password, không phải password thường
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
     });
   }
 
