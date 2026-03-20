@@ -110,13 +110,17 @@ export async function sendEmail(params: {
   text?: string;
 }): Promise<void> {
   if (process.env.RESEND_API_KEY) {
-    await sendViaResend({
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text,
-    });
-    return;
+    try {
+      await sendViaResend({
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+      });
+      return;
+    } catch (error) {
+      console.error("Resend send failed, fallback to SMTP/Gmail:", error);
+    }
   }
 
   const transporter = createTransporter();
@@ -206,14 +210,18 @@ export async function sendPasswordResetEmail(
   };
 
   if (process.env.RESEND_API_KEY) {
-    await sendViaResend({
-      to: email,
-      subject: mailOptions.subject,
-      html: mailOptions.html,
-      text: mailOptions.text,
-    });
-    console.log(`Password reset email sent via Resend to ${email}`);
-    return;
+    try {
+      await sendViaResend({
+        to: email,
+        subject: mailOptions.subject,
+        html: mailOptions.html,
+        text: mailOptions.text,
+      });
+      console.log(`Password reset email sent via Resend to ${email}`);
+      return;
+    } catch (error) {
+      console.error("Resend send failed, fallback to SMTP/Gmail:", error);
+    }
   }
 
   const transporter = createTransporter();
