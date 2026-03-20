@@ -24,6 +24,7 @@ import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-it
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { Pagination } from '../../../components/ui/Pagination';
+import { startRequestCreditVNPayPayment } from '../../../lib/payment.api';
 import {
   type CycleCountResponse,
   createCycleCount,
@@ -104,6 +105,45 @@ export default function ServiceRequestsPage() {
   const [cycleLoading, setCycleLoading] = useState(false);
   const [cycleError, setCycleError] = useState<string | null>(null);
   const [cyclePage, setCyclePage] = useState(1);
+
+  // Weekly request quota for IN/OUT/CYCLE:
+  // - 3 free when staff completed 3 requests in the current week
+  // - After that, require paying 100,000 VND for 1 more request
+  const REQUEST_WEEKLY_LIMIT = 3;
+  const REQUEST_EXTRA_PRICE_VND = 100000;
+
+  function getWeekStartMonday(d: Date): Date {
+    const shifted = new Date(d.getTime() + 7 * 60 * 60 * 1000); // approximate GMT+7 boundary in UI
+    const day = shifted.getUTCDay(); // 0..6 (Sun..Sat)
+    const mondayBasedDay = (day + 6) % 7; // Monday=0
+    const res = new Date(shifted);
+    res.setUTCDate(shifted.getUTCDate() - mondayBasedDay);
+    res.setUTCHours(0, 0, 0, 0);
+    return new Date(res.getTime() - 7 * 60 * 60 * 1000);
+  }
+
+  function isInThisWeek(dateStr?: string) {
+    if (!dateStr) return false;
+    const dt = new Date(dateStr);
+    if (Number.isNaN(dt.getTime())) return false;
+    const now = new Date();
+    const weekStart = getWeekStartMonday(now);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return dt >= weekStart && dt < weekEnd;
+  }
+
+  const weeklyCompletedCount = useMemo(() => {
+    const inOutDone = trackingRequests.filter(
+      (r) => r.status === 'DONE_BY_STAFF' && isInThisWeek(r.updated_at)
+    ).length;
+    const cycleSubmitted = cycleCounts.filter(
+      (c) => c.status === 'STAFF_SUBMITTED' && isInThisWeek(c.completed_at)
+    ).length;
+    return inOutDone + cycleSubmitted;
+  }, [trackingRequests, cycleCounts]);
+
+  const canUseFreeQuota = weeklyCompletedCount < REQUEST_WEEKLY_LIMIT;
+  const creditPurchaseNeeded = weeklyCompletedCount >= REQUEST_WEEKLY_LIMIT;
 
   // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
@@ -188,6 +228,23 @@ export default function ServiceRequestsPage() {
       loadCycleCounts();
     }
   }, [mainTab, hasActive]);
+
+  useEffect(() => {
+    const creditResult = searchParams.get('creditResult');
+    if (creditResult) {
+      toast.success(creditResult === 'success' ? 'Credit payment successful. You can submit one more request.' : 'Credit payment failed.');
+      setMainTab('new');
+    }
+  }, [searchParams, toast]);
+
+  const handleBuyExtraRequest = async () => {
+    try {
+      const result = await startRequestCreditVNPayPayment();
+      window.location.href = result.paymentUrl;
+    } catch (e: any) {
+      toast.error(e instanceof Error ? e.message : 'Failed to start credit payment');
+    }
+  };
 
   const trackingTotalPages = Math.max(1, Math.ceil(trackingRequests.length / PAGE_SIZE));
   const trackingSafePage = Math.min(trackingPage, trackingTotalPages);
@@ -1110,6 +1167,25 @@ export default function ServiceRequestsPage() {
             className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
           />
         </div>
+
+        {creditPurchaseNeeded && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-4">
+            <div>
+              <p className="font-bold">Đã dùng hết 3 lượt request trong tuần</p>
+              <p className="text-amber-800 mt-1">
+                Bạn đã hoàn thành {weeklyCompletedCount}/{REQUEST_WEEKLY_LIMIT} lượt. Để gửi thêm request, cần thanh toán{" "}
+                <span className="font-bold">{REQUEST_EXTRA_PRICE_VND.toLocaleString('vi-VN')}đ</span>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleBuyExtraRequest}
+              className="px-4 py-2 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-colors"
+            >
+              Mua thêm 1 lượt
+            </button>
+          </div>
+        )}
 
         <button
           type="submit"

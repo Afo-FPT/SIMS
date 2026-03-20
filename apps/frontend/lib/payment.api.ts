@@ -91,6 +91,25 @@ export async function startContractVNPayPayment(contractId: string): Promise<Sta
   return data;
 }
 
+export interface StartRequestCreditPaymentResponse {
+  paymentId: string;
+  customerId: string;
+  amount: number;
+  status: PaymentStatus;
+  paymentUrl: string;
+  expireAt: string;
+}
+
+export async function startRequestCreditVNPayPayment(): Promise<StartRequestCreditPaymentResponse> {
+  const data = await apiJson<StartRequestCreditPaymentResponse>(
+    `/payments/request-credits/vnpay/start`,
+    {
+      method: 'POST',
+    }
+  );
+  return data;
+}
+
 export async function listManagerPayments(): Promise<ManagerPayment[]> {
   const data = await apiJson<BackendPayment[]>('/payments', {
     method: 'GET',

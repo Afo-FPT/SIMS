@@ -94,8 +94,8 @@ export async function vnpayReturnController(req: Request, res: Response) {
         result.success ? "success" : "failed"
       }&message=${encodeURIComponent(result.message)}`;
     } else {
-      // Credit payments: keep users on existing UI route for now
-      redirectUrl = `${baseUrl}/customer/contracts?creditResult=${
+      // Credit payments: redirect back to service requests page
+      redirectUrl = `${baseUrl}/customer/service-requests?creditResult=${
         result.success ? "success" : "failed"
       }&message=${encodeURIComponent(result.message)}`;
     }
