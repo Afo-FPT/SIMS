@@ -69,9 +69,15 @@ type EmailPayload = {
   text?: string;
 };
 
-const getDefaultFrom = (): string =>
-  process.env.EMAIL_FROM ||
+const getDefaultFromForResend = (): string =>
   process.env.RESEND_FROM ||
+  process.env.EMAIL_FROM ||
+  process.env.SMTP_USER ||
+  process.env.GMAIL_USER ||
+  "noreply@sims.ai";
+
+const getDefaultFromForSMTP = (): string =>
+  process.env.EMAIL_FROM ||
   process.env.SMTP_USER ||
   process.env.GMAIL_USER ||
   "noreply@sims.ai";
@@ -87,7 +93,7 @@ const sendViaResend = async (payload: EmailPayload): Promise<boolean> => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: getDefaultFrom(),
+      from: getDefaultFromForResend(),
       to: [payload.to],
       subject: payload.subject,
       html: payload.html,
@@ -125,7 +131,7 @@ export async function sendEmail(params: {
 
   const transporter = createTransporter();
   const mailOptions = {
-    from: getDefaultFrom(),
+    from: getDefaultFromForSMTP(),
     to: params.to,
     subject: params.subject,
     html: params.html,
@@ -156,7 +162,7 @@ export async function sendPasswordResetEmail(
   const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
   const mailOptions = {
-    from: process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_USER || "noreply@sims.ai",
+    from: getDefaultFromForSMTP(),
     to: email,
     subject: "Reset Your Password - SIMS",
     html: `
