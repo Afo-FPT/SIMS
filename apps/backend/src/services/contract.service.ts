@@ -127,7 +127,8 @@ async function validateZone(zoneId: string, warehouseId: string): Promise<void> 
 
 /**
  * Check if a zone is available for [startDate, endDate].
- * No overlap with other ACTIVE contracts that rent the same zone (same start/end range).
+ * No overlap with other reserved/active contracts that rent the same zone (same start/end range).
+ * We consider overlapping reservations from `draft`, `pending_payment`, and `active` contracts.
  * excludeContractId: when activating a draft, exclude that contract from the check.
  */
 async function checkZoneAvailability(
@@ -138,7 +139,7 @@ async function checkZoneAvailability(
 ): Promise<{ available: boolean; conflictingContract?: any }> {
   const zoneOid = new Types.ObjectId(zoneId);
   const query: any = {
-    status: "active",
+    status: { $in: ["draft", "pending_payment", "active"] },
     rentedZones: {
       $elemMatch: {
         zoneId: zoneOid,
