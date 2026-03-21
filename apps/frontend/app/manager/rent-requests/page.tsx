@@ -22,6 +22,10 @@ function formatDate(dateStr?: string) {
   }
 }
 
+function getContractPrice(c: Contract): number {
+  return (c.rentedZones || []).reduce((sum, z) => sum + (Number(z.price) || 0), 0);
+}
+
 export default function ManagerRentRequestsPage() {
   const toast = useToastHelpers();
   const [draftContracts, setDraftContracts] = useState<Contract[]>([]);
@@ -174,6 +178,7 @@ export default function ManagerRentRequestsPage() {
               <TableHeader>Contract code</TableHeader>
               <TableHeader>Customer</TableHeader>
               <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Contract price</TableHeader>
               <TableHeader>Rental period</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Actions</TableHeader>
@@ -184,6 +189,9 @@ export default function ManagerRentRequestsPage() {
                   <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
                   <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
                   <TableCell className="text-slate-700">{c.warehouseName || c.warehouseId}</TableCell>
+                  <TableCell className="text-slate-700 font-semibold">
+                    {getContractPrice(c) > 0 ? `${getContractPrice(c).toLocaleString('en-GB')} VND` : '—'}
+                  </TableCell>
                   <TableCell className="text-slate-700">
                     {c.requestedStartDate && c.requestedEndDate
                       ? `${formatDate(c.requestedStartDate)} → ${formatDate(c.requestedEndDate)}`
@@ -226,6 +234,10 @@ export default function ManagerRentRequestsPage() {
                 {detail.requestedStartDate && detail.requestedEndDate
                   ? `${formatDate(detail.requestedStartDate)} → ${formatDate(detail.requestedEndDate)}`
                   : '—'}
+              </dd>
+              <dt className="text-slate-500">Contract price</dt>
+              <dd className="font-bold">
+                {getContractPrice(detail) > 0 ? `${getContractPrice(detail).toLocaleString('en-GB')} VND` : '—'}
               </dd>
               <dt className="text-slate-500">Status</dt>
               <dd className="font-bold">draft</dd>

@@ -122,19 +122,24 @@ export default function CustomerInventoryPage() {
             className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
           />
         </div>
-        <select
-          value={contractFilter}
-          onChange={(e) => setContractFilter(e.target.value as any)}
-          className="px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          title="Select contract"
-        >
-          <option value="ALL">All contracts</option>
-          {contracts.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.code}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <select
+            value={contractFilter}
+            onChange={(e) => setContractFilter(e.target.value as any)}
+            className="h-[50px] appearance-none rounded-2xl border border-slate-200 bg-white pl-4 pr-10 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-colors hover:border-primary/40"
+            title="Select contract"
+          >
+            <option value="ALL">All contracts</option>
+            {contracts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.code}
+              </option>
+            ))}
+          </select>
+          <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-slate-400">
+            <span className="material-symbols-outlined text-base">expand_more</span>
+          </span>
+        </div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"

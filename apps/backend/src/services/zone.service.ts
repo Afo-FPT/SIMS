@@ -8,6 +8,13 @@ export interface CreateZoneRequest {
   description?: string;
 }
 
+export interface UpdateZoneRequest {
+  zoneCode?: string;
+  name?: string;
+  description?: string;
+  status?: "ACTIVE" | "INACTIVE";
+}
+
 export interface ZoneResponse {
   zone_id: string;
   zone_code: string;
@@ -112,5 +119,66 @@ export async function getZoneById(zoneId: string): Promise<ZoneResponse | null> 
     created_by: z.createdBy.toString(),
     created_at: z.createdAt,
     updated_at: z.updatedAt
+  };
+}
+
+export async function updateZone(
+  warehouseId: string,
+  zoneId: string,
+  data: UpdateZoneRequest
+): Promise<ZoneResponse> {
+  await validateWarehouse(warehouseId);
+  if (!Types.ObjectId.isValid(zoneId)) throw new Error("Invalid zone ID");
+
+  const zone = await Zone.findById(zoneId);
+  if (!zone) throw new Error("Zone not found");
+  if (zone.warehouseId.toString() !== warehouseId) {
+    throw new Error("Zone does not belong to this warehouse");
+  }
+
+  if (data.zoneCode != null) {
+    const nextCode = data.zoneCode.trim().toUpperCase();
+    if (!nextCode) throw new Error("Zone code is required");
+    if (nextCode !== zone.zoneCode) {
+      const duplicated = await Zone.findOne({
+        warehouseId: new Types.ObjectId(warehouseId),
+        zoneCode: nextCode,
+        _id: { $ne: zone._id }
+      });
+      if (duplicated) throw new Error("Zone code already exists in this warehouse");
+      zone.zoneCode = nextCode;
+    }
+  }
+
+  if (data.name != null) {
+    const nextName = data.name.trim();
+    if (!nextName) throw new Error("Zone name is required");
+    zone.name = nextName;
+  }
+
+  if (data.description != null) {
+    const nextDescription = data.description.trim();
+    zone.description = nextDescription || undefined;
+  }
+
+  if (data.status != null) {
+    if (data.status !== "ACTIVE" && data.status !== "INACTIVE") {
+      throw new Error("Invalid zone status");
+    }
+    zone.status = data.status;
+  }
+
+  await zone.save();
+
+  return {
+    zone_id: zone._id.toString(),
+    zone_code: zone.zoneCode,
+    name: zone.name,
+    warehouse_id: zone.warehouseId.toString(),
+    description: zone.description,
+    status: zone.status,
+    created_by: zone.createdBy.toString(),
+    created_at: zone.createdAt,
+    updated_at: zone.updatedAt
   };
 }

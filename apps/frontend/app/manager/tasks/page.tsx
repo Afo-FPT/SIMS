@@ -1,30 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import type { StaffTask } from '../../../types/staff';
-import { listTasks, assignStaffToTask, cancelTask, getStaffUsers } from '../../../lib/mockApi/manager.api';
-import { useToastHelpers } from '../../../lib/toast';
+import React, { useEffect, useMemo, useState } from 'react';
+import { listStorageRequests, type StorageRequestView } from '../../../lib/storage-requests.api';
 import { Badge } from '../../../components/ui/Badge';
-import { Button } from '../../../components/ui/Button';
-import { Select } from '../../../components/ui/Select';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { Modal } from '../../../components/ui/Modal';
-import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
-import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { useToastHelpers } from '../../../lib/toast';
 
 export default function ManagerTasksPage() {
   const toast = useToastHelpers();
-  const [tasks, setTasks] = useState<StaffTask[]>([]);
+  const [tasks, setTasks] = useState<StorageRequestView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detail, setDetail] = useState<StaffTask | null>(null);
-  const [assignStaffId, setAssignStaffId] = useState('');
-  const [cancelConfirm, setCancelConfirm] = useState<StaffTask | null>(null);
-  const [updating, setUpdating] = useState(false);
-
-  const staffUsers = getStaffUsers();
+  const [detail, setDetail] = useState<StorageRequestView | null>(null);
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
 
   useEffect(() => {
     load();
@@ -34,8 +26,15 @@ export default function ManagerTasksPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await listTasks();
-      setTasks(data.filter((t) => t.status !== 'CANCELLED'));
+      const [approvedIn, approvedOut, doneByStaffIn, doneByStaffOut, completedIn, completedOut] = await Promise.all([
+        listStorageRequests({ requestType: 'IN', status: 'APPROVED' }),
+        listStorageRequests({ requestType: 'OUT', status: 'APPROVED' }),
+        listStorageRequests({ requestType: 'IN', status: 'DONE_BY_STAFF' }),
+        listStorageRequests({ requestType: 'OUT', status: 'DONE_BY_STAFF' }),
+        listStorageRequests({ requestType: 'IN', status: 'COMPLETED' }),
+        listStorageRequests({ requestType: 'OUT', status: 'COMPLETED' }),
+      ]);
+      setTasks([...approvedIn, ...approvedOut, ...doneByStaffIn, ...doneByStaffOut, ...completedIn, ...completedOut]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tasks');
       toast.error('Failed to load tasks');
@@ -44,76 +43,79 @@ export default function ManagerTasksPage() {
     }
   };
 
-  const handleAssign = async () => {
-    if (!detail || !assignStaffId) return;
-    try {
-      setUpdating(true);
-      await assignStaffToTask(detail.id, assignStaffId);
-      toast.success('Staff assigned');
-      setDetail(null);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to assign');
-    } finally {
-      setUpdating(false);
-    }
-  };
+  const sortedTasks = useMemo(
+    () =>
+      [...tasks].sort(
+        (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime(),
+      ),
+    [tasks],
+  );
 
-  const handleCancel = async (t: StaffTask) => {
-    try {
-      await cancelTask(t.id);
-      toast.success('Task cancelled');
-      setCancelConfirm(null);
-      setDetail(null);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to cancel');
-    }
-  };
+  const filteredTasks = useMemo(
+    () => (typeFilter === 'ALL' ? sortedTasks : sortedTasks.filter((t) => t.request_type === typeFilter)),
+    [sortedTasks, typeFilter],
+  );
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tasks</h1>
-        <p className="text-slate-500 mt-1">Coordinate and assign staff tasks</p>
+        <p className="text-slate-500 mt-1">Task list after assignment (approved, done by staff, completed)</p>
+      </div>
+
+      <div className="flex items-end gap-3">
+        <div className="space-y-1">
+          <p className="text-xs font-bold text-slate-500">Task type</p>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'IN' | 'OUT')}
+            className="h-10 rounded-xl border border-slate-200 px-3 text-sm"
+          >
+            <option value="ALL">All types</option>
+            <option value="IN">Inbound</option>
+            <option value="OUT">Outbound</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
         <ErrorState title="Failed to load" message={error} onRetry={load} />
-      ) : tasks.length === 0 ? (
-        <EmptyState icon="assignment" title="No tasks" message="Create tasks from approved service requests" />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState icon="assignment" title="No tasks" message="No tasks found for this filter" />
       ) : (
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <Table>
             <TableHead>
-              <TableHeader>Task code</TableHeader>
+              <TableHeader>Reference</TableHeader>
               <TableHeader>Type</TableHeader>
-              <TableHeader>Assigned staff</TableHeader>
+              <TableHeader>Contract</TableHeader>
+              <TableHeader>Items</TableHeader>
               <TableHeader>Status</TableHeader>
-              <TableHeader>Due date</TableHeader>
+              <TableHeader>Updated</TableHeader>
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
-              {tasks.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-bold text-slate-900">{t.taskCode}</TableCell>
-                  <TableCell><Badge variant="neutral">{t.type}</Badge></TableCell>
-                  <TableCell className="text-slate-700">{t.assignedToStaffName || '—'}</TableCell>
+              {filteredTasks.map((t) => (
+                <TableRow key={t.request_id}>
+                  <TableCell className="font-bold text-slate-900">{t.reference ?? t.request_id}</TableCell>
+                  <TableCell><Badge variant="neutral">{t.request_type === 'IN' ? 'Inbound' : 'Outbound'}</Badge></TableCell>
+                  <TableCell className="text-slate-700">{t.contract_code ?? t.contract_id}</TableCell>
+                  <TableCell className="text-slate-700">{t.items.length}</TableCell>
                   <TableCell>
-                    <Badge variant={t.status === 'COMPLETED' ? 'success' : t.status === 'IN_PROGRESS' ? 'info' : 'warning'}>
+                    <Badge variant={t.status === 'COMPLETED' ? 'success' : t.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>
                       {t.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-700 text-sm">
-                    {new Date(t.dueDate).toLocaleString('vi-VN', {
+                    {new Date(t.updated_at || t.created_at).toLocaleString('en-GB', {
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })}
                   </TableCell>
                   <TableCell>
-                    <button type="button" onClick={() => { setDetail(t); setAssignStaffId(t.assignedToStaffId || ''); }} className="text-sm font-bold text-primary hover:underline">
+                    <button type="button" onClick={() => setDetail(t)} className="text-sm font-bold text-primary hover:underline">
                       Open
                     </button>
                   </TableCell>
@@ -128,121 +130,54 @@ export default function ManagerTasksPage() {
         <Modal
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
-          title={detail.taskCode}
+          title={detail.reference ?? detail.request_id}
           size="xl"
         >
-          <div className="space-y-6">
-            <p className="text-sm text-slate-600">
-              Review task details and assign a staff member. You can also cancel tasks that are no longer needed.
-            </p>
+          <div className="space-y-5">
+            <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-500">Type</dt>
+                <dd className="font-bold text-slate-900">{detail.request_type === 'IN' ? 'Inbound' : 'Outbound'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-500">Contract</dt>
+                <dd className="font-bold text-slate-900">{detail.contract_code ?? detail.contract_id}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-500">Status</dt>
+                <dd><Badge variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>{detail.status}</Badge></dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-slate-500">Updated</dt>
+                <dd className="font-bold text-slate-900">{new Date(detail.updated_at || detail.created_at).toLocaleString('en-GB')}</dd>
+              </div>
+            </dl>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Task summary */}
-              <section className="bg-slate-50 rounded-2xl p-4 space-y-3">
-                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                  Task summary
-                </h3>
-                <dl className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Type</dt>
-                    <dd className="font-bold text-slate-900 text-right">{detail.type}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Customer</dt>
-                    <dd className="font-medium text-slate-900 text-right">
-                      {detail.customerName}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Contract</dt>
-                    <dd className="font-medium text-slate-900 text-right">
-                      {detail.contractCode}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Status</dt>
-                    <dd className="text-right">
-                      <Badge
-                        variant={
-                          detail.status === 'COMPLETED'
-                            ? 'success'
-                            : detail.status === 'IN_PROGRESS'
-                              ? 'info'
-                              : 'warning'
-                        }
-                      >
-                        {detail.status}
-                      </Badge>
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Due</dt>
-                    <dd className="font-bold text-slate-900 text-right">
-                      {new Date(detail.dueDate).toLocaleString('en-US', {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      })}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Assigned to</dt>
-                    <dd className="font-medium text-slate-900 text-right">
-                      {detail.assignedToStaffName || '—'}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-
-              {/* Assignment controls */}
-              {detail.status !== 'COMPLETED' && (
-                <section className="space-y-3">
-                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                    Assign staff
-                  </h3>
-                  <div className="flex flex-col gap-3">
-                    <Select
-                      label="Staff"
-                      value={assignStaffId}
-                      onChange={(e) => setAssignStaffId(e.target.value)}
-                      options={[
-                        { value: '', label: 'Select staff' },
-                        ...staffUsers.map((s) => ({ value: s.id, label: s.name })),
-                      ]}
-                      className="min-w-[220px]"
-                    />
-                    <div className="flex gap-3">
-                      <Button
-                        onClick={handleAssign}
-                        disabled={!assignStaffId || updating}
-                      >
-                        Assign task
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => setCancelConfirm(detail)}
-                        className="text-red-600"
-                      >
-                        Cancel task
-                      </Button>
-                    </div>
-                  </div>
-                </section>
-              )}
-            </div>
+            <section>
+              <h3 className="text-sm font-black text-slate-900 mb-3">Items</h3>
+              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                <Table>
+                  <TableHead>
+                    <TableHeader>Item name</TableHeader>
+                    <TableHeader>Requested</TableHeader>
+                    <TableHeader>Actual</TableHeader>
+                    <TableHeader>Shelf</TableHeader>
+                  </TableHead>
+                  <TableBody>
+                    {detail.items.map((it) => (
+                      <TableRow key={it.request_detail_id}>
+                        <TableCell className="text-slate-900">{it.item_name}</TableCell>
+                        <TableCell className="text-slate-700">{it.quantity_requested} {it.unit}</TableCell>
+                        <TableCell className="text-slate-700">{it.quantity_actual ?? '—'}</TableCell>
+                        <TableCell className="text-slate-700">{it.shelf_code ?? '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </section>
           </div>
         </Modal>
-      )}
-
-      {cancelConfirm && (
-        <ConfirmDialog
-          open={!!cancelConfirm}
-          onOpenChange={(o) => !o && setCancelConfirm(null)}
-          title="Cancel task"
-          message={`Cancel ${cancelConfirm?.taskCode}? This cannot be undone.`}
-          confirmLabel="Cancel task"
-          variant="danger"
-          onConfirm={() => cancelConfirm && handleCancel(cancelConfirm)}
-        />
       )}
     </div>
   );

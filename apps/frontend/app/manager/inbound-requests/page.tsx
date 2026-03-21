@@ -42,12 +42,8 @@ export default function ManagerInboundRequestsPage() {
     try {
       setLoading(true);
       setError(null);
-      // Giữ lại cả PENDING và APPROVED để manager không mất danh sách sau khi assign
-      const [pending, approved] = await Promise.all([
-        listStorageRequests({ requestType: 'IN', status: 'PENDING' }),
-        listStorageRequests({ requestType: 'IN', status: 'APPROVED' }),
-      ]);
-      setItems([...pending, ...approved]);
+      const pending = await listStorageRequests({ requestType: 'IN', status: 'PENDING' });
+      setItems(pending);
       setPage(1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load inbound requests';
@@ -90,14 +86,7 @@ export default function ManagerInboundRequestsPage() {
       toast.success('Staff assigned to inbound request');
       setAssigning(null);
       setAssignStaffIds([]);
-      // Cập nhật trạng thái request trong danh sách hiện tại, thay vì load lại và mất view
-      setItems((prev) =>
-        prev.map((r) =>
-          r.request_id === assigning.request_id
-            ? { ...r, status: 'APPROVED' as any, assigned_staff_ids: assignStaffIds }
-            : r,
-        ),
-      );
+      setItems((prev) => prev.filter((r) => r.request_id !== assigning.request_id));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to assign staff');
     } finally {

@@ -168,10 +168,6 @@ export default function ContractDetailPage() {
             General information
           </h2>
           <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt className="text-slate-500">Contract ID</dt>
-              <dd className="font-mono text-slate-900">{contract.id}</dd>
-            </div>
             {contract.customerName && (
               <div>
                 <dt className="text-slate-500">Customer</dt>

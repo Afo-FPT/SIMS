@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createZoneController, listZonesByWarehouseController } from "../controllers/zone.controller";
+import { createZoneController, listZonesByWarehouseController, updateZoneController } from "../controllers/zone.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
 const router = Router({ mergeParams: true });
@@ -24,6 +24,13 @@ router.post(
   authenticate,
   authorizeRoles("manager"),
   createZoneController
+);
+
+router.patch(
+  "/:zoneId",
+  authenticate,
+  authorizeRoles("manager"),
+  updateZoneController
 );
 
 export default router;

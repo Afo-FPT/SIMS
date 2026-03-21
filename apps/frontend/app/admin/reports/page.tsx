@@ -21,12 +21,40 @@ import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { Badge } from '../../../components/ui/Badge';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
-function hourKey(ts: string): string {
-  return new Date(ts).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit' });
+function toIsoLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dayKey(ts: string): string {
+  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+}
+
+function weekKey(ts: string): string {
+  const d = new Date(ts);
+  const day = d.getDay() || 7;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - day + 1);
+  const end = new Date(d);
+  end.setDate(d.getDate() + 6);
+  return `${d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} - ${end.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
+}
+
+function monthKey(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function inDateRange(ts: string, start: string, end: string): boolean {
+  const t = new Date(ts).getTime();
+  const s = start ? new Date(`${start}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+  const e = end ? new Date(`${end}T23:59:59`).getTime() : Number.POSITIVE_INFINITY;
+  return t >= s && t <= e;
 }
 
 export default function AdminReportsPage() {
@@ -35,6 +63,13 @@ export default function AdminReportsPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [storageRequests, setStorageRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
+  const [granularity, setGranularity] = useState<'day' | 'week'>('day');
+  const [startDate, setStartDate] = useState(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 90);
+    return toIsoLocalDate(start);
+  });
+  const [endDate, setEndDate] = useState(() => toIsoLocalDate(new Date()));
 
   useEffect(() => {
     let cancelled = false;
@@ -42,15 +77,15 @@ export default function AdminReportsPage() {
       try {
         setLoading(true);
         setError(null);
-        const [usersRes, requests, cycles] = await Promise.all([
-          listUsers({ page: 1, limit: 2000 }),
+        const [usersRes, reqs, cycles] = await Promise.all([
+          listUsers({ page: 1, limit: 5000 }),
           listStorageRequests(),
           getCycleCounts(),
         ]);
         if (cancelled) return;
         setUsers(usersRes.items || []);
-        setStorageRequests(requests);
-        setCycleCounts(cycles);
+        setStorageRequests(reqs || []);
+        setCycleCounts(cycles || []);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load admin reports');
       } finally {
@@ -63,67 +98,108 @@ export default function AdminReportsPage() {
     };
   }, []);
 
-  const apiUsage = useMemo(() => {
-    const map = new Map<string, { period: string; count: number; latency: number }>();
-    [...storageRequests, ...cycleCounts].forEach((r, idx) => {
-      const key = hourKey(r.updated_at || r.created_at);
-      if (!map.has(key)) map.set(key, { period: key, count: 0, latency: 0 });
-      const row = map.get(key)!;
-      row.count += 1;
-      row.latency = Math.round((row.latency + 120 + (idx % 5) * 20) / 2);
+  const filteredStorageRequests = useMemo(
+    () => storageRequests.filter((r) => inDateRange(r.updated_at || r.created_at, startDate, endDate)),
+    [storageRequests, startDate, endDate],
+  );
+
+  const filteredCycleCounts = useMemo(
+    () => cycleCounts.filter((c) => inDateRange(c.updated_at || c.created_at, startDate, endDate)),
+    [cycleCounts, startDate, endDate],
+  );
+
+  const roleDistribution = useMemo(() => {
+    const roleMap = new Map<string, number>();
+    users.forEach((u) => {
+      roleMap.set(u.role, (roleMap.get(u.role) || 0) + 1);
     });
-    return [...map.values()].slice(-24);
-  }, [storageRequests, cycleCounts]);
-
-  const endpointStats = useMemo(() => {
-    return [
-      { endpoint: '/storage-requests', count: storageRequests.length, latency: 180 },
-      { endpoint: '/cycle-counts', count: cycleCounts.length, latency: 220 },
-      { endpoint: '/users', count: users.length, latency: 160 },
-    ];
-  }, [storageRequests.length, cycleCounts.length, users.length]);
-
-  const userRoleActivity = useMemo(() => {
-    const counts = users.reduce<Record<string, number>>((acc, u) => {
-      acc[u.role] = (acc[u.role] || 0) + 1;
-      return acc;
-    }, {});
-    return Object.entries(counts).map(([role, active]) => ({ role, active }));
+    return Array.from(roleMap.entries()).map(([role, value]) => ({ role, value }));
   }, [users]);
 
-  const loginHeatmap = useMemo(() => {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const hours = ['08', '10', '12', '14', '16', '18', '20'];
-    return days.map((day, i) => ({
-      day,
-      values: hours.map((hour, j) => ({ hour, value: (users.length % 9) + i * 2 + j })),
-    }));
-  }, [users.length]);
+  const userGrowthByMonth = useMemo(() => {
+    const map = new Map<string, { month: string; total: number; active: number; locked: number }>();
+    users.forEach((u) => {
+      const key = monthKey(u.createdAt || new Date().toISOString());
+      if (!map.has(key)) {
+        map.set(key, { month: key, total: 0, active: 0, locked: 0 });
+      }
+      const row = map.get(key)!;
+      row.total += 1;
+      if (u.status === 'ACTIVE') row.active += 1;
+      else row.locked += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
+  }, [users]);
 
-  const errorsByType = useMemo(() => {
-    return [
-      { type: 'Rejected requests', count: storageRequests.filter((r) => r.status === 'REJECTED').length },
-      { type: 'Pending overload', count: storageRequests.filter((r) => r.status === 'PENDING').length },
-      { type: 'Adjustment requested', count: cycleCounts.filter((c) => c.status === 'ADJUSTMENT_REQUESTED').length },
-      { type: 'Recount required', count: cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length },
-    ];
-  }, [storageRequests, cycleCounts]);
+  const operationsTimeline = useMemo(() => {
+    const keyFn = granularity === 'day' ? dayKey : weekKey;
+    const map = new Map<string, { period: string; inbound: number; outbound: number; cycleCount: number; total: number }>();
 
-  const auditActions = useMemo(() => {
+    filteredStorageRequests.forEach((r) => {
+      const key = keyFn(r.updated_at || r.created_at);
+      if (!map.has(key)) map.set(key, { period: key, inbound: 0, outbound: 0, cycleCount: 0, total: 0 });
+      const row = map.get(key)!;
+      if (r.request_type === 'IN') row.inbound += 1;
+      else row.outbound += 1;
+      row.total += 1;
+    });
+
+    filteredCycleCounts.forEach((c) => {
+      const key = keyFn(c.updated_at || c.created_at);
+      if (!map.has(key)) map.set(key, { period: key, inbound: 0, outbound: 0, cycleCount: 0, total: 0 });
+      const row = map.get(key)!;
+      row.cycleCount += 1;
+      row.total += 1;
+    });
+
+    return Array.from(map.values()).slice(-16);
+  }, [filteredStorageRequests, filteredCycleCounts, granularity]);
+
+  const completionOverview = useMemo(() => {
+    const pending = filteredStorageRequests.filter((r) => r.status === 'PENDING').length + filteredCycleCounts.filter((c) => c.status === 'PENDING').length;
+    const inProgress =
+      filteredStorageRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length +
+      filteredCycleCounts.filter((c) => ['APPROVED', 'ASSIGNED', 'STAFF_SUBMITTED', 'COUNTING_IN_PROGRESS'].includes(String(c.status))).length;
+    const completed = filteredStorageRequests.filter((r) => r.status === 'COMPLETED').length + filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+    const rejected = filteredStorageRequests.filter((r) => r.status === 'REJECTED').length + filteredCycleCounts.filter((c) => c.status === 'REJECTED').length;
     return [
-      { name: 'Login', value: users.length },
-      { name: 'Read', value: storageRequests.length + cycleCounts.length },
-      { name: 'Change', value: Math.floor((storageRequests.length + cycleCounts.length) / 2) },
-      { name: 'Failed login', value: 0 },
+      { name: 'Completed', value: completed },
+      { name: 'In Progress', value: inProgress },
+      { name: 'Pending', value: pending },
+      { name: 'Rejected', value: rejected },
     ];
-  }, [users.length, storageRequests.length, cycleCounts.length]);
+  }, [filteredStorageRequests, filteredCycleCounts]);
+
+  const completionRateByPeriod = useMemo(() => {
+    const keyFn = granularity === 'day' ? dayKey : weekKey;
+    const map = new Map<string, { period: string; total: number; completed: number; pending: number; rejected: number; completionRate: number }>();
+
+    const addRecord = (period: string, status: string) => {
+      if (!map.has(period)) {
+        map.set(period, { period, total: 0, completed: 0, pending: 0, rejected: 0, completionRate: 0 });
+      }
+      const row = map.get(period)!;
+      row.total += 1;
+      const normalized = String(status || '').toUpperCase();
+      if (normalized === 'COMPLETED' || normalized === 'CONFIRMED') row.completed += 1;
+      else if (normalized === 'REJECTED') row.rejected += 1;
+      else row.pending += 1;
+    };
+
+    filteredStorageRequests.forEach((r) => addRecord(keyFn(r.updated_at || r.created_at), r.status));
+    filteredCycleCounts.forEach((c) => addRecord(keyFn(c.updated_at || c.created_at), c.status));
+
+    return Array.from(map.values())
+      .map((row) => ({ ...row, completionRate: row.total > 0 ? Number(((row.completed / row.total) * 100).toFixed(1)) : 0 }))
+      .slice(-16);
+  }, [filteredStorageRequests, filteredCycleCounts, granularity]);
 
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-10">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-          <p className="text-slate-500 mt-1">API usage, user activity, error trends, and audit security insights</p>
+          <p className="text-slate-500 mt-1">User, operations, completion, and governance analytics</p>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -133,144 +209,131 @@ export default function AdminReportsPage() {
   if (error) return <ErrorState title="Failed to load admin reports" message={error} onRetry={() => window.location.reload()} />;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-        <p className="text-slate-500 mt-1">API usage, user activity, error trends, and audit security insights</p>
+    <div className="space-y-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
+          <p className="text-slate-500 mt-1">User, operations, completion, and governance analytics</p>
+        </div>
+        <div className="flex items-end gap-4">
+          <div className="space-y-1">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-3 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-10 rounded-xl border border-slate-200 px-3 text-sm" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Granularity</p>
+            <select
+              value={granularity}
+              onChange={(e) => setGranularity(e.target.value as 'day' | 'week')}
+              className="h-10 rounded-xl border border-slate-200 px-3 text-sm"
+            >
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+            </select>
+          </div>
+        </div>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">API Usage & Performance Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={apiUsage}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line dataKey="count" stroke="#0ea5e9" strokeWidth={2} />
-                <Line dataKey="latency" stroke="#6366f1" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={endpointStats}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="endpoint" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="count" fill="#0ea5e9" />
-                <Bar dataKey="latency" fill="#6366f1" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">User Activity & Login Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={userRoleActivity}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="role" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="active" fill="#22c55e" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="px-2 py-2 text-left text-xs uppercase text-slate-500 font-black">Day</th>
-                  {['08', '10', '12', '14', '16', '18', '20'].map((h) => (
-                    <th key={h} className="px-2 py-2 text-xs uppercase text-slate-500 font-black">{h}:00</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loginHeatmap.map((row) => (
-                  <tr key={row.day} className="border-b border-slate-100">
-                    <td className="px-2 py-2 font-bold">{row.day}</td>
-                    {row.values.map((v) => {
-                      const bg = v.value > 20 ? '#ef4444' : v.value > 10 ? '#f59e0b' : v.value > 0 ? '#22c55e' : '#e2e8f0';
-                      return (
-                        <td key={`${row.day}-${v.hour}`} className="px-2 py-2">
-                          <div style={{ backgroundColor: bg }} className="rounded px-2 py-1 text-center text-white text-xs font-bold">{v.value}</div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Error & Exception Logs Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={errorsByType}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="type" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#ef4444" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={apiUsage}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" />
-                <YAxis />
-                <Tooltip />
-                <Line dataKey="count" stroke="#ef4444" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Security & Audit Summary Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
+      <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-6">User & Role Overview</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={auditActions} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                  {auditActions.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
+                <Pie data={roleDistribution} dataKey="value" nameKey="role" innerRadius={70} outerRadius={102}>
+                  {roleDistribution.map((d, i) => <Cell key={d.role} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
-                <Legend />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="h-72">
+          <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={apiUsage}>
+              <LineChart data={userGrowthByMonth}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" />
+                <XAxis dataKey="month" dy={8} tickMargin={10} />
                 <YAxis />
                 <Tooltip />
-                <Legend />
-                <Line dataKey="count" name="Failed login trend (proxy)" stroke="#ef4444" strokeWidth={2} />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
+                <Line dataKey="total" name="New users" stroke="#0ea5e9" strokeWidth={2.5} />
+                <Line dataKey="active" name="Active users" stroke="#22c55e" strokeWidth={2} />
+                <Line dataKey="locked" name="Locked users" stroke="#ef4444" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
       </section>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-6">System Operations Volume</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={operationsTimeline}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="period" dy={8} tickMargin={10} />
+                <YAxis />
+                <Tooltip />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
+                <Bar dataKey="inbound" stackId="ops" fill="#0ea5e9" />
+                <Bar dataKey="outbound" stackId="ops" fill="#6366f1" />
+                <Bar dataKey="cycleCount" stackId="ops" fill="#22c55e" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={operationsTimeline}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="period" dy={8} tickMargin={10} />
+                <YAxis />
+                <Tooltip />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
+                <Line dataKey="total" name="Total operations" stroke="#f59e0b" strokeWidth={2.5} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-6">Task/Request Completion & Pending</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={completionOverview} dataKey="value" nameKey="name" innerRadius={70} outerRadius={102}>
+                  {completionOverview.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={completionRateByPeriod}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="period" dy={8} tickMargin={10} />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
+                <Tooltip />
+                <Legend wrapperStyle={{ paddingTop: 12 }} />
+                <Bar yAxisId="left" dataKey="completed" fill="#22c55e" />
+                <Bar yAxisId="left" dataKey="pending" fill="#f59e0b" />
+                <Bar yAxisId="left" dataKey="rejected" fill="#ef4444" />
+                <Line yAxisId="right" dataKey="completionRate" stroke="#0ea5e9" strokeWidth={2.5} name="Completion rate %" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
+
     </div>
   );
 }

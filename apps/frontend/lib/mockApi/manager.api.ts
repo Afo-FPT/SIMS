@@ -183,6 +183,32 @@ export async function createZone(
   };
 }
 
+export async function updateZoneByWarehouse(
+  warehouseId: string,
+  zoneId: string,
+  payload: { zoneCode?: string; name?: string; description?: string; status?: 'ACTIVE' | 'INACTIVE' }
+): Promise<ManagerZoneOption> {
+  const res = await apiJson<{ message?: string; data?: BackendZoneResponse } | BackendZoneResponse>(
+    `/warehouses/${warehouseId}/zones/${zoneId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
+  const z = (res as any).zone_id ? (res as any) : (res as any).data;
+  if (!z) {
+    throw new Error('Invalid response while updating zone');
+  }
+  return {
+    id: z.zone_id,
+    zoneCode: z.zone_code,
+    name: z.name,
+    warehouseId: z.warehouse_id,
+    description: z.description,
+    status: z.status,
+  };
+}
+
 interface BackendShelfResponse {
   shelf_id: string;
   shelf_code: string;
@@ -248,6 +274,24 @@ export async function createShelvesForWarehouse(
 
   const response = data as CreateShelvesResponse;
   return response.data.map((s) => mapBackendShelfToShelf(s, zoneDisplay));
+}
+
+export async function updateShelfStatus(
+  shelfId: string,
+  status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE',
+): Promise<Shelf> {
+  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(
+    `/shelves/${shelfId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+  );
+  const backend = (res as any).shelf_id ? (res as any) : (res as any).data;
+  if (!backend) {
+    throw new Error('Invalid response while updating shelf status');
+  }
+  return mapBackendShelfToShelf(backend as BackendShelfResponse);
 }
 
 /**

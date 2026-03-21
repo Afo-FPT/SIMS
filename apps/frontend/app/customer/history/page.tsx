@@ -296,15 +296,20 @@ export default function CustomerHistoryPage() {
           <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-500">Rows per page</p>
-              <select
-                value={rowsPerPage}
-                onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
+              <div className="relative">
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-10 text-sm transition-colors hover:border-primary/40 focus:border-primary/40 focus:outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+                <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-slate-400">
+                  <span className="material-symbols-outlined text-base">expand_more</span>
+                </span>
+              </div>
             </div>
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-500">Total records</p>

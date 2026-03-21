@@ -19,6 +19,8 @@ import {
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { Input } from '../../../components/ui/Input';
+import { Button } from '../../../components/ui/Button';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 
@@ -39,6 +41,12 @@ export default function CustomerReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ReportTab>('io_history');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
@@ -70,9 +78,31 @@ export default function CustomerReportsPage() {
     };
   }, []);
 
+  const filteredRequests = useMemo(() => {
+    if (!startDate || !endDate) return requests;
+    const from = new Date(startDate);
+    const to = new Date(endDate);
+    to.setHours(23, 59, 59, 999);
+    return requests.filter((r) => {
+      const t = new Date(r.updated_at || r.created_at);
+      return t >= from && t <= to;
+    });
+  }, [requests, startDate, endDate]);
+
+  const filteredCycleCounts = useMemo(() => {
+    if (!startDate || !endDate) return cycleCounts;
+    const from = new Date(startDate);
+    const to = new Date(endDate);
+    to.setHours(23, 59, 59, 999);
+    return cycleCounts.filter((c) => {
+      const t = new Date(c.updated_at || c.created_at);
+      return t >= from && t <= to;
+    });
+  }, [cycleCounts, startDate, endDate]);
+
   const ioTrend = useMemo(() => {
     const map = new Map<string, { month: string; inbound: number; outbound: number }>();
-    requests.forEach((r) => {
+    filteredRequests.forEach((r) => {
       const key = monthKey(r.updated_at || r.created_at);
       if (!map.has(key)) map.set(key, { month: key, inbound: 0, outbound: 0 });
       const row = map.get(key)!;
@@ -81,12 +111,12 @@ export default function CustomerReportsPage() {
       else row.outbound += qty;
     });
     return [...map.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
-  }, [requests]);
+  }, [filteredRequests]);
 
   const turnoverByProduct = useMemo(() => {
     const inMap = new Map<string, number>();
     const outMap = new Map<string, number>();
-    requests.forEach((r) => {
+    filteredRequests.forEach((r) => {
       r.items.forEach((i: any) => {
         const qty = i.quantity_actual ?? i.quantity_requested ?? 0;
         if (r.request_type === 'IN') inMap.set(i.item_name, (inMap.get(i.item_name) || 0) + qty);
@@ -103,10 +133,10 @@ export default function CustomerReportsPage() {
         turnover: Number(((inQty + outQty) / avgStock).toFixed(2)),
       };
     });
-  }, [requests, storedItems]);
+  }, [filteredRequests, storedItems]);
 
   const discrepancyRows = useMemo(() => {
-    return cycleCounts.map((c) => {
+    return filteredCycleCounts.map((c) => {
       const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
       const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
       return {
@@ -117,7 +147,7 @@ export default function CustomerReportsPage() {
         status: c.status,
       };
     });
-  }, [cycleCounts]);
+  }, [filteredCycleCounts]);
 
   const discrepancyPie = useMemo(() => {
     const under = discrepancyRows.filter((r) => r.actual < r.system).length;
@@ -133,10 +163,10 @@ export default function CustomerReportsPage() {
   const alertsData = useMemo(() => {
     const lowStock = storedItems.filter((i) => i.quantity < 50).length;
     const discrepancy = discrepancyRows.filter((r) => r.discrepancy > 0).length;
-    const pendingConfirm = cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
-    const pendingRequests = requests.filter((r) => r.status === 'PENDING').length;
+    const pendingConfirm = filteredCycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
+    const pendingRequests = filteredRequests.filter((r) => r.status === 'PENDING').length;
     return { lowStock, discrepancy, pendingConfirm, pendingRequests };
-  }, [storedItems, discrepancyRows, cycleCounts, requests]);
+  }, [storedItems, discrepancyRows, filteredCycleCounts, filteredRequests]);
 
   if (loading) {
     return (
@@ -157,6 +187,54 @@ export default function CustomerReportsPage() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
         <p className="text-slate-500 mt-1">Track your warehouse operations and inventory performance in one place</p>
       </div>
+
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
+            <p className="text-sm text-slate-500 mt-1">Select date range for report data</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <button
+                type="button"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(start.getDate() - 30);
+                  setStartDate(start.toISOString().slice(0, 10));
+                  setEndDate(end.toISOString().slice(0, 10));
+                }}
+                className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Last 30 days
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(start.getDate() - 90);
+                  setStartDate(start.toISOString().slice(0, 10));
+                  setEndDate(end.toISOString().slice(0, 10));
+                }}
+                className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Last 90 days
+              </button>
+            </div>
+            <Button onClick={() => window.location.reload()}>Refresh</Button>
+          </div>
+        </div>
+      </section>
 
       <div className="flex flex-wrap gap-2">
         {[

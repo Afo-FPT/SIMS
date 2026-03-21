@@ -8,10 +8,12 @@ import {
   listWarehouses,
   listZonesByWarehouse,
   createZone,
+  updateZoneByWarehouse,
   type ManagerZoneOption,
   createShelvesForWarehouse,
   listShelvesByWarehouse,
   updateWarehouse,
+  updateShelfStatus,
 } from '../../../../lib/mockApi/manager.api';
 import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
 import { useToastHelpers } from '../../../../lib/toast';
@@ -56,7 +58,20 @@ export default function ManagerWarehouseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingZone, setCreatingZone] = useState(false);
+  const [zoneEditMode, setZoneEditMode] = useState(false);
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
+  const [savingZoneId, setSavingZoneId] = useState<string | null>(null);
+  const [zoneEditForm, setZoneEditForm] = useState({
+    zoneCode: '',
+    name: '',
+    description: '',
+    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
+  });
   const [creatingShelf, setCreatingShelf] = useState(false);
+  const [shelfEditMode, setShelfEditMode] = useState(false);
+  const [updatingShelfId, setUpdatingShelfId] = useState<string | null>(null);
+  const [editingShelfId, setEditingShelfId] = useState<string | null>(null);
+  const [shelfStatusDraft, setShelfStatusDraft] = useState<Record<string, 'AVAILABLE' | 'RENTED' | 'MAINTENANCE'>>({});
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState({
@@ -134,6 +149,14 @@ export default function ManagerWarehouseDetailPage() {
     return () => {
       cancelled = true;
     };
+  }, [shelves]);
+
+  useEffect(() => {
+    const next: Record<string, 'AVAILABLE' | 'RENTED' | 'MAINTENANCE'> = {};
+    shelves.forEach((s) => {
+      next[s.id] = s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE';
+    });
+    setShelfStatusDraft(next);
   }, [shelves]);
 
   const previewMaxM3 = useMemo(() => {
@@ -312,6 +335,57 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
+  const handleStartEditZone = (zone: ManagerZoneOption) => {
+    setEditingZoneId(zone.id);
+    setZoneEditForm({
+      zoneCode: zone.zoneCode ?? '',
+      name: zone.name ?? '',
+      description: zone.description ?? '',
+      status: zone.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    });
+  };
+
+  const handleSaveZone = async (zoneId: string) => {
+    if (!warehouse) return;
+    if (!zoneEditForm.zoneCode.trim() || !zoneEditForm.name.trim()) {
+      toast.warning('Zone code and name are required');
+      return;
+    }
+    try {
+      setSavingZoneId(zoneId);
+      const updated = await updateZoneByWarehouse(warehouse.id, zoneId, {
+        zoneCode: zoneEditForm.zoneCode.trim(),
+        name: zoneEditForm.name.trim(),
+        description: zoneEditForm.description.trim(),
+        status: zoneEditForm.status,
+      });
+      setZones((prev) => prev.map((z) => (z.id === zoneId ? updated : z)));
+      setEditingZoneId(null);
+      toast.success('Zone updated successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update zone');
+    } finally {
+      setSavingZoneId(null);
+    }
+  };
+
+  const handleSaveShelfStatus = async (shelf: Shelf) => {
+    const selected = shelfStatusDraft[shelf.id];
+    if (!selected) return;
+    try {
+      setUpdatingShelfId(shelf.id);
+      await updateShelfStatus(shelf.id, selected);
+      const refreshed = await listShelvesByWarehouse(id);
+      setShelves(refreshed);
+      setEditingShelfId(null);
+      toast.success('Shelf status updated');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update shelf status');
+    } finally {
+      setUpdatingShelfId(null);
+    }
+  };
+
   if (loading) {
     return <LoadingSkeleton className="h-64 w-full" />;
   }
@@ -448,7 +522,22 @@ export default function ManagerWarehouseDetailPage() {
 
       {/* Zones */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-black text-slate-900">Zones</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-slate-900">Zones</h2>
+          <Button
+            variant={zoneEditMode ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setZoneEditMode((prev) => {
+                const next = !prev;
+                if (!next) setEditingZoneId(null);
+                return next;
+              });
+            }}
+          >
+            {zoneEditMode ? 'Cancel edit' : 'Edit'}
+          </Button>
+        </div>
         <p className="text-sm text-slate-600">
           Zones group shelves for location tracking. Contracts are assigned to zones.
         </p>
@@ -490,25 +579,100 @@ export default function ManagerWarehouseDetailPage() {
                 <th className="py-2 pr-4">Name</th>
                 <th className="py-2 pr-4">Description</th>
                 <th className="py-2 pr-4">Status</th>
+                <th className="py-2 pr-4 text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {zones.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-slate-500">
+                  <td colSpan={5} className="py-4 text-slate-500">
                     No zones yet. Create one below.
                   </td>
                 </tr>
               ) : (
                 zones.map((z) => (
                   <tr key={z.id} className="border-b border-slate-50">
-                    <td className="py-2 pr-4 font-bold text-slate-900">{z.zoneCode}</td>
-                    <td className="py-2 pr-4 text-slate-700">{z.name}</td>
-                    <td className="py-2 pr-4 text-slate-700">{z.description || '—'}</td>
+                    <td className="py-2 pr-4 font-bold text-slate-900">
+                      {editingZoneId === z.id ? (
+                        <input
+                          value={zoneEditForm.zoneCode}
+                          onChange={(e) => setZoneEditForm((prev) => ({ ...prev, zoneCode: e.target.value }))}
+                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                        />
+                      ) : (
+                        z.zoneCode
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-700">
+                      {editingZoneId === z.id ? (
+                        <input
+                          value={zoneEditForm.name}
+                          onChange={(e) => setZoneEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                        />
+                      ) : (
+                        z.name
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-700">
+                      {editingZoneId === z.id ? (
+                        <input
+                          value={zoneEditForm.description}
+                          onChange={(e) => setZoneEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                        />
+                      ) : (
+                        z.description || '—'
+                      )}
+                    </td>
                     <td className="py-2 pr-4">
-                      <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>
-                        {z.status ?? '—'}
-                      </Badge>
+                      {editingZoneId === z.id ? (
+                        <select
+                          value={zoneEditForm.status}
+                          onChange={(e) =>
+                            setZoneEditForm((prev) => ({
+                              ...prev,
+                              status: e.target.value as 'ACTIVE' | 'INACTIVE',
+                            }))
+                          }
+                          className="h-9 rounded-lg border border-slate-200 px-2 text-sm"
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="INACTIVE">INACTIVE</option>
+                        </select>
+                      ) : (
+                        <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>
+                          {z.status ?? '—'}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-right">
+                      {!zoneEditMode ? (
+                        <span className="text-slate-400 text-xs">—</span>
+                      ) : editingZoneId === z.id ? (
+                        <div className="inline-flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleSaveZone(z.id)}
+                            isLoading={savingZoneId === z.id}
+                            disabled={savingZoneId === z.id}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingZoneId(null)}
+                            disabled={savingZoneId === z.id}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => handleStartEditZone(z)}>
+                          Edit
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -520,7 +684,22 @@ export default function ManagerWarehouseDetailPage() {
 
       {/* Shelves */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <h2 className="text-lg font-black text-slate-900">Shelves</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-slate-900">Shelves</h2>
+          <Button
+            variant={shelfEditMode ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => {
+              setShelfEditMode((prev) => {
+                const next = !prev;
+                if (!next) setEditingShelfId(null);
+                return next;
+              });
+            }}
+          >
+            {shelfEditMode ? 'Cancel edit' : 'Edit'}
+          </Button>
+        </div>
         <p className="text-sm text-slate-600">
           Create shelves inside zones and see their current status.
         </p>
@@ -626,6 +805,7 @@ export default function ManagerWarehouseDetailPage() {
                   <TableHeader>Shelf code</TableHeader>
                   <TableHeader>Zone</TableHeader>
                   <TableHeader>Status</TableHeader>
+                  <TableHeader className="text-right">Action</TableHeader>
                   <TableHeader>Contract</TableHeader>
                   <TableHeader className="text-right">Đã dùng</TableHeader>
                   <TableHeader className="text-right">Max</TableHeader>
@@ -649,6 +829,58 @@ export default function ManagerWarehouseDetailPage() {
                           <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>
                             {s.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {!shelfEditMode ? (
+                            <div className="flex justify-end">
+                              <span className="text-slate-400 text-xs">—</span>
+                            </div>
+                          ) : editingShelfId === s.id ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <select
+                                value={shelfStatusDraft[s.id] ?? (s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE')}
+                                onChange={(e) =>
+                                  setShelfStatusDraft((prev) => ({
+                                    ...prev,
+                                    [s.id]: e.target.value as 'AVAILABLE' | 'RENTED' | 'MAINTENANCE',
+                                  }))
+                                }
+                                className="h-9 rounded-lg border border-slate-200 px-2 text-xs"
+                              >
+                                <option value="AVAILABLE">AVAILABLE</option>
+                                <option value="MAINTENANCE">MAINTENANCE</option>
+                                <option value="RENTED">RENTED</option>
+                              </select>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={updatingShelfId === s.id}
+                                onClick={() => handleSaveShelfStatus(s)}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                disabled={updatingShelfId === s.id}
+                                onClick={() => {
+                                  setEditingShelfId(null);
+                                  setShelfStatusDraft((prev) => ({
+                                    ...prev,
+                                    [s.id]: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+                                  }));
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end">
+                              <Button size="sm" variant="ghost" onClick={() => setEditingShelfId(s.id)}>
+                                Edit
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="text-slate-700">{s.contractCode || '—'}</TableCell>
                         <TableCell className="text-right font-mono text-sm">{u ? formatM3(used) : '—'}</TableCell>

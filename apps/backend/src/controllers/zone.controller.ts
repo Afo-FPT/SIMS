@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { createZone, listZonesByWarehouse, CreateZoneRequest } from "../services/zone.service";
+import { createZone, listZonesByWarehouse, CreateZoneRequest, updateZone, UpdateZoneRequest } from "../services/zone.service";
 
 export async function createZoneController(req: Request, res: Response) {
   try {
@@ -43,6 +43,33 @@ export async function listZonesByWarehouseController(req: Request, res: Response
     });
   } catch (error: any) {
     if (error.message.includes("not found") || error.message.includes("Invalid")) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
+
+export async function updateZoneController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { warehouseId, zoneId } = req.params;
+    const { zoneCode, name, description, status } = req.body;
+    const payload: UpdateZoneRequest = { zoneCode, name, description, status };
+    const zone = await updateZone(warehouseId, zoneId, payload);
+    res.json({
+      message: "Zone updated successfully",
+      data: zone
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("required") ||
+      error.message.includes("not found") ||
+      error.message.includes("already exists") ||
+      error.message.includes("Invalid") ||
+      error.message.includes("does not belong")
+    ) {
       return res.status(400).json({ message: error.message });
     }
     res.status(500).json({ message: error.message || "Internal server error" });
