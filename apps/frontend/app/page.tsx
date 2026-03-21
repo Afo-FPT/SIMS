@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listContractPackages, type ContractPackage } from '../lib/contract-packages.api';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
@@ -39,6 +39,10 @@ export default function LandingPage() {
       cancelled = true;
     };
   }, []);
+
+  const MAX_PRICING_PACKAGES = 6;
+  const packagesPreview = useMemo(() => packages.slice(0, MAX_PRICING_PACKAGES), [packages]);
+  const hasMorePackages = packages.length > MAX_PRICING_PACKAGES;
 
   const navigateTo = (path: string) => {
     router.push(path);
@@ -207,32 +211,39 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="py-24 px-6 border-y border-slate-100 bg-slate-50/40">
-        <div className="max-w-7xl mx-auto space-y-12">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-              Pricing Packages
+      <section id="pricing" className="relative py-28 px-6 border-y border-slate-100 overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-50 via-white to-slate-50/80" />
+        <div className="pointer-events-none absolute -top-24 right-0 size-[420px] rounded-full bg-primary/[0.06] blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 left-0 size-[320px] rounded-full bg-amber-400/[0.05] blur-3xl" />
+
+        <div className="relative max-w-7xl mx-auto space-y-14">
+          <div className="text-center max-w-2xl mx-auto space-y-4">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.35em]">
+              Pricing
             </p>
-            <h2 className="text-4xl font-black text-slate-900 tracking-tight">
-              Available rental packages
+            <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight">
+              Rental packages
             </h2>
-            <p className="text-slate-500 font-medium">
-              Choose a predefined package to get an instant rental period and price. If none fits, you can switch to
-              Custom when you submit your request.
+            <p className="text-slate-500 font-medium leading-relaxed">
+              Predefined durations and pricing from your operations team. Pick a package or go custom when you submit a rental request.
             </p>
           </div>
 
           {pricingLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-                  <LoadingSkeleton className="h-6 w-2/3" />
-                  <LoadingSkeleton className="h-4 w-5/6" />
-                  <LoadingSkeleton className="h-4 w-3/4" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-6xl mx-auto">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-3xl border border-slate-200/80 bg-white/90 backdrop-blur-sm p-6 shadow-sm space-y-4 ring-1 ring-slate-100"
+                >
+                  <LoadingSkeleton className="h-5 w-24 rounded-full" />
+                  <LoadingSkeleton className="h-8 w-4/5" />
+                  <LoadingSkeleton className="h-4 w-full" />
+                  <LoadingSkeleton className="h-4 w-2/3" />
                   <div className="pt-6 border-t border-slate-100 space-y-3">
-                    <LoadingSkeleton className="h-4 w-1/3" />
-                    <LoadingSkeleton className="h-10 w-2/3" />
-                    <LoadingSkeleton className="h-10 w-full" />
+                    <LoadingSkeleton className="h-4 w-20" />
+                    <LoadingSkeleton className="h-10 w-40" />
+                    <LoadingSkeleton className="h-11 w-full rounded-2xl" />
                   </div>
                 </div>
               ))}
@@ -258,48 +269,88 @@ export default function LandingPage() {
               }
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {packages.map((p) => (
-                <div
-                  key={p._id}
-                  className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Duration</p>
-                      <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1">
-                        {p.name}
-                      </h3>
-                    </div>
-                    <Badge variant="info">
-                      {p.duration} {p.unit}
-                    </Badge>
-                  </div>
-
-                  <p className="text-sm text-slate-500 font-medium mt-3">
-                    {p.description || 'Warehouse service package'}
+            <>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-center gap-2 text-center">
+                {hasMorePackages ? (
+                  <p className="text-xs font-bold text-slate-500">
+                    Showing <span className="text-slate-900">{MAX_PRICING_PACKAGES}</span> of{' '}
+                    <span className="text-slate-900">{packages.length}</span> packages
                   </p>
+                ) : (
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                    {packages.length} {packages.length === 1 ? 'package' : 'packages'} available
+                  </p>
+                )}
+              </div>
 
-                  <div className="mt-6 pt-6 border-t border-slate-100 flex items-end justify-between gap-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        Price
-                      </p>
-                      <p className="text-3xl font-black text-primary tracking-tight">
-                        {Number(p.price).toLocaleString('vi-VN')} VND
-                      </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-6xl mx-auto">
+                {packagesPreview.map((p) => (
+                  <article
+                    key={p._id}
+                    className="group relative flex flex-col rounded-3xl border border-slate-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.06)] transition-all duration-300 hover:border-primary/25 hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-0.5"
+                  >
+                    <div className="absolute inset-x-0 top-0 h-1 rounded-t-3xl bg-gradient-to-r from-primary/0 via-primary/40 to-primary/0 opacity-0 transition-opacity group-hover:opacity-100" />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="inline-flex size-9 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-md shadow-slate-900/15">
+                            <span className="material-symbols-outlined text-lg">inventory_2</span>
+                          </span>
+                          <Badge variant="info" size="sm">
+                            {p.duration} {p.unit}
+                            {p.duration > 1 ? 's' : ''}
+                          </Badge>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 tracking-tight leading-snug">
+                          {p.name}
+                        </h3>
+                      </div>
                     </div>
 
-                    <button
-                      onClick={() => navigateTo('/request')}
-                      className="px-4 py-3 bg-primary text-white font-black rounded-2xl hover:bg-primary-dark transition-colors active:scale-[0.98]"
-                    >
-                      Use this package
-                    </button>
-                  </div>
+                    <p className="text-sm text-slate-500 font-medium mt-3 line-clamp-3 min-h-[3.75rem]">
+                      {p.description || 'Warehouse rental package with fixed duration and pricing.'}
+                    </p>
+
+                    <div className="mt-auto pt-6">
+                      <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 mb-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          Price per zone
+                        </p>
+                        <p className="text-2xl md:text-3xl font-black text-primary tracking-tight tabular-nums">
+                          {Number(p.price).toLocaleString('vi-VN')}{' '}
+                          <span className="text-base font-black text-slate-400">VND</span>
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => navigateTo('/customer/rent-requests')}
+                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl bg-slate-900 text-white text-sm font-black uppercase tracking-widest hover:bg-primary transition-colors active:scale-[0.98]"
+                      >
+                        Start rental
+                        <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              {hasMorePackages && (
+                <div className="flex flex-col items-center gap-4 pt-4 max-w-lg mx-auto text-center">
+                  <p className="text-sm text-slate-500">
+                    More packages are available in your rental workspace. Open the full list to compare durations and pricing.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigateTo('/customer/rent-requests')}
+                    className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl border-2 border-slate-900 bg-white text-slate-900 text-sm font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-colors"
+                  >
+                    View all packages
+                    <span className="material-symbols-outlined text-xl">open_in_new</span>
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </section>
