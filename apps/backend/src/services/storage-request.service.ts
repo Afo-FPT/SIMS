@@ -13,6 +13,7 @@ export interface InboundRequestItem {
   quantity: number;
   unit: string;
   quantityPerUnit?: number;
+  volumePerUnitM3: number;
 }
 
 /**
@@ -54,6 +55,7 @@ export interface RequestDetailResponse {
   itemName: string;
   unit: string;
   quantityPerUnit?: number;
+  volumePerUnitM3?: number;
   quantityRequested: number;
   quantityActual?: number;
 }
@@ -177,6 +179,13 @@ function validateCreateInboundRequest(data: CreateInboundRequestDTO): void {
         throw new Error(`Item ${index + 1}: quantityPerUnit must be a valid number >= 0`);
       }
     }
+    if (item.volumePerUnitM3 == null) {
+      throw new Error(`Item ${index + 1}: volumePerUnitM3 is required`);
+    }
+    const volumePerUnitM3 = Number(item.volumePerUnitM3);
+    if (isNaN(volumePerUnitM3) || volumePerUnitM3 <= 0) {
+      throw new Error(`Item ${index + 1}: volumePerUnitM3 must be a valid number > 0`);
+    }
   });
 }
 
@@ -261,6 +270,7 @@ export async function createInboundRequest(
         itemName: item.itemName.trim(),
         unit: item.unit?.trim() || "pcs",
         quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined,
+        volumePerUnitM3: Number(item.volumePerUnitM3),
         quantityRequested: item.quantity,
         quantityActual: undefined // Not set at creation time
       })
@@ -274,6 +284,7 @@ export async function createInboundRequest(
     itemName: detail.itemName,
     unit: (detail as any).unit || "pcs",
     quantityPerUnit: (detail as any).quantityPerUnit,
+    volumePerUnitM3: (detail as any).volumePerUnitM3,
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));
@@ -345,6 +356,7 @@ export async function createOutboundRequest(
     shelfId: detail.shelfId!.toString(),
     itemName: detail.itemName,
     unit: (detail as any).unit || "pcs",
+    volumePerUnitM3: (detail as any).volumePerUnitM3,
     quantityRequested: detail.quantityRequested,
     quantityActual: detail.quantityActual
   }));

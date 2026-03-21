@@ -80,7 +80,14 @@ export default function ServiceRequestsPage() {
   const [preferredTime, setPreferredTime] = useState('');
   const [notes, setNotes] = useState('');
   const [inboundRef, setInboundRef] = useState('');
-  const [inboundItems, setInboundItems] = useState<(ServiceRequestItem & { quantityPerUnit?: number; useNewSku?: boolean; unit?: string })[]>([]);
+  const [inboundItems, setInboundItems] = useState<
+    (ServiceRequestItem & {
+      quantityPerUnit?: number;
+      volumePerUnitM3?: number;
+      useNewSku?: boolean;
+      unit?: string;
+    })[]
+  >([]);
   const [outboundRef, setOutboundRef] = useState('');
   const [outboundItems, setOutboundItems] = useState<{ storedItemId: string; sku: string; quantity: number }[]>([]);
   const [storedItemOptions, setStoredItemOptions] = useState<StoredItemOption[]>([]);
@@ -361,7 +368,19 @@ export default function ServiceRequestsPage() {
   };
 
   const addInboundRow = () => {
-    setInboundItems((prev) => [...prev, { sku: '', name: '', quantity: 0, note: '', quantityPerUnit: undefined, useNewSku: false, unit: 'pcs' }]);
+    setInboundItems((prev) => [
+      ...prev,
+      {
+        sku: '',
+        name: '',
+        quantity: 0,
+        note: '',
+        quantityPerUnit: undefined,
+        volumePerUnitM3: undefined,
+        useNewSku: false,
+        unit: 'pcs',
+      },
+    ]);
   };
 
   // Unique existing SKU names from stored items (for Inbound dropdown)
@@ -372,6 +391,7 @@ export default function ServiceRequestsPage() {
       {
         unit: string;
         quantityPerUnit?: number;
+        volumePerUnitM3?: number;
       }
     >();
     for (const s of storedItemOptions) {
@@ -379,7 +399,8 @@ export default function ServiceRequestsPage() {
       if (!map.has(s.item_name)) {
         map.set(s.item_name, {
           unit: s.unit,
-          quantityPerUnit: (s as any).quantity_per_unit,
+          quantityPerUnit: s.quantity_per_unit,
+          volumePerUnitM3: s.volume_per_unit_m3,
         });
       }
     }
@@ -395,7 +416,14 @@ export default function ServiceRequestsPage() {
   };
   const updateInboundRow = (
     i: number,
-    f: Partial<ServiceRequestItem & { quantityPerUnit?: number; useNewSku?: boolean; unit?: string }>
+    f: Partial<
+      ServiceRequestItem & {
+        quantityPerUnit?: number;
+        volumePerUnitM3?: number;
+        useNewSku?: boolean;
+        unit?: string;
+      }
+    >
   ) => {
     setInboundItems((prev) => prev.map((r, j) => (j === i ? { ...r, ...f } : r)));
   };
@@ -429,6 +457,15 @@ export default function ServiceRequestsPage() {
       }
       const withQty = inboundItems.filter((r) => r.sku && r.quantity > 0);
       if (withQty.length === 0) e.items = 'Add at least one item';
+      else {
+        for (const r of withQty) {
+          const vol = Number(r.volumePerUnitM3);
+          if (isNaN(vol) || vol <= 0) {
+            e.items = 'Mỗi dòng hàng cần thể tích trên 1 đơn vị (m³) > 0';
+            break;
+          }
+        }
+      }
     }
     if (type === 'Outbound') {
       if (!outboundRef.trim()) {
@@ -478,7 +515,8 @@ export default function ServiceRequestsPage() {
           itemName: it.name || it.sku,
           quantity: Number(it.quantity),
           unit: it.unit || 'pcs',
-          quantityPerUnit: (it as any).quantityPerUnit != null ? Number((it as any).quantityPerUnit) : undefined,
+          quantityPerUnit: it.quantityPerUnit != null ? Number(it.quantityPerUnit) : undefined,
+          volumePerUnitM3: Number(it.volumePerUnitM3),
         })),
       })
         .then(() => {
@@ -895,6 +933,9 @@ export default function ServiceRequestsPage() {
             </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Items</label>
+              <p className="text-xs text-slate-500 mb-2">
+                Nhập <strong>thể tích trên 1 đơn vị (m³)</strong> để hệ thống kiểm tra dung tích kệ khi staff nhập kho.
+              </p>
               <div className="border border-slate-200 rounded-2xl overflow-hidden">
                 <table className="w-full text-left text-sm">
                   <thead>
@@ -903,6 +944,7 @@ export default function ServiceRequestsPage() {
                       <th className="px-4 py-3 font-bold text-slate-700">Name</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty / unit</th>
+                      <th className="px-4 py-3 font-bold text-slate-700 min-w-[7rem]">Thể tích/đv (m³)</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Unit</th>
                       <th className="px-4 py-3 w-12" />
                     </tr>
@@ -938,6 +980,7 @@ export default function ServiceRequestsPage() {
                                     sku: '',
                                     name: '',
                                     quantityPerUnit: undefined,
+                                    volumePerUnitM3: undefined,
                                     unit: 'pcs',
                                   } as any);
                                 } else {
@@ -946,6 +989,7 @@ export default function ServiceRequestsPage() {
                                     sku: v,
                                     name: v,
                                     quantityPerUnit: tpl?.quantityPerUnit,
+                                    volumePerUnitM3: tpl?.volumePerUnitM3,
                                     unit: tpl?.unit ?? 'pcs',
                                   } as any);
                                 }
@@ -998,6 +1042,23 @@ export default function ServiceRequestsPage() {
                             disabled={!r.useNewSku}
                             className="w-28 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
                             placeholder="optional"
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.000001"
+                            value={r.volumePerUnitM3 ?? ''}
+                            onChange={(e) =>
+                              updateInboundRow(i, {
+                                volumePerUnitM3:
+                                  e.target.value === '' ? undefined : Number(e.target.value),
+                              })
+                            }
+                            className="w-full min-w-[6rem] px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                            placeholder="VD: 0.05"
+                            title="Thể tích một đơn vị (m³)"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -1324,6 +1385,11 @@ export default function ServiceRequestsPage() {
                           {detailRequest.request_type === 'IN' && (
                             <td className="px-4 py-3 text-right text-slate-600">
                               {it.quantity_per_unit != null ? it.quantity_per_unit : '—'}
+                            </td>
+                          )}
+                          {detailRequest.request_type === 'IN' && (
+                            <td className="px-4 py-3 text-right text-slate-600 font-mono text-xs">
+                              {it.volume_per_unit_m3 != null ? it.volume_per_unit_m3 : '—'}
                             </td>
                           )}
                           <td className="px-4 py-3 text-right font-medium">{it.quantity_requested}</td>

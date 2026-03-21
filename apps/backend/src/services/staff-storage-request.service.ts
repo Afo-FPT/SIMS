@@ -4,6 +4,7 @@ import StorageRequestDetail from "../models/StorageRequestDetail";
 import StoredItem from "../models/StoredItem";
 import { notifyStorageRequestEvent } from "./notification.service";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
+import Shelf from "../models/Shelf";
 
 export interface StaffCompleteRequestItemDTO {
   requestDetailId: string;
@@ -143,6 +144,24 @@ async function decreaseStoredQuantity(params: {
   }
 }
 
+async function getCurrentShelfUsedVolume(params: {
+  shelfId: Types.ObjectId;
+  session: any;
+}): Promise<number> {
+  const rows = await StoredItem.aggregate([
+    { $match: { shelfId: params.shelfId } },
+    {
+      $project: {
+        lineVolume: {
+          $multiply: ["$quantity", { $ifNull: ["$volumePerUnitM3", 0] }]
+        }
+      }
+    },
+    { $group: { _id: null, total: { $sum: "$lineVolume" } } }
+  ]).session(params.session);
+  return rows?.[0]?.total ?? 0;
+}
+
 /**
  * STAFF completes an APPROVED storage request.
  * - IN: increases StoredItem quantities
@@ -211,6 +230,35 @@ export async function staffCompleteStorageRequest(
       }
     }
 
+    // For inbound: ensure shelf still has remaining volume capacity before mutating.
+    if (request.requestType === "IN") {
+      const incomingVolumeByShelf = new Map<string, number>();
+      for (const it of dto.items) {
+        const detail = detailById.get(it.requestDetailId)!;
+        const volumePerUnitM3 = Number((detail as any).volumePerUnitM3 ?? 0);
+        if (volumePerUnitM3 <= 0 && it.quantityActual > 0) {
+          throw new Error(`Missing volumePerUnitM3 for item '${detail.itemName}'`);
+        }
+        const shelfId = String(it.shelfId);
+        const current = incomingVolumeByShelf.get(shelfId) ?? 0;
+        incomingVolumeByShelf.set(shelfId, current + (it.quantityActual * volumePerUnitM3));
+      }
+
+      for (const [shelfId, incomingVolume] of incomingVolumeByShelf.entries()) {
+        const shelfObjectId = new Types.ObjectId(shelfId);
+        const shelf = await Shelf.findById(shelfObjectId).session(session);
+        if (!shelf) throw new Error("Shelf not found");
+        const currentUsed = await getCurrentShelfUsedVolume({ shelfId: shelfObjectId, session });
+        const nextUsed = currentUsed + incomingVolume;
+        if (nextUsed > shelf.maxCapacity) {
+          const remaining = Math.max(0, shelf.maxCapacity - currentUsed);
+          throw new Error(
+            `Shelf '${shelf.shelfCode}' does not have enough remaining capacity. Remaining ${remaining.toFixed(3)} m3, required ${incomingVolume.toFixed(3)} m3`
+          );
+        }
+      }
+    }
+
     // For outbound: verify stored quantity is sufficient before mutating anything
     if (request.requestType === "OUT") {
       for (const it of dto.items) {
@@ -267,6 +315,12 @@ export async function staffCompleteStorageRequest(
         if ((detail as any).quantityPerUnit != null) {
           update.$setOnInsert = {
             quantityPerUnit: (detail as any).quantityPerUnit
+          };
+        }
+        if ((detail as any).volumePerUnitM3 != null) {
+          update.$setOnInsert = {
+            ...(update.$setOnInsert || {}),
+            volumePerUnitM3: Number((detail as any).volumePerUnitM3)
           };
         }
         await StoredItem.findOneAndUpdate(

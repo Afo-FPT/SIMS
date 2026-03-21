@@ -11,9 +11,11 @@ import { Types } from "mongoose";
 export interface CreateShelfItem {
   shelfCode: string;
   tierCount: number;
-  width: number;
-  depth: number;
-  maxCapacity: number;
+  tierDimensions: Array<{
+    height: number;
+    width: number;
+    depth: number;
+  }>;
 }
 
 /**
@@ -30,6 +32,11 @@ export interface ShelfResponse {
   shelf_id: string;
   shelf_code: string;
   tier_count: number;
+  tier_dimensions: Array<{
+    height: number;
+    width: number;
+    depth: number;
+  }>;
   width: number;
   depth: number;
   max_capacity: number;
@@ -225,31 +232,96 @@ function validateShelfItem(item: CreateShelfItem, index?: number): void {
     throw new Error(`${prefix}Tier count must be a valid number`);
   }
 
-  // Validate width
-  if (!item.width || item.width <= 0) {
-    throw new Error(`${prefix}Width must be greater than 0`);
+  if (!Array.isArray(item.tierDimensions) || item.tierDimensions.length === 0) {
+    throw new Error(`${prefix}tierDimensions is required and must not be empty`);
+  }
+  if (item.tierDimensions.length !== item.tierCount) {
+    throw new Error(`${prefix}tierDimensions length must equal tierCount`);
   }
 
-  if (typeof item.width !== "number" || isNaN(item.width)) {
-    throw new Error(`${prefix}Width must be a valid number`);
-  }
+  item.tierDimensions.forEach((tier, tierIdx) => {
+    if (typeof tier.height !== "number" || isNaN(tier.height) || tier.height <= 0) {
+      throw new Error(`${prefix}tierDimensions[${tierIdx}].height must be a valid number > 0`);
+    }
+    if (typeof tier.width !== "number" || isNaN(tier.width) || tier.width <= 0) {
+      throw new Error(`${prefix}tierDimensions[${tierIdx}].width must be a valid number > 0`);
+    }
+    if (typeof tier.depth !== "number" || isNaN(tier.depth) || tier.depth <= 0) {
+      throw new Error(`${prefix}tierDimensions[${tierIdx}].depth must be a valid number > 0`);
+    }
+  });
+}
 
-  // Validate depth
-  if (!item.depth || item.depth <= 0) {
-    throw new Error(`${prefix}Depth must be greater than 0`);
-  }
+function calculateShelfMaxCapacity(
+  tierDimensions: Array<{ height: number; width: number; depth: number }>
+): number {
+  const total = tierDimensions.reduce((sum, tier) => sum + tier.height * tier.width * tier.depth, 0);
+  return Math.round(total * 1_000_000) / 1_000_000;
+}
 
-  if (typeof item.depth !== "number" || isNaN(item.depth)) {
-    throw new Error(`${prefix}Depth must be a valid number`);
-  }
+function normalizeTierDimensions(
+  tierDimensions: Array<{ height: number; width: number; depth: number }>
+): Array<{ height: number; width: number; depth: number }> {
+  return tierDimensions.map((tier) => ({
+    height: Number(tier.height),
+    width: Number(tier.width),
+    depth: Number(tier.depth)
+  }));
+}
 
-  // Validate maxCapacity
-  if (!item.maxCapacity || item.maxCapacity <= 0) {
-    throw new Error(`${prefix}Max capacity must be greater than 0`);
-  }
+function getRepresentativeWidthDepth(
+  tierDimensions: Array<{ height: number; width: number; depth: number }>
+): { width: number; depth: number } {
+  if (tierDimensions.length === 0) return { width: 0, depth: 0 };
+  return {
+    width: tierDimensions[0].width,
+    depth: tierDimensions[0].depth
+  };
+}
 
-  if (typeof item.maxCapacity !== "number" || isNaN(item.maxCapacity)) {
-    throw new Error(`${prefix}Max capacity must be a valid number`);
+async function calculateCurrentShelfUsedVolume(
+  shelfId: Types.ObjectId
+): Promise<number> {
+  const rows = await StoredItem.aggregate([
+    { $match: { shelfId } },
+    {
+      $project: {
+        lineVolume: {
+          $multiply: ["$quantity", { $ifNull: ["$volumePerUnitM3", 0] }]
+        }
+      }
+    },
+    { $group: { _id: null, total: { $sum: "$lineVolume" } } }
+  ]);
+
+  return rows?.[0]?.total ?? 0;
+}
+
+async function countStoredRowsByShelf(shelfId: Types.ObjectId): Promise<number> {
+  return StoredItem.countDocuments({ shelfId });
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function mapShelfResponse(shelf: any): ShelfResponse {
+  const dimensions = (shelf.tierDimensions || []).map((tier: any) => ({
+    height: tier.height,
+    width: tier.width,
+    depth: tier.depth
+  }));
+  return {
+    shelf_id: shelf._id.toString(),
+    shelf_code: shelf.shelfCode,
+    tier_count: shelf.tierCount,
+    tier_dimensions: dimensions,
+    width: shelf.width,
+    depth: shelf.depth,
+    max_capacity: shelf.maxCapacity,
+    status: shelf.status,
+    created_at: shelf.createdAt,
+    updated_at: shelf.updatedAt
   }
 }
 
@@ -313,13 +385,21 @@ export async function createShelves(
   try {
     const createdShelves = await Shelf.insertMany(
       data.shelves.map(item => ({
+        ...(() => {
+          const normalizedTierDimensions = normalizeTierDimensions(item.tierDimensions);
+          const { width, depth } = getRepresentativeWidthDepth(normalizedTierDimensions);
+          const maxCapacity = calculateShelfMaxCapacity(normalizedTierDimensions);
+          return {
+            tierDimensions: normalizedTierDimensions,
+            width,
+            depth,
+            maxCapacity
+          };
+        })(),
         warehouseId: new Types.ObjectId(warehouseId),
         zoneId: new Types.ObjectId(zoneId),
         shelfCode: item.shelfCode.trim(),
         tierCount: item.tierCount,
-        width: item.width,
-        depth: item.depth,
-        maxCapacity: item.maxCapacity,
         status: "AVAILABLE"
       })),
       { session }
@@ -328,17 +408,7 @@ export async function createShelves(
     await session.commitTransaction();
 
     // Map to response DTO
-    return createdShelves.map(shelf => ({
-      shelf_id: shelf._id.toString(),
-      shelf_code: shelf.shelfCode,
-      tier_count: shelf.tierCount,
-      width: shelf.width,
-      depth: shelf.depth,
-      max_capacity: shelf.maxCapacity,
-      status: shelf.status,
-      created_at: shelf.createdAt,
-      updated_at: shelf.updatedAt
-    }));
+    return createdShelves.map((shelf) => mapShelfResponse(shelf));
   } catch (error: any) {
     await session.abortTransaction();
 
@@ -387,11 +457,8 @@ export async function getRackUtilization(
   }
 
   // Calculate current utilization from StoredItem
-  const storedItems = await StoredItem.find({ shelfId: shelf._id });
-  const currentUtilization = storedItems.reduce(
-    (sum, item) => sum + item.quantity,
-    0
-  );
+  const currentUtilization = await calculateCurrentShelfUsedVolume(shelf._id);
+  const itemsCount = await countStoredRowsByShelf(shelf._id);
 
   // Calculate utilization percentage
   const utilizationPercentage =
@@ -405,9 +472,9 @@ export async function getRackUtilization(
     warehouse_id: shelf.warehouseId.toString(),
     max_capacity: shelf.maxCapacity,
     current_utilization: currentUtilization,
-    utilization_percentage: Math.round(utilizationPercentage * 100) / 100, // Round to 2 decimal places
+    utilization_percentage: round2(utilizationPercentage),
     status: shelf.status,
-    items_count: storedItems.length
+    items_count: itemsCount
   };
 }
 
@@ -444,15 +511,5 @@ export async function updateRackStatus(
   }
 
   // Return response DTO
-  return {
-    shelf_id: shelf._id.toString(),
-    shelf_code: shelf.shelfCode,
-    tier_count: shelf.tierCount,
-    width: shelf.width,
-    depth: shelf.depth,
-    max_capacity: shelf.maxCapacity,
-    status: shelf.status,
-    created_at: shelf.createdAt,
-    updated_at: shelf.updatedAt
-  };
+  return mapShelfResponse(shelf);
 }

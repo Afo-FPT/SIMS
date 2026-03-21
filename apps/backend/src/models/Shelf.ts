@@ -5,6 +5,11 @@ export interface IShelf extends Document {
   zoneId: Types.ObjectId;
   shelfCode: string;
   tierCount: number;
+  tierDimensions: Array<{
+    height: number;
+    width: number;
+    depth: number;
+  }>;
   width: number;
   depth: number;
   maxCapacity: number;
@@ -34,6 +39,17 @@ const ShelfSchema = new Schema<IShelf>(
       type: Number,
       required: true,
       min: 1
+    },
+    tierDimensions: {
+      type: [
+        {
+          height: { type: Number, required: true, min: 0 },
+          width: { type: Number, required: true, min: 0 },
+          depth: { type: Number, required: true, min: 0 }
+        }
+      ],
+      required: true,
+      default: []
     },
     width: {
       type: Number,

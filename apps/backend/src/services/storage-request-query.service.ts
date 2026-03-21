@@ -30,6 +30,8 @@ export interface StorageRequestViewDTO {
     item_name: string;
     unit: string;
     quantity_per_unit?: number;
+    /** Volume of one unit in cubic meters (m³) */
+    volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
     damage_quantity?: number;
@@ -127,6 +129,7 @@ export async function listStorageRequests(
           item_name: d.itemName,
           unit: d.unit || "pcs",
           quantity_per_unit: d.quantityPerUnit,
+          volume_per_unit_m3: d.volumePerUnitM3,
           quantity_requested: d.quantityRequested,
           quantity_actual: d.quantityActual,
           damage_quantity: d.damageQuantity,
@@ -203,6 +206,7 @@ export async function getStorageRequestById(
         item_name: d.itemName,
         unit: d.unit || "pcs",
         quantity_per_unit: d.quantityPerUnit,
+        volume_per_unit_m3: d.volumePerUnitM3,
         quantity_requested: d.quantityRequested,
         quantity_actual: d.quantityActual,
         damage_quantity: d.damageQuantity,

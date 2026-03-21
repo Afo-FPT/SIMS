@@ -39,9 +39,17 @@ export async function createShelvesController(req: Request, res: Response) {
       shelves: shelves.map((item: any) => ({
         shelfCode: item.shelfCode,
         tierCount: Number(item.tierCount),
-        width: Number(item.width),
-        depth: Number(item.depth),
-        maxCapacity: Number(item.maxCapacity)
+        tierDimensions: Array.isArray(item.tierDimensions) && item.tierDimensions.length > 0
+          ? item.tierDimensions.map((tier: any) => ({
+              height: Number(tier.height),
+              width: Number(tier.width),
+              depth: Number(tier.depth)
+            }))
+          : Array.from({ length: Number(item.tierCount) }, () => ({
+              height: Number(item.tierHeight ?? item.heightPerTier ?? item.height),
+              width: Number(item.width),
+              depth: Number(item.depth)
+            }))
       }))
     };
 

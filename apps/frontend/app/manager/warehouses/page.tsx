@@ -1,35 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import type { Shelf, ManagerWarehouse } from '../../../types/manager';
+import type { ManagerWarehouse } from '../../../types/manager';
 import Link from 'next/link';
-import {
-  listWarehouses,
-  createWarehouse,
-  createShelvesForWarehouse,
-  listShelvesByWarehouse,
-  listZonesByWarehouse,
-  createZone,
-  type ManagerZoneOption,
-} from '../../../lib/mockApi/manager.api';
+import { listWarehouses, createWarehouse } from '../../../lib/mockApi/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
-import { Select } from '../../../components/ui/Select';
 import { Input } from '../../../components/ui/Input';
-import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
-import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { EmptyState } from '../../../components/ui/EmptyState';
 import { Modal } from '../../../components/ui/Modal';
 import { Pagination } from '../../../components/ui/Pagination';
 
 export default function ManagerWarehousesPage() {
   const toast = useToastHelpers();
   const PAGE_SIZE = 10;
-  const [shelves, setShelves] = useState<Shelf[]>([]);
   const [warehouses, setWarehouses] = useState<ManagerWarehouse[]>([]);
-  const [zones, setZones] = useState<ManagerZoneOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingWarehouse, setCreatingWarehouse] = useState(false);
@@ -38,18 +25,6 @@ export default function ManagerWarehousesPage() {
   const [warehouseLength, setWarehouseLength] = useState('');
   const [warehouseWidth, setWarehouseWidth] = useState('');
   const [warehouseDescription, setWarehouseDescription] = useState('');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
-  const [zoneForm, setZoneForm] = useState({ zoneCode: '', name: '', description: '' });
-  const [creatingZone, setCreatingZone] = useState(false);
-  const [selectedZoneId, setSelectedZoneId] = useState<string>('');
-  const [shelfForm, setShelfForm] = useState({
-    shelfCode: '',
-    tierCount: '',
-    width: '',
-    depth: '',
-    maxCapacity: '',
-  });
-  const [creatingShelf, setCreatingShelf] = useState(false);
   const [createWarehouseModalOpen, setCreateWarehouseModalOpen] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -64,19 +39,6 @@ export default function ManagerWarehousesPage() {
       const w = await listWarehouses().catch(() => [] as ManagerWarehouse[]);
       setWarehouses(w);
       setPage(1);
-      if (w.length > 0) {
-        const defaultWarehouseId = w[0].id;
-        setSelectedWarehouseId(defaultWarehouseId);
-        const [shelvesForWarehouse, zonesForWarehouse] = await Promise.all([
-          listShelvesByWarehouse(defaultWarehouseId),
-          listZonesByWarehouse(defaultWarehouseId).catch(() => []),
-        ]);
-        setShelves(shelvesForWarehouse);
-        setZones(zonesForWarehouse);
-      } else {
-        setShelves([]);
-        setZones([]);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
       toast.error('Failed to load data');
@@ -88,33 +50,6 @@ export default function ManagerWarehousesPage() {
   const totalPages = Math.max(1, Math.ceil(warehouses.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pagedWarehouses = warehouses.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const loadZonesForWarehouse = async (warehouseId: string) => {
-    try {
-      const zonesForWarehouse = await listZonesByWarehouse(warehouseId);
-      setZones(zonesForWarehouse);
-    } catch {
-      setZones([]);
-    }
-  };
-
-  const handleWarehouseChange = async (warehouseId: string) => {
-    setSelectedWarehouseId(warehouseId);
-    setSelectedZoneId('');
-    try {
-      setLoading(true);
-      const [shelvesForWarehouse, zonesForWarehouse] = await Promise.all([
-        listShelvesByWarehouse(warehouseId),
-        listZonesByWarehouse(warehouseId).catch(() => []),
-      ]);
-      setShelves(shelvesForWarehouse);
-      setZones(zonesForWarehouse);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load data');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateWarehouse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,10 +77,6 @@ export default function ManagerWarehousesPage() {
       });
       toast.success('Warehouse created successfully');
       setWarehouses((prev) => [newWarehouse, ...prev]);
-      if (!selectedWarehouseId) {
-        setSelectedWarehouseId(newWarehouse.id);
-        loadZonesForWarehouse(newWarehouse.id);
-      }
       setWarehouseName('');
       setWarehouseAddress('');
       setWarehouseLength('');
@@ -159,116 +90,28 @@ export default function ManagerWarehousesPage() {
     }
   };
 
-  const handleCreateZone = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedWarehouseId) {
-      toast.warning('Please select a warehouse first');
-      return;
-    }
-    const { zoneCode, name, description } = zoneForm;
-    if (!zoneCode?.trim() || !name?.trim()) {
-      toast.warning('Zone code and name are required');
-      return;
-    }
-    try {
-      setCreatingZone(true);
-      const newZone = await createZone(selectedWarehouseId, {
-        zoneCode: zoneCode.trim(),
-        name: name.trim(),
-        description: description?.trim() || undefined,
-      });
-      toast.success('Zone created successfully');
-      setZones((prev) => [newZone, ...prev]);
-      setZoneForm({ zoneCode: '', name: '', description: '' });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create zone');
-    } finally {
-      setCreatingZone(false);
-    }
-  };
+  if (loading) {
+    return <LoadingSkeleton className="h-64 w-full" />;
+  }
 
-  const handleShelfFormChange = (field: keyof typeof shelfForm, value: string) => {
-    setShelfForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleCreateShelf = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedWarehouseId) {
-      toast.warning('Please select a warehouse first');
-      return;
-    }
-    if (!selectedZoneId) {
-      toast.warning('Please select a zone for the shelf');
-      return;
-    }
-
-    const { shelfCode, tierCount, width, depth, maxCapacity } = shelfForm;
-
-    if (!shelfCode || !tierCount || !width || !depth || !maxCapacity) {
-      toast.warning('Please fill in all shelf fields');
-      return;
-    }
-
-    const tierCountNum = Number(tierCount);
-    const widthNum = Number(width);
-    const depthNum = Number(depth);
-    const maxCapacityNum = Number(maxCapacity);
-
-    if (
-      isNaN(tierCountNum) || tierCountNum <= 0 ||
-      isNaN(widthNum) || widthNum <= 0 ||
-      isNaN(depthNum) || depthNum <= 0 ||
-      isNaN(maxCapacityNum) || maxCapacityNum <= 0
-    ) {
-      toast.warning('Tier count, width, depth and max capacity must be valid positive numbers');
-      return;
-    }
-
-    const zoneDisplay = zones.find((z) => z.id === selectedZoneId)?.zoneCode ?? zones.find((z) => z.id === selectedZoneId)?.name ?? '';
-
-    try {
-      setCreatingShelf(true);
-      const createdShelves = await createShelvesForWarehouse(
-        selectedWarehouseId,
-        selectedZoneId,
-        [{
-          shelfCode,
-          tierCount: tierCountNum,
-          width: widthNum,
-          depth: depthNum,
-          maxCapacity: maxCapacityNum,
-        }],
-        zoneDisplay
-      );
-      toast.success('Shelf created successfully');
-      setShelves((prev) => [...createdShelves, ...prev]);
-      setShelfForm({
-        shelfCode: '',
-        tierCount: '',
-        width: '',
-        depth: '',
-        maxCapacity: '',
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create shelf');
-    } finally {
-      setCreatingShelf(false);
-    }
-  };
+  if (error) {
+    return <ErrorState title="Failed to load" message={error} onRetry={load} />;
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouses</h1>
-        <p className="text-slate-500 mt-1">Warehouse creation and shelf management</p>
+        <p className="text-slate-500 mt-1">
+          Tạo kho; zone và kệ (kích thước từng tầng, dung tích m³) quản lý trong trang chi tiết kho.
+        </p>
       </div>
 
-      {/* Create warehouse entry point */}
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-slate-900">Create warehouse</h2>
           <p className="text-sm text-slate-600 mt-1">
-            Define a new warehouse with size and address. You can then add zones and shelves.
+            Define a new warehouse with size and address. Then open <strong>Manage</strong> to add zones and shelves.
           </p>
         </div>
         <div className="sm:flex-shrink-0 sm:self-start">
@@ -284,7 +127,6 @@ export default function ManagerWarehousesPage() {
         </div>
       </div>
 
-      {/* Create warehouse modal */}
       <Modal
         open={createWarehouseModalOpen}
         onOpenChange={setCreateWarehouseModalOpen}
@@ -343,7 +185,6 @@ export default function ManagerWarehousesPage() {
         </form>
       </Modal>
 
-          {/* Existing warehouses */}
       {warehouses.length > 0 && (
         <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
@@ -356,7 +197,7 @@ export default function ManagerWarehousesPage() {
                     <th className="py-2 pr-4">Address</th>
                     <th className="py-2 pr-4">Area (m²)</th>
                     <th className="py-2 pr-4">Status</th>
-                        <th className="py-2 pr-4 text-right">Action</th>
+                    <th className="py-2 pr-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -367,15 +208,15 @@ export default function ManagerWarehousesPage() {
                       <td className="py-2 pr-4 text-slate-700">{w.area}</td>
                       <td className="py-2 pr-4">
                         <Badge variant={w.status === 'ACTIVE' ? 'success' : 'warning'}>{w.status}</Badge>
-                          </td>
-                          <td className="py-2 pr-4 text-right">
-                            <Link
-                              href={`/manager/warehouses/${w.id}`}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/5"
-                            >
-                              <span className="material-symbols-outlined text-sm">manage_accounts</span>
-                              Manage
-                            </Link>
+                      </td>
+                      <td className="py-2 pr-4 text-right">
+                        <Link
+                          href={`/manager/warehouses/${w.id}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/5"
+                        >
+                          <span className="material-symbols-outlined text-sm">manage_accounts</span>
+                          Manage
+                        </Link>
                       </td>
                     </tr>
                   ))}
@@ -403,8 +244,6 @@ export default function ManagerWarehousesPage() {
           <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </div>
       )}
-
-      {/* Shelf overview was moved into per-warehouse manage page (/manager/warehouses/[id]) */}
     </div>
   );
 }

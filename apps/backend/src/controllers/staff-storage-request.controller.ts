@@ -36,7 +36,10 @@ export async function staffCompleteStorageRequestController(req: Request, res: R
       msg.includes("does not belong") ||
       msg.includes("Not enough") ||
       msg.includes("has no items") ||
-      msg.includes("not assigned")
+      msg.includes("not assigned") ||
+      msg.includes("capacity") ||
+      msg.includes("Remaining") ||
+      msg.includes("enough remaining")
     ) {
       return res.status(400).json({ message: msg });
     }

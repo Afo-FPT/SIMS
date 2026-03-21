@@ -7,6 +7,7 @@ export interface IStoredItem extends Document {
   quantity: number;
   unit: string;
   quantityPerUnit?: number;
+  volumePerUnitM3?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +41,10 @@ const StoredItemSchema = new Schema<IStoredItem>(
       default: "pcs"
     },
     quantityPerUnit: {
+      type: Number,
+      min: 0
+    },
+    volumePerUnitM3: {
       type: Number,
       min: 0
     }

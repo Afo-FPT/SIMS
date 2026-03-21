@@ -11,11 +11,23 @@ import {
   type StorageRequestView,
   type ContractShelfOption,
 } from '../../../../lib/storage-requests.api';
+import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
 import { Button } from '../../../../components/ui/Button';
 import { Select } from '../../../../components/ui/Select';
 import { Input } from '../../../../components/ui/Input';
 import { LoadingSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
+
+function formatM3(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toFixed(3)} m³`;
+}
+
+function utilizationBadge(pct: number): { label: string; className: string } | null {
+  if (pct >= 95) return { label: 'Gần đầy', className: 'bg-red-100 text-red-800' };
+  if (pct >= 85) return { label: 'Sắp đầy', className: 'bg-amber-100 text-amber-900' };
+  return null;
+}
 
 export default function StaffInboundPutawayDetailPage() {
   const params = useParams();
@@ -28,6 +40,7 @@ export default function StaffInboundPutawayDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [utilByShelfId, setUtilByShelfId] = useState<Record<string, ShelfUtilization>>({});
 
   // local editable rows
   const [rows, setRows] = useState<Array<{
@@ -75,6 +88,60 @@ export default function StaffInboundPutawayDetailPage() {
   useEffect(() => {
     load();
   }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (shelves.length === 0) {
+        setUtilByShelfId({});
+        return;
+      }
+      const entries = await Promise.all(
+        shelves.map(async (s) => {
+          try {
+            const u = await getShelfUtilization(s.shelf_id);
+            return [s.shelf_id, u] as const;
+          } catch {
+            return [s.shelf_id, null] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      const m: Record<string, ShelfUtilization> = {};
+      for (const [id, u] of entries) {
+        if (u) m[id] = u;
+      }
+      setUtilByShelfId(m);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [shelves]);
+
+  const shelfVolumeWarnings = useMemo(() => {
+    if (!req) return [] as string[];
+    const incomingByShelf = new Map<string, number>();
+    rows.forEach((r, i) => {
+      if (!r.shelfId) return;
+      const v = req.items[i]?.volume_per_unit_m3 ?? 0;
+      const q = Number(r.quantityActual) || 0;
+      if (q <= 0 || v <= 0) return;
+      incomingByShelf.set(r.shelfId, (incomingByShelf.get(r.shelfId) ?? 0) + q * v);
+    });
+    const out: string[] = [];
+    for (const [sid, addVol] of incomingByShelf) {
+      const u = utilByShelfId[sid];
+      if (!u) continue;
+      const remaining = Math.max(0, u.max_capacity - u.current_utilization);
+      if (addVol > remaining + 1e-9) {
+        out.push(
+          `Kệ ${u.shelf_code}: thêm ${formatM3(addVol)} nhưng chỉ còn ${formatM3(remaining)} (max ${formatM3(u.max_capacity)}, đang dùng ${formatM3(u.current_utilization)}).`
+        );
+      }
+    }
+    return out;
+  }, [req, rows, utilByShelfId]);
 
   const updateRow = (idx: number, patch: Partial<{
     shelfId: string;
@@ -125,6 +192,10 @@ export default function StaffInboundPutawayDetailPage() {
         );
         return;
       }
+    }
+    if (shelfVolumeWarnings.length > 0) {
+      toast.warning(shelfVolumeWarnings[0]);
+      return;
     }
     try {
       setSaving(true);
@@ -207,6 +278,7 @@ export default function StaffInboundPutawayDetailPage() {
                 <th className="px-4 py-3 text-left font-bold text-slate-700">STT</th>
                 <th className="px-4 py-3 text-left font-bold text-slate-700">Item</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Requested</th>
+                <th className="px-4 py-3 text-right font-bold text-slate-700">m³/đv</th>
                 <th className="px-4 py-3 text-left font-bold text-slate-700">Shelf</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Actual</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Discrepancy</th>
@@ -216,6 +288,10 @@ export default function StaffInboundPutawayDetailPage() {
               {req.items.map((it, idx) => {
                 const discrepancy = getDiscrepancy(idx);
                 const row = rows[idx];
+                const u = row?.shelfId ? utilByShelfId[row.shelfId] : undefined;
+                const badge = u ? utilizationBadge(u.utilization_percentage) : null;
+                const lineVol =
+                  (Number(row?.quantityActual) || 0) * (it.volume_per_unit_m3 ?? 0);
                 return (
                   <tr key={it.request_detail_id} className="border-t border-slate-100 hover:bg-slate-50/50">
                     <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
@@ -230,6 +306,9 @@ export default function StaffInboundPutawayDetailPage() {
                     <td className="px-4 py-3 text-right font-medium text-slate-700">
                       {it.quantity_requested} {it.unit}
                     </td>
+                    <td className="px-4 py-3 text-right text-slate-600 font-mono text-xs">
+                      {it.volume_per_unit_m3 != null ? it.volume_per_unit_m3 : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <Select
                         value={row?.shelfId || ''}
@@ -237,6 +316,31 @@ export default function StaffInboundPutawayDetailPage() {
                         options={shelfOptions}
                         className="min-w-[140px]"
                       />
+                      {u && (
+                        <div className="mt-2 space-y-1 text-xs text-slate-600">
+                          <p>
+                            <span className="font-bold text-slate-700">Kệ:</span> đã dùng{' '}
+                            <span className="font-mono">{formatM3(u.current_utilization)}</span>
+                            {' / max '}
+                            <span className="font-mono">{formatM3(u.max_capacity)}</span>
+                            {' → còn '}
+                            <span className="font-mono font-bold text-slate-800">
+                              {formatM3(Math.max(0, u.max_capacity - u.current_utilization))}
+                            </span>
+                          </p>
+                          {lineVol > 0 && (
+                            <p className="text-slate-500">
+                              Dòng này (actual × m³/đv):{' '}
+                              <span className="font-mono font-medium text-slate-700">{formatM3(lineVol)}</span>
+                            </p>
+                          )}
+                          {badge && (
+                            <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Input
@@ -381,10 +485,26 @@ export default function StaffInboundPutawayDetailPage() {
         </div>
       </div>
 
+      {shelfVolumeWarnings.length > 0 && (
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-900">
+          <p className="font-bold mb-2 flex items-center gap-2">
+            <span className="material-symbols-outlined text-lg">error</span>
+            Vượt dung tích kệ
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            {shelfVolumeWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>Cancel</Button>
-        <Button onClick={handleComplete} isLoading={saving}>Complete putaway</Button>
+        <Button onClick={handleComplete} isLoading={saving} disabled={shelfVolumeWarnings.length > 0}>
+          Complete putaway
+        </Button>
       </div>
     </div>
   );

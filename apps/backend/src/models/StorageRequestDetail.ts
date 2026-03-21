@@ -8,6 +8,8 @@ export interface IStorageRequestDetail extends Document {
   unit: string;
   /** Optional: quantity per 1 unit/package (for customer request payload) */
   quantityPerUnit?: number;
+  /** Optional: physical volume of one unit in cubic meters (m3) */
+  volumePerUnitM3?: number;
   quantityRequested: number;
   quantityActual?: number;
   /** Staff-reported: quantity damaged/lost */
@@ -44,6 +46,10 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
       default: "pcs"
     },
     quantityPerUnit: {
+      type: Number,
+      min: 0
+    },
+    volumePerUnitM3: {
       type: Number,
       min: 0
     },

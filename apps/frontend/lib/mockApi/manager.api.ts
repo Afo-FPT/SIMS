@@ -187,6 +187,7 @@ interface BackendShelfResponse {
   shelf_id: string;
   shelf_code: string;
   tier_count: number;
+  tier_dimensions?: Array<{ height: number; width: number; depth: number }>;
   width: number;
   depth: number;
   max_capacity: number;
@@ -199,9 +200,7 @@ interface BackendShelfResponse {
 interface CreateShelvesPayloadItem {
   shelfCode: string;
   tierCount: number;
-  width: number;
-  depth: number;
-  maxCapacity: number;
+  tierDimensions: Array<{ height: number; width: number; depth: number }>;
 }
 
 interface CreateShelvesPayload {
@@ -231,9 +230,7 @@ export async function createShelvesForWarehouse(
   shelves: {
     shelfCode: string;
     tierCount: number;
-    width: number;
-    depth: number;
-    maxCapacity: number;
+    tierDimensions: Array<{ height: number; width: number; depth: number }>;
   }[],
   zoneDisplay?: string,
 ): Promise<Shelf[]> {

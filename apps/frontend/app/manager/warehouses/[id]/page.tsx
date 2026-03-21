@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { ManagerWarehouse, Shelf } from '../../../../types/manager';
@@ -13,6 +13,7 @@ import {
   listShelvesByWarehouse,
   updateWarehouse,
 } from '../../../../lib/mockApi/manager.api';
+import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
 import { useToastHelpers } from '../../../../lib/toast';
 import { Badge } from '../../../../components/ui/Badge';
 import { Button } from '../../../../components/ui/Button';
@@ -22,6 +23,17 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { LoadingSkeleton, TableSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
 import { EmptyState } from '../../../../components/ui/EmptyState';
+
+function formatM3(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toFixed(3)} m³`;
+}
+
+function utilizationHint(pct: number): { label: string; className: string } | null {
+  if (pct >= 95) return { label: 'Gần đầy', className: 'bg-red-100 text-red-800' };
+  if (pct >= 85) return { label: 'Sắp đầy', className: 'bg-amber-100 text-amber-900' };
+  return null;
+}
 
 export default function ManagerWarehouseDetailPage() {
   const params = useParams();
@@ -34,11 +46,12 @@ export default function ManagerWarehouseDetailPage() {
   const [zoneForm, setZoneForm] = useState({ zoneCode: '', name: '', description: '' });
   const [shelfForm, setShelfForm] = useState({
     shelfCode: '',
-    tierCount: '',
-    width: '',
-    depth: '',
-    maxCapacity: '',
+    tierCountStr: '',
+    /** One row per tier: height × width × depth (m) */
+    tierRows: [] as Array<{ height: string; width: string; depth: string }>,
   });
+  const [utilByShelfId, setUtilByShelfId] = useState<Record<string, ShelfUtilization>>({});
+  const [utilLoading, setUtilLoading] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +104,54 @@ export default function ManagerWarehouseDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    let cancelled = false;
+    const loadUtil = async () => {
+      if (shelves.length === 0) {
+        setUtilByShelfId({});
+        setUtilLoading(false);
+        return;
+      }
+      setUtilLoading(true);
+      const entries = await Promise.all(
+        shelves.map(async (s) => {
+          try {
+            const u = await getShelfUtilization(s.id);
+            return [s.id, u] as const;
+          } catch {
+            return [s.id, null] as const;
+          }
+        })
+      );
+      if (cancelled) return;
+      const map: Record<string, ShelfUtilization> = {};
+      for (const [id, u] of entries) {
+        if (u) map[id] = u;
+      }
+      setUtilByShelfId(map);
+      setUtilLoading(false);
+    };
+    loadUtil();
+    return () => {
+      cancelled = true;
+    };
+  }, [shelves]);
+
+  const previewMaxM3 = useMemo(() => {
+    const n = shelfForm.tierRows.length;
+    if (n === 0) return 0;
+    let sum = 0;
+    for (const row of shelfForm.tierRows) {
+      const h = Number(row.height);
+      const w = Number(row.width);
+      const d = Number(row.depth);
+      if (!isNaN(h) && !isNaN(w) && !isNaN(d) && h > 0 && w > 0 && d > 0) {
+        sum += h * w * d;
+      }
+    }
+    return Math.round(sum * 1_000_000) / 1_000_000;
+  }, [shelfForm.tierRows]);
+
+  useEffect(() => {
     if (warehouse && !editingInfo) {
       setInfoForm({
         name: warehouse.name,
@@ -127,8 +188,24 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
-  const handleShelfFormChange = (field: keyof typeof shelfForm, value: string) => {
-    setShelfForm((prev) => ({ ...prev, [field]: value }));
+  const setTierCountFromInput = (raw: string) => {
+    const n = parseInt(raw, 10);
+    setShelfForm((prev) => {
+      if (raw === '' || isNaN(n) || n < 1) {
+        return { ...prev, tierCountStr: raw, tierRows: [] };
+      }
+      const next = [...prev.tierRows];
+      while (next.length < n) next.push({ height: '', width: '', depth: '' });
+      while (next.length > n) next.pop();
+      return { ...prev, tierCountStr: raw, tierRows: next };
+    });
+  };
+
+  const updateTierRow = (idx: number, patch: Partial<{ height: string; width: string; depth: string }>) => {
+    setShelfForm((prev) => ({
+      ...prev,
+      tierRows: prev.tierRows.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
+    }));
   };
 
   const handleCreateShelf = async (e: React.FormEvent) => {
@@ -142,26 +219,29 @@ export default function ManagerWarehouseDetailPage() {
       return;
     }
 
-    const { shelfCode, tierCount, width, depth, maxCapacity } = shelfForm;
+    const { shelfCode, tierCountStr, tierRows } = shelfForm;
+    const tierCountNum = parseInt(tierCountStr, 10);
 
-    if (!shelfCode || !tierCount || !width || !depth || !maxCapacity) {
-      toast.warning('Please fill in all shelf fields');
+    if (!shelfCode?.trim() || !tierCountStr || isNaN(tierCountNum) || tierCountNum < 1) {
+      toast.warning('Nhập mã kệ và số tầng hợp lệ');
+      return;
+    }
+    if (tierRows.length !== tierCountNum) {
+      toast.warning('Số dòng kích thước phải khớp số tầng');
       return;
     }
 
-    const tierCountNum = Number(tierCount);
-    const widthNum = Number(width);
-    const depthNum = Number(depth);
-    const maxCapacityNum = Number(maxCapacity);
-
-    if (
-      isNaN(tierCountNum) || tierCountNum <= 0 ||
-      isNaN(widthNum) || widthNum <= 0 ||
-      isNaN(depthNum) || depthNum <= 0 ||
-      isNaN(maxCapacityNum) || maxCapacityNum <= 0
-    ) {
-      toast.warning('Tier count, width, depth and max capacity must be valid positive numbers');
-      return;
+    const tierDimensions: Array<{ height: number; width: number; depth: number }> = [];
+    for (let i = 0; i < tierRows.length; i++) {
+      const row = tierRows[i];
+      const height = Number(row.height);
+      const width = Number(row.width);
+      const depth = Number(row.depth);
+      if (isNaN(height) || height <= 0 || isNaN(width) || width <= 0 || isNaN(depth) || depth <= 0) {
+        toast.warning(`Tầng ${i + 1}: cao / rộng / sâu phải là số dương (m)`);
+        return;
+      }
+      tierDimensions.push({ height, width, depth });
     }
 
     const zoneDisplay =
@@ -176,11 +256,9 @@ export default function ManagerWarehouseDetailPage() {
         selectedZoneId,
         [
           {
-            shelfCode,
+            shelfCode: shelfCode.trim(),
             tierCount: tierCountNum,
-            width: widthNum,
-            depth: depthNum,
-            maxCapacity: maxCapacityNum,
+            tierDimensions,
           },
         ],
         zoneDisplay,
@@ -189,10 +267,8 @@ export default function ManagerWarehouseDetailPage() {
       setShelves((prev) => [...createdShelves, ...prev]);
       setShelfForm({
         shelfCode: '',
-        tierCount: '',
-        width: '',
-        depth: '',
-        maxCapacity: '',
+        tierCountStr: '',
+        tierRows: [],
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create shelf');
@@ -449,52 +525,84 @@ export default function ManagerWarehouseDetailPage() {
           Create shelves inside zones and see their current status.
         </p>
 
-        <form onSubmit={handleCreateShelf} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Select
-            label="Zone"
-            value={selectedZoneId}
-            onChange={(e) => setSelectedZoneId(e.target.value)}
-            options={[
-              { value: '', label: 'Select zone' },
-              ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` })),
-            ]}
-          />
-          <Input
-            label="Shelf code"
-            value={shelfForm.shelfCode}
-            onChange={(e) => handleShelfFormChange('shelfCode', e.target.value)}
-            placeholder="A-01-01"
-            required
-          />
-          <Input
-            label="Tier count"
-            value={shelfForm.tierCount}
-            onChange={(e) => handleShelfFormChange('tierCount', e.target.value)}
-            placeholder="Number of tiers"
-            required
-          />
-          <Input
-            label="Width (m)"
-            value={shelfForm.width}
-            onChange={(e) => handleShelfFormChange('width', e.target.value)}
-            placeholder="Width"
-            required
-          />
-          <Input
-            label="Depth (m)"
-            value={shelfForm.depth}
-            onChange={(e) => handleShelfFormChange('depth', e.target.value)}
-            placeholder="Depth"
-            required
-          />
-          <Input
-            label="Max capacity"
-            value={shelfForm.maxCapacity}
-            onChange={(e) => handleShelfFormChange('maxCapacity', e.target.value)}
-            placeholder="Max capacity"
-            required
-          />
-          <div className="md:col-span-2 lg:col-span-3 flex justify-end">
+        <form onSubmit={handleCreateShelf} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Select
+              label="Zone"
+              value={selectedZoneId}
+              onChange={(e) => setSelectedZoneId(e.target.value)}
+              options={[
+                { value: '', label: 'Select zone' },
+                ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` })),
+              ]}
+            />
+            <Input
+              label="Shelf code"
+              value={shelfForm.shelfCode}
+              onChange={(e) => setShelfForm((p) => ({ ...p, shelfCode: e.target.value }))}
+              placeholder="A-01-01"
+              required
+            />
+            <Input
+              label="Số tầng"
+              type="number"
+              min={1}
+              value={shelfForm.tierCountStr}
+              onChange={(e) => setTierCountFromInput(e.target.value)}
+              placeholder="VD: 3"
+              required
+            />
+          </div>
+          {shelfForm.tierRows.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
+              <p className="text-sm font-bold text-slate-800">
+                Kích thước từng tầng (m) — cao × rộng × sâu
+              </p>
+              <div className="space-y-3">
+                {shelfForm.tierRows.map((row, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end bg-white rounded-xl border border-slate-100 p-3"
+                  >
+                    <p className="text-xs font-bold text-slate-500 sm:col-span-1 pt-2">Tầng {idx + 1}</p>
+                    <Input
+                      label="Cao (m)"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={row.height}
+                      onChange={(e) => updateTierRow(idx, { height: e.target.value })}
+                      placeholder="1.2"
+                    />
+                    <Input
+                      label="Rộng (m)"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={row.width}
+                      onChange={(e) => updateTierRow(idx, { width: e.target.value })}
+                      placeholder="2.0"
+                    />
+                    <Input
+                      label="Sâu (m)"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={row.depth}
+                      onChange={(e) => updateTierRow(idx, { depth: e.target.value })}
+                      placeholder="1.0"
+                    />
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm text-slate-700">
+                <span className="font-bold">Dung tích tối đa ước tính:</span>{' '}
+                <span className="font-mono font-bold text-primary">{formatM3(previewMaxM3)}</span>
+                <span className="text-slate-500"> (tổng các tầng, lưu làm max capacity kệ)</span>
+              </p>
+            </div>
+          )}
+          <div className="flex justify-end">
             <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
               Create shelf
             </Button>
@@ -508,26 +616,59 @@ export default function ManagerWarehouseDetailPage() {
             <EmptyState icon="warehouse" title="No shelves" message="No shelf data" />
           ) : (
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+              {utilLoading && (
+                <p className="text-xs text-slate-500 px-4 py-2 border-b border-slate-100">
+                  Đang tải dung tích kệ…
+                </p>
+              )}
               <Table>
                 <TableHead>
                   <TableHeader>Shelf code</TableHeader>
                   <TableHeader>Zone</TableHeader>
                   <TableHeader>Status</TableHeader>
                   <TableHeader>Contract</TableHeader>
+                  <TableHeader className="text-right">Đã dùng</TableHeader>
+                  <TableHeader className="text-right">Max</TableHeader>
+                  <TableHeader className="text-right">Còn lại</TableHeader>
+                  <TableHeader className="text-right">%</TableHeader>
+                  <TableHeader>Cảnh báo</TableHeader>
                 </TableHead>
                 <TableBody>
-                  {shelves.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-bold text-slate-900">{s.code}</TableCell>
-                      <TableCell className="text-slate-700">{s.zone || '—'}</TableCell>
-                      <TableCell>
-                        <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>
-                          {s.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-slate-700">{s.contractCode || '—'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {shelves.map((s) => {
+                    const u = utilByShelfId[s.id];
+                    const used = u?.current_utilization ?? 0;
+                    const max = u?.max_capacity ?? 0;
+                    const remaining = max > 0 ? Math.max(0, max - used) : 0;
+                    const pct = u?.utilization_percentage ?? 0;
+                    const hint = utilizationHint(pct);
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-bold text-slate-900">{s.code}</TableCell>
+                        <TableCell className="text-slate-700">{s.zone || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>
+                            {s.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-slate-700">{s.contractCode || '—'}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{u ? formatM3(used) : '—'}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{u ? formatM3(max) : '—'}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{u ? formatM3(remaining) : '—'}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">
+                          {u ? `${pct.toFixed(1)}%` : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {hint ? (
+                            <span className={`inline-flex px-2 py-0.5 rounded-lg text-xs font-bold ${hint.className}`}>
+                              {hint.label}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

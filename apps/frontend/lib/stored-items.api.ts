@@ -10,6 +10,8 @@ export interface StoredItemOption {
   quantity: number;
   unit: string;
   quantity_per_unit?: number;
+  /** Volume of one unit in m³ (if recorded) */
+  volume_per_unit_m3?: number;
   updated_at: string;
 }
 

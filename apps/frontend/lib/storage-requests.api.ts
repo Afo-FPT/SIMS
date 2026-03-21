@@ -5,6 +5,8 @@ export interface CreateInboundItemPayload {
   quantity: number;
   unit: string;
   quantityPerUnit?: number;
+  /** Volume of one unit in cubic meters (m³) */
+  volumePerUnitM3: number;
 }
 
 export async function createInboundStorageRequest(payload: {
@@ -59,6 +61,7 @@ export interface StorageRequestView {
     item_name: string;
     unit: string;
     quantity_per_unit?: number;
+    volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
     damage_quantity?: number;

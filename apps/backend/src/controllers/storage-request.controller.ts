@@ -46,7 +46,8 @@ export async function createInboundRequestController(
       itemName: item.itemName,
       quantity: Number(item.quantity),
       unit: item.unit || "pcs",
-      quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined
+      quantityPerUnit: item.quantityPerUnit != null ? Number(item.quantityPerUnit) : undefined,
+      volumePerUnitM3: Number(item.volumePerUnitM3)
     }));
 
     const createRequest: CreateInboundRequestDTO = {

@@ -14,6 +14,8 @@ export interface StoredItemViewDTO {
   unit: string;
    /** Optional: default quantity per unit/package for this SKU */
   quantity_per_unit?: number;
+  /** Optional: volume of one unit in m3 */
+  volume_per_unit_m3?: number;
   updated_at: Date;
 }
 
@@ -25,6 +27,7 @@ export interface StoredProductOverviewDTO {
   total_quantity: number;
   unit: string;
   quantity_per_unit?: number;
+  volume_per_unit_m3?: number;
   last_updated: Date;
 }
 
@@ -33,6 +36,7 @@ export interface StoredProductShelfDTO {
   quantity: number;
   unit: string;
   quantity_per_unit?: number;
+  volume_per_unit_m3?: number;
   last_updated: Date;
   contract_id: string;
   contract_code?: string;
@@ -119,6 +123,7 @@ export async function getMyStoredItems(
     quantity: it.quantity,
     unit: it.unit,
     quantity_per_unit: (it as any).quantityPerUnit,
+    volume_per_unit_m3: (it as any).volumePerUnitM3,
     updated_at: it.updatedAt
   }));
 }
@@ -151,6 +156,7 @@ export async function getMyStoredProducts(
         total_quantity: it.quantity || 0,
         unit: it.unit,
         quantity_per_unit: it.quantity_per_unit,
+        volume_per_unit_m3: it.volume_per_unit_m3,
         last_updated: it.updated_at
       });
     } else {
@@ -166,6 +172,9 @@ export async function getMyStoredProducts(
       // prefer a known quantity_per_unit if missing
       if (existing.quantity_per_unit == null && it.quantity_per_unit != null) {
         existing.quantity_per_unit = it.quantity_per_unit;
+      }
+      if (existing.volume_per_unit_m3 == null && it.volume_per_unit_m3 != null) {
+        existing.volume_per_unit_m3 = it.volume_per_unit_m3;
       }
     }
   }
@@ -196,6 +205,7 @@ export async function getMyStoredProductShelves(
       quantity: it.quantity,
       unit: it.unit,
       quantity_per_unit: it.quantity_per_unit,
+      volume_per_unit_m3: it.volume_per_unit_m3,
       last_updated: it.updated_at,
       contract_id: it.contract_id
       ,
