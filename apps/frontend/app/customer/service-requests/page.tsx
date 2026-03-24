@@ -67,12 +67,72 @@ export default function ServiceRequestsPage() {
 
   const [requests, setRequests] = useState<ServiceRequest[]>(MOCK_SERVICE_REQUESTS);
   const [contractId, setContractId] = useState('');
+  const [selectedZoneKey, setSelectedZoneKey] = useState('');
+
+  const zoneOptions = useMemo(() => {
+    const extractObjectId = (value: any): string | null => {
+      if (!value) return null;
+      const extractFromString = (raw: string): string | null => {
+        const s = raw.trim();
+        if (/^[a-fA-F0-9]{24}$/.test(s)) return s;
+        const m = s.match(/[a-fA-F0-9]{24}/);
+        return m ? m[0] : null;
+      };
+      if (typeof value === 'string') return extractFromString(value);
+      if (typeof value === 'object') {
+        if (typeof value._id === 'string') return extractFromString(value._id);
+        if (value._id && typeof value._id.toString === 'function') return value._id.toString();
+        if (typeof value.id === 'string') return extractFromString(value.id);
+      }
+      if (typeof value?.toString === 'function') {
+        const s = value.toString();
+        if (!s || s === '[object Object]') return null;
+        return extractFromString(s);
+      }
+      return null;
+    };
+
+    const rows: Array<{
+      key: string;
+      contractId: string;
+      contractCode: string;
+      zoneId: string;
+      zoneLabel: string;
+      warehouseName: string;
+    }> = [];
+
+    for (const c of activeContracts) {
+      for (const z of c.rentedZones || []) {
+        const normalizedZoneId = extractObjectId((z as any).zoneId);
+        if (!normalizedZoneId || normalizedZoneId === 'undefined' || normalizedZoneId === 'null') continue;
+        rows.push({
+          key: `${c.id}::${normalizedZoneId}`,
+          contractId: c.id,
+          contractCode: c.code,
+          zoneId: normalizedZoneId,
+          zoneLabel: z.zoneCode || z.zoneName || normalizedZoneId,
+          warehouseName: c.warehouseName || c.warehouseId,
+        });
+      }
+    }
+    return rows;
+  }, [activeContracts]);
+
+  const selectedZoneOption = useMemo(
+    () => zoneOptions.find((z) => z.key === selectedZoneKey) || null,
+    [zoneOptions, selectedZoneKey]
+  );
 
   useEffect(() => {
-    if (activeContracts.length > 0 && !contractId) {
-      setContractId(activeContracts[0].id);
+    if (zoneOptions.length > 0 && !selectedZoneKey) {
+      setSelectedZoneKey(zoneOptions[0].key);
     }
-  }, [activeContracts, contractId]);
+  }, [zoneOptions, selectedZoneKey]);
+
+  useEffect(() => {
+    if (!selectedZoneOption) return;
+    setContractId(selectedZoneOption.contractId);
+  }, [selectedZoneOption]);
 
   const hasActive = activeContracts.length > 0;
   const [type, setType] = useState<ServiceRequestType>('Inbound');
@@ -286,6 +346,10 @@ export default function ServiceRequestsPage() {
   }, [searchParams, toast, router]);
 
   const handleBuyExtraRequest = async () => {
+    if (!contractId) {
+      toast.warning('Please select a zone first');
+      return;
+    }
     try {
       const result = await startRequestCreditVNPayPayment(contractId);
       window.location.href = result.paymentUrl;
@@ -447,13 +511,17 @@ export default function ServiceRequestsPage() {
     );
   };
 
-  const validate = () => {
+  const validate = (): Record<string, string> => {
     const e: Record<string, string> = {};
-    if (!contractId) e.contract = 'Select a contract';
+    if (!selectedZoneOption) e.contract = 'Select a zone';
+    if (!contractId) e.contract = 'No active contract found for selected zone';
     if (!preferredDate) e.preferredDate = 'Preferred date is required';
     if (type === 'Inbound') {
       if (!inboundRef.trim()) {
         e.inboundRef = 'Inbound reference is required';
+      }
+      if (!selectedZoneOption?.zoneId) {
+        e.contract = 'Selected zone is invalid. Please re-select zone.';
       }
       const withQty = inboundItems.filter((r) => r.sku && r.quantity > 0);
       if (withQty.length === 0) e.items = 'Add at least one item';
@@ -487,13 +555,21 @@ export default function ServiceRequestsPage() {
       }
     }
     setErrors(e);
-    return Object.keys(e).length === 0;
+    return e;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) {
-      toast.warning('Please fix validation errors before submitting');
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      const firstError =
+        validationErrors.contract ||
+        validationErrors.preferredDate ||
+        validationErrors.inboundRef ||
+        validationErrors.outboundRef ||
+        validationErrors.items ||
+        'Please fix validation errors before submitting';
+      toast.warning(firstError);
       return;
     }
     const base = {
@@ -510,6 +586,7 @@ export default function ServiceRequestsPage() {
       const items = inboundItems.filter((r) => r.sku && r.quantity > 0);
         createInboundStorageRequest({
         contractId,
+        zoneId: selectedZoneOption?.zoneId || '',
         reference: inboundRef.trim() || undefined,
         items: items.map((it) => ({
           itemName: it.name || it.sku,
@@ -856,18 +933,24 @@ export default function ServiceRequestsPage() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Contract</label>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Zone</label>
             <select
-              value={contractId}
-              onChange={(e) => setContractId(e.target.value)}
+              value={selectedZoneKey}
+              onChange={(e) => setSelectedZoneKey(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             >
-              {activeContracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code}
+              {zoneOptions.map((z) => (
+                <option key={z.key} value={z.key}>
+                  {z.zoneLabel} / {z.warehouseName} / {z.contractCode}
                 </option>
               ))}
             </select>
+            {selectedZoneOption && (
+              <p className="text-xs text-slate-500 mt-1">
+                Selected: <span className="font-bold text-slate-700">{selectedZoneOption.zoneLabel}</span> /{' '}
+                {selectedZoneOption.warehouseName} / {selectedZoneOption.contractCode}
+              </p>
+            )}
             {errors.contract && (
               <p className="text-xs text-red-500 mt-1">{errors.contract}</p>
             )}

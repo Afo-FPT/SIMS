@@ -5,6 +5,26 @@ import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
 import { notifyStorageRequestEvent } from "./notification.service";
 
+function normalizeObjectIdString(value: any): string | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const exact = value.trim();
+    if (Types.ObjectId.isValid(exact)) return new Types.ObjectId(exact).toString();
+    const matched = exact.match(/[a-fA-F0-9]{24}/);
+    if (matched && Types.ObjectId.isValid(matched[0])) {
+      return new Types.ObjectId(matched[0]).toString();
+    }
+    return null;
+  }
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === "object") {
+    if (value._id) return normalizeObjectIdString(value._id);
+    if (value.id) return normalizeObjectIdString(value.id);
+    if (typeof value.toString === "function") return normalizeObjectIdString(value.toString());
+  }
+  return null;
+}
+
 /**
  * DTO for inbound request item
  */
@@ -21,6 +41,7 @@ export interface InboundRequestItem {
  */
 export interface CreateInboundRequestDTO {
   contractId: string;
+  zoneId: string;
   /** Customer-provided inbound reference (e.g. IN-2025-0025) */
   reference?: string;
   items: InboundRequestItem[];
@@ -66,6 +87,7 @@ export interface RequestDetailResponse {
 export interface InboundRequestResponse {
   requestId: string;
   contractId: string;
+  requestedZoneId: string;
   status: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
   requestType: "IN";
   items: RequestDetailResponse[];
@@ -96,7 +118,6 @@ function validateCreateOutboundRequest(data: CreateOutboundRequestDTO): void {
   if (!Types.ObjectId.isValid(data.contractId)) {
     throw new Error("Invalid contract ID");
   }
-
   // Validate items array
   if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
     throw new Error("Items array is required and must not be empty");
@@ -145,6 +166,12 @@ function validateCreateInboundRequest(data: CreateInboundRequestDTO): void {
 
   if (!Types.ObjectId.isValid(data.contractId)) {
     throw new Error("Invalid contract ID");
+  }
+  if (!data.zoneId || data.zoneId.trim().length === 0) {
+    throw new Error("Zone ID is required");
+  }
+  if (!normalizeObjectIdString(data.zoneId)) {
+    throw new Error("Invalid zone ID");
   }
 
   // Validate items array
@@ -212,6 +239,28 @@ async function validateContractOwnership(
   }
 }
 
+async function validateZoneBelongsToContract(
+  contractId: string,
+  zoneId: string
+): Promise<void> {
+  const contract = await Contract.findById(contractId).select("rentedZones");
+  if (!contract) {
+    throw new Error("Contract not found");
+  }
+  const normalizedZoneId = normalizeObjectIdString(zoneId);
+  if (!normalizedZoneId) {
+    throw new Error("Invalid zone ID");
+  }
+
+  const rentedZoneIds = (contract.rentedZones || [])
+    .map((rz: any) => normalizeObjectIdString(rz.zoneId))
+    .filter((v): v is string => !!v);
+
+  if (!rentedZoneIds.includes(normalizedZoneId)) {
+    throw new Error("Zone does not belong to the selected contract");
+  }
+}
+
 /**
  * Validate shelf belongs to contract (shelf's zone must be in contract's rentedZones)
  */
@@ -253,10 +302,16 @@ export async function createInboundRequest(
 
   // Validate contract ownership
   await validateContractOwnership(data.contractId, customerId);
+  const normalizedZoneId = normalizeObjectIdString(data.zoneId);
+  if (!normalizedZoneId) {
+    throw new Error("Invalid zone ID");
+  }
+  await validateZoneBelongsToContract(data.contractId, normalizedZoneId);
 
   const request = await StorageRequest.create({
     contractId: new Types.ObjectId(data.contractId),
     customerId: new Types.ObjectId(customerId),
+    requestedZoneId: new Types.ObjectId(normalizedZoneId),
     requestType: "IN",
     reference: data.reference?.trim() || undefined,
     status: "PENDING"
@@ -292,6 +347,7 @@ export async function createInboundRequest(
   const response = {
     requestId: request._id.toString(),
     contractId: request.contractId.toString(),
+    requestedZoneId: request.requestedZoneId!.toString(),
     status: request.status,
     requestType: request.requestType as "IN",
     items: itemsResponse,

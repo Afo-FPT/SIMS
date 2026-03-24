@@ -43,7 +43,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
               { id: 'RENT_REQUESTS', label: 'Rent Requests', icon: 'request_quote' },
               { id: 'CONTRACTS', label: 'Contracts', icon: 'description' },
               { id: 'PACKAGES', label: 'Contract Packages', icon: 'category' },
-              { id: 'SERVICE_REQUESTS', label: 'Service Requests', icon: 'local_shipping' },
             ]
           },
           {
@@ -51,7 +50,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
               { id: 'INBOUND_REQUESTS', label: 'Assign Inbound Tasks', icon: 'inbox' },
               { id: 'OUTBOUND_REQUESTS', label: 'Assign Outbound Tasks', icon: 'outbox' },
               { id: 'TASKS', label: 'Tasks', icon: 'assignment_turned_in' },
-              { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
               { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
               { id: 'WAREHOUSES', label: 'Warehouses', icon: 'warehouse' },
             ]

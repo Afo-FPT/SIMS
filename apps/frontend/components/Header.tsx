@@ -64,7 +64,8 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
     };
   }, []);
 
-  const items = useMemo(() => rows.slice(0, 10), [rows]);
+  // Show all notifications fetched so far (page 1 + loaded pages).
+  const items = useMemo(() => rows, [rows]);
 
   const loadMore = async () => {
     if (loadingMore) return;

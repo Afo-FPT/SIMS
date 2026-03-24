@@ -30,10 +30,13 @@ export async function createInboundRequestController(
     }
 
     // Extract request data
-    const { contractId, reference, items } = req.body;
+    const { contractId, zoneId, reference, items } = req.body;
 
     if (!contractId) {
       return res.status(400).json({ message: "Contract ID is required" });
+    }
+    if (!zoneId) {
+      return res.status(400).json({ message: "Zone ID is required" });
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -52,6 +55,7 @@ export async function createInboundRequestController(
 
     const createRequest: CreateInboundRequestDTO = {
       contractId,
+      zoneId,
       reference: reference != null ? String(reference).trim() : undefined,
       items: itemsDTO
     };

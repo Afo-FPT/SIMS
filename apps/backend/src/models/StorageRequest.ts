@@ -3,6 +3,8 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 export interface IStorageRequest extends Document {
   contractId: Types.ObjectId;
   customerId: Types.ObjectId;
+  /** Customer-selected zone for this request (used to constrain putaway shelves) */
+  requestedZoneId?: Types.ObjectId;
   requestType: "IN" | "OUT";
   /** Customer-provided reference (e.g. IN-2025-0025, OUT-2025-0012) */
   reference?: string;
@@ -27,6 +29,11 @@ const StorageRequestSchema = new Schema<IStorageRequest>(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true
+    },
+    requestedZoneId: {
+      type: Schema.Types.ObjectId,
+      ref: "Zone",
+      required: false
     },
     requestType: {
       type: String,
@@ -58,6 +65,7 @@ const StorageRequestSchema = new Schema<IStorageRequest>(
 
 StorageRequestSchema.index({ contractId: 1 });
 StorageRequestSchema.index({ customerId: 1 });
+StorageRequestSchema.index({ requestedZoneId: 1 });
 StorageRequestSchema.index({ status: 1 });
 StorageRequestSchema.index({ requestType: 1 });
 StorageRequestSchema.index({ assignedStaffIds: 1 });

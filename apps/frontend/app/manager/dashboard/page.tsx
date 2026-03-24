@@ -176,8 +176,8 @@ export default function ManagerDashboard() {
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="flex items-center justify-between p-6">
             <h2 className="text-lg font-black text-slate-900">Recent Service Requests</h2>
-            <Link href="/manager/service-requests" className="text-sm font-bold text-primary hover:underline">
-              View all
+            <Link href="/manager/inbound-requests" className="text-sm font-bold text-primary hover:underline">
+              Inbound tasks
             </Link>
           </div>
           {recentService.length === 0 ? (

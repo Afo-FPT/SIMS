@@ -67,7 +67,10 @@ export default function StaffInboundPutawayDetailPage() {
       const data = await getStorageRequestById(id);
       setReq(data);
       const shelfList = await listContractShelves(data.contract_id);
-      setShelves(shelfList);
+      const filteredByRequestedZone = data.requested_zone_id
+        ? shelfList.filter((s) => s.zone_id === data.requested_zone_id)
+        : shelfList;
+      setShelves(filteredByRequestedZone);
       setRows(
         data.items.map((it) => ({
           requestDetailId: it.request_detail_id,
@@ -246,6 +249,7 @@ export default function StaffInboundPutawayDetailPage() {
             <h1 className="text-2xl font-black text-slate-900 mb-2">Putaway {req.reference ?? req.request_id}</h1>
             <div className="space-y-1 text-sm">
               <p><span className="font-bold text-slate-600">Contract code:</span> {req.contract_code ?? req.contract_id}</p>
+              <p><span className="font-bold text-slate-600">Requested zone:</span> {req.requested_zone_code ?? req.requested_zone_id ?? '—'}</p>
               <p><span className="font-bold text-slate-600">Customer:</span> {req.customer_id}</p>
               <p><span className="font-bold text-slate-600">Created at:</span> {formatDate(req.created_at)}</p>
               <p><span className="font-bold text-slate-600">Status:</span> 

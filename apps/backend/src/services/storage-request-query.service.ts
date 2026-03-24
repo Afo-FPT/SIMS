@@ -12,6 +12,8 @@ export interface StorageRequestViewDTO {
   contract_id: string;
   /** Contract code (e.g. from Contract.contractCode) for display */
   contract_code?: string;
+  requested_zone_id?: string;
+  requested_zone_code?: string;
   /** Customer-provided reference (inbound/outbound reference) */
   reference?: string;
   customer_id: string;
@@ -91,9 +93,10 @@ export async function listStorageRequests(
   const Zone = (await import("../models/Zone")).default;
   const zoneIds = Array.from(
     new Set(
-      details
-        .map((d: any) => d.shelfId?.zoneId?.toString?.())
-        .filter(Boolean)
+      [
+        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        ...requests.map((r: any) => r.requestedZoneId?.toString?.())
+      ].filter(Boolean)
     )
   );
   const zones = zoneIds.length
@@ -109,6 +112,10 @@ export async function listStorageRequests(
       request_id: r._id.toString(),
       contract_id: r.contractId.toString(),
       contract_code: contractCodeById.get(r.contractId.toString()),
+      requested_zone_id: r.requestedZoneId?.toString?.(),
+      requested_zone_code: r.requestedZoneId?.toString?.()
+        ? zoneCodeById.get(r.requestedZoneId.toString())
+        : undefined,
       reference: r.reference,
       customer_id: r.customerId.toString(),
       request_type: r.requestType,
@@ -173,7 +180,12 @@ export async function getStorageRequestById(
 
   const Zone = (await import("../models/Zone")).default;
   const zoneIds = Array.from(
-    new Set(details.map((d: any) => d.shelfId?.zoneId?.toString?.()).filter(Boolean))
+    new Set(
+      [
+        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        (req as any).requestedZoneId?.toString?.()
+      ].filter(Boolean)
+    )
   );
   const zones = zoneIds.length
     ? await Zone.find({ _id: { $in: zoneIds.map((z) => new Types.ObjectId(z)) } })
@@ -186,6 +198,10 @@ export async function getStorageRequestById(
     request_id: req._id.toString(),
     contract_id: (req as any).contractId.toString(),
     contract_code,
+    requested_zone_id: (req as any).requestedZoneId?.toString?.(),
+    requested_zone_code: (req as any).requestedZoneId?.toString?.()
+      ? zoneCodeById.get((req as any).requestedZoneId.toString())
+      : undefined,
     reference: (req as any).reference,
     customer_id: (req as any).customerId.toString(),
     request_type: (req as any).requestType,

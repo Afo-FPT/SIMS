@@ -66,6 +66,7 @@ function validateStaffCompleteDTO(dto: StaffCompleteStorageRequestDTO) {
 async function validateShelfBelongsToContract(params: {
   contractId: Types.ObjectId;
   shelfId: Types.ObjectId;
+  requestedZoneId?: Types.ObjectId;
   session: any;
 }): Promise<void> {
   const Contract = (await import("../models/Contract")).default;
@@ -80,6 +81,9 @@ async function validateShelfBelongsToContract(params: {
   const zoneIds = (contract.rentedZones || []).map((rz: any) => rz.zoneId.toString());
   if (!zoneIds.includes(shelf.zoneId.toString())) {
     throw new Error("Shelf does not belong to the contract (shelf's zone is not rented by this contract)");
+  }
+  if (params.requestedZoneId && shelf.zoneId.toString() !== params.requestedZoneId.toString()) {
+    throw new Error("Shelf does not belong to the customer-selected zone for this request");
   }
 }
 
@@ -289,7 +293,12 @@ export async function staffCompleteStorageRequest(
       // For inbound: assign shelfId now (putaway), and validate it belongs to contract's zone(s)
       if (request.requestType === "IN") {
         const shelfId = new Types.ObjectId(it.shelfId as string);
-        await validateShelfBelongsToContract({ contractId: request.contractId, shelfId, session });
+        await validateShelfBelongsToContract({
+          contractId: request.contractId,
+          shelfId,
+          requestedZoneId: (request as any).requestedZoneId,
+          session
+        });
         (detail as any).shelfId = shelfId;
       }
 

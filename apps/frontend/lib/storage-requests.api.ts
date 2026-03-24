@@ -11,6 +11,7 @@ export interface CreateInboundItemPayload {
 
 export async function createInboundStorageRequest(payload: {
   contractId: string;
+  zoneId: string;
   /** Customer-provided inbound reference (e.g. IN-2025-0025) */
   reference?: string;
   items: CreateInboundItemPayload[];
@@ -45,6 +46,8 @@ export interface StorageRequestView {
   contract_id: string;
   /** Contract code for display (Contract code) */
   contract_code?: string;
+  requested_zone_id?: string;
+  requested_zone_code?: string;
   /** Customer-provided inbound/outbound reference */
   reference?: string;
   customer_id: string;
