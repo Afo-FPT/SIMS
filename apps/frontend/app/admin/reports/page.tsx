@@ -59,6 +59,7 @@ function inDateRange(ts: string, start: string, end: string): boolean {
 
 export default function AdminReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [storageRequests, setStorageRequests] = useState<any[]>([]);
@@ -73,9 +74,11 @@ export default function AdminReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
     async function run() {
       try {
-        setLoading(true);
+        if (!hasLoaded) setLoading(true);
         setError(null);
         const [usersRes, reqs, cycles] = await Promise.all([
           listUsers({ page: 1, limit: 5000 }),
@@ -89,14 +92,33 @@ export default function AdminReportsPage() {
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load admin reports');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
     }
-    run();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    };
+
+    void run();
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    }, 30000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [hasLoaded]);
 
   const filteredStorageRequests = useMemo(
     () => storageRequests.filter((r) => inDateRange(r.updated_at || r.created_at, startDate, endDate)),

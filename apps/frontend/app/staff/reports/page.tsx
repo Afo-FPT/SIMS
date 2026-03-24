@@ -18,26 +18,43 @@ import {
 } from 'recharts';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { Input } from '../../../components/ui/Input';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+type ReportTab = 'performance' | 'history' | 'discrepancy' | 'cycle' | 'workload';
 
 function dayKey(ts: string): string {
   return new Date(ts).toLocaleDateString('en-GB', { weekday: 'short' });
 }
 
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 export default function StaffReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return toIsoDate(d);
+  });
+  const [endDate, setEndDate] = useState(() => toIsoDate(new Date()));
+  const [activeQuickRange, setActiveQuickRange] = useState<'30' | '90'>('90');
+  const [tab, setTab] = useState<ReportTab>('performance');
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
 
   useEffect(() => {
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
     async function run() {
       try {
-        setLoading(true);
+        if (!hasLoaded) setLoading(true);
         setError(null);
         const [req, cc] = await Promise.all([listStorageRequests(), getCycleCounts()]);
         if (cancelled) return;
@@ -46,29 +63,66 @@ export default function StaffReportsPage() {
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
     }
-    run();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    };
+
+    void run();
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    }, 30000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [hasLoaded]);
+
+  const filteredRequests = useMemo(() => {
+    const from = new Date(startDate).getTime();
+    const to = new Date(endDate).getTime() + 86399999;
+    return requests.filter((r) => {
+      const t = new Date(r.updated_at || r.created_at).getTime();
+      return t >= from && t <= to;
+    });
+  }, [requests, startDate, endDate]);
+
+  const filteredCycleCounts = useMemo(() => {
+    const from = new Date(startDate).getTime();
+    const to = new Date(endDate).getTime() + 86399999;
+    return cycleCounts.filter((c) => {
+      const t = new Date(c.updated_at || c.created_at).getTime();
+      return t >= from && t <= to;
+    });
+  }, [cycleCounts, startDate, endDate]);
 
   const completion = useMemo(() => {
-    const total = requests.length + cycleCounts.length;
-    const completed = requests.filter((r) => r.status === 'COMPLETED').length + cycleCounts.filter((c) => c.status === 'CONFIRMED').length;
-    const inProgress = requests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length + cycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
+    const total = filteredRequests.length + filteredCycleCounts.length;
+    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length + filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length + filteredCycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
     const pending = Math.max(0, total - completed - inProgress);
     const ratio = total === 0 ? 0 : Math.round((completed / total) * 100);
     return { total, completed, inProgress, pending, ratio };
-  }, [requests, cycleCounts]);
+  }, [filteredRequests, filteredCycleCounts]);
 
   const inOutPerDay = useMemo(() => {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const base = weekdays.map((d) => ({ day: d, inbound: 0, outbound: 0, cycle: 0 }));
     const byDay = new Map(base.map((d) => [d.day, d]));
-    requests.forEach((r) => {
+    filteredRequests.forEach((r) => {
       const day = dayKey(r.updated_at || r.created_at);
       const row = byDay.get(day);
       if (!row) return;
@@ -76,14 +130,14 @@ export default function StaffReportsPage() {
       if (r.request_type === 'IN') row.inbound += qty;
       else row.outbound += qty;
     });
-    cycleCounts.forEach((c) => {
+    filteredCycleCounts.forEach((c) => {
       const day = dayKey(c.updated_at || c.created_at);
       const row = byDay.get(day);
       if (!row) return;
       row.cycle += (c.items || c.target_items || []).length;
     });
     return base;
-  }, [requests, cycleCounts]);
+  }, [filteredRequests, filteredCycleCounts]);
 
   const operationHistory = useMemo(() => {
     return inOutPerDay.map((d, index) => ({
@@ -94,18 +148,18 @@ export default function StaffReportsPage() {
   }, [inOutPerDay]);
 
   const discrepancySummary = useMemo(() => {
-    const damaged = requests.reduce((sum, r) => sum + r.items.reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
-    const mismatch = cycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
-    const location = requests.filter((r) => r.status === 'REJECTED').length;
+    const damaged = filteredRequests.reduce((sum, r) => sum + r.items.reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
+    const mismatch = filteredCycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
+    const location = filteredRequests.filter((r) => r.status === 'REJECTED').length;
     return [
       { name: 'Damaged', value: damaged },
       { name: 'Quantity mismatch', value: mismatch },
       { name: 'Location/flow issue', value: location },
     ];
-  }, [requests, cycleCounts]);
+  }, [filteredRequests, filteredCycleCounts]);
 
   const cycleAccuracy = useMemo(() => {
-    return cycleCounts.map((c) => {
+    return filteredCycleCounts.map((c) => {
       const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
       const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
       const accuracy = system === 0 ? 100 : Math.max(0, Math.round(100 - (Math.abs(system - actual) / system) * 100));
@@ -116,18 +170,48 @@ export default function StaffReportsPage() {
         accuracy,
       };
     });
-  }, [cycleCounts]);
+  }, [filteredCycleCounts]);
 
-  const occupancyDonut = useMemo(() => {
-    const inbound = requests.filter((r) => r.request_type === 'IN').length;
-    const outbound = requests.filter((r) => r.request_type === 'OUT').length;
-    const counting = cycleCounts.length;
+  const taskTypeDistribution = useMemo(() => {
+    const inbound = filteredRequests.filter((r) => r.request_type === 'IN').length;
+    const outbound = filteredRequests.filter((r) => r.request_type === 'OUT').length;
+    const cycleCount = filteredCycleCounts.length;
     return [
-      { name: 'Inbound zone', value: inbound },
-      { name: 'Outbound zone', value: outbound },
-      { name: 'Counting zone', value: counting },
+      { name: 'Inbound tasks', value: inbound },
+      { name: 'Outbound tasks', value: outbound },
+      { name: 'Cycle count tasks', value: cycleCount },
     ];
-  }, [requests, cycleCounts]);
+  }, [filteredRequests, filteredCycleCounts]);
+
+  const workloadByStatus = useMemo(() => {
+    const requestPending = filteredRequests.filter((r) => r.status === 'PENDING').length;
+    const requestInProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const requestCompleted = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
+
+    const cyclePending = filteredCycleCounts.filter((c) => c.status === 'PENDING').length;
+    const cycleInProgress = filteredCycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
+    const cycleCompleted = filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+
+    return [
+      { status: 'Pending', requests: requestPending, cycleCounts: cyclePending },
+      { status: 'In progress', requests: requestInProgress, cycleCounts: cycleInProgress },
+      { status: 'Completed', requests: requestCompleted, cycleCounts: cycleCompleted },
+    ];
+  }, [filteredRequests, filteredCycleCounts]);
+
+  const quickRangeClass = (key: '30' | '90') =>
+    `px-4 py-2.5 text-sm font-bold transition-colors ${
+      activeQuickRange === key ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'
+    }`;
+
+  const applyQuickRange = (days: 30 | 90) => {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    setStartDate(toIsoDate(start));
+    setEndDate(toIsoDate(end));
+    setActiveQuickRange(days === 30 ? '30' : '90');
+  };
 
   if (loading) {
     return (
@@ -150,6 +234,54 @@ export default function StaffReportsPage() {
         <p className="text-slate-500 mt-1">Personal performance, operations history, discrepancies, and cycle-count quality</p>
       </div>
 
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
+            <p className="text-sm text-slate-500 mt-1">Adjust time range for all staff report modules</p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
+            </div>
+            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <button type="button" onClick={() => applyQuickRange(30)} className={quickRangeClass('30')}>
+                Last 30 days
+              </button>
+              <button type="button" onClick={() => applyQuickRange(90)} className={quickRangeClass('90')}>
+                Last 90 days
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          ['performance', 'Performance'],
+          ['history', 'Operation History'],
+          ['discrepancy', 'Discrepancy'],
+          ['cycle', 'Cycle Count'],
+          ['workload', 'Task Workload Overview'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id as ReportTab)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
+              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'performance' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Personal Daily Performance Report</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -183,7 +315,9 @@ export default function StaffReportsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {tab === 'history' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Personal Operation History Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -214,7 +348,9 @@ export default function StaffReportsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {tab === 'discrepancy' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Discrepancy & Issue Summary Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -242,7 +378,9 @@ export default function StaffReportsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {tab === 'cycle' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Cycle Count Execution Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -274,51 +412,39 @@ export default function StaffReportsPage() {
           </div>
         </div>
       </section>
+      )}
 
+      {tab === 'workload' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Warehouse Health Snapshot (Personal View)</h2>
+        <h2 className="text-lg font-black text-slate-900 mb-4">Task Workload Overview</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={occupancyDonut} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                  {occupancyDonut.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
+                <Pie data={taskTypeDistribution} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
+                  {taskTypeDistribution.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200">
-                  <th className="px-2 py-2 text-left text-xs uppercase text-slate-500 font-black">Area</th>
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => (
-                    <th key={d} className="px-2 py-2 text-xs uppercase text-slate-500 font-black">{d}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {['Inbound', 'Outbound', 'Cycle Count'].map((area, rowIdx) => (
-                  <tr key={area} className="border-b border-slate-100">
-                    <td className="px-2 py-2 font-bold">{area}</td>
-                    {[0, 1, 2, 3, 4, 5, 6].map((n) => {
-                      const value = (requests.length + cycleCounts.length + rowIdx + n) % 20;
-                      const bg = value > 14 ? '#ef4444' : value > 8 ? '#f59e0b' : value > 0 ? '#22c55e' : '#e2e8f0';
-                      return (
-                        <td key={`${area}-${n}`} className="px-2 py-2">
-                          <div style={{ backgroundColor: bg }} className="rounded px-2 py-1 text-center text-white text-xs font-bold">{value}</div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={workloadByStatus}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="status" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="requests" fill="#0ea5e9" name="Storage requests" />
+                <Bar dataKey="cycleCounts" fill="#22c55e" name="Cycle counts" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </section>
+      )}
     </div>
   );
 }

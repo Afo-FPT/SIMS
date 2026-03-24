@@ -30,7 +30,8 @@ type ReportTab =
   | 'io_history'
   | 'turnover'
   | 'discrepancy'
-  | 'alerts';
+  | 'request_status'
+  | 'top_products';
 
 function monthKey(ts: string): string {
   const d = new Date(ts);
@@ -39,6 +40,7 @@ function monthKey(ts: string): string {
 
 export default function CustomerReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ReportTab>('io_history');
   const [startDate, setStartDate] = useState(() => {
@@ -53,9 +55,11 @@ export default function CustomerReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
     async function run() {
       try {
-        setLoading(true);
+        if (!hasLoaded) setLoading(true);
         setError(null);
         const [items, req, cc] = await Promise.all([
           listMyStoredItems(),
@@ -69,14 +73,33 @@ export default function CustomerReportsPage() {
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
     }
-    run();
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    };
+
+    void run();
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void run();
+      }
+    }, 30000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
     return () => {
       cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, []);
+  }, [hasLoaded]);
 
   const filteredRequests = useMemo(() => {
     if (!startDate || !endDate) return requests;
@@ -160,13 +183,36 @@ export default function CustomerReportsPage() {
     ];
   }, [discrepancyRows]);
 
-  const alertsData = useMemo(() => {
-    const lowStock = storedItems.filter((i) => i.quantity < 50).length;
-    const discrepancy = discrepancyRows.filter((r) => r.discrepancy > 0).length;
-    const pendingConfirm = filteredCycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
-    const pendingRequests = filteredRequests.filter((r) => r.status === 'PENDING').length;
-    return { lowStock, discrepancy, pendingConfirm, pendingRequests };
-  }, [storedItems, discrepancyRows, filteredCycleCounts, filteredRequests]);
+  const requestStatusSummary = useMemo(() => {
+    const pending = filteredRequests.filter((r) => r.status === 'PENDING').length;
+    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
+    const rejected = filteredRequests.filter((r) => r.status === 'REJECTED').length;
+    return [
+      { name: 'Pending', value: pending },
+      { name: 'In progress', value: inProgress },
+      { name: 'Completed', value: completed },
+      { name: 'Rejected', value: rejected },
+    ];
+  }, [filteredRequests]);
+
+  const topProductsByQuantity = useMemo(() => {
+    const map = new Map<string, { item: string; inbound: number; outbound: number }>();
+    filteredRequests.forEach((r) => {
+      (r.items || []).forEach((i: any) => {
+        const key = i.item_name || 'Unknown';
+        if (!map.has(key)) map.set(key, { item: key, inbound: 0, outbound: 0 });
+        const row = map.get(key)!;
+        const qty = i.quantity_actual ?? i.quantity_requested ?? 0;
+        if (r.request_type === 'IN') row.inbound += qty;
+        else row.outbound += qty;
+      });
+    });
+    return Array.from(map.values())
+      .map((r) => ({ ...r, total: r.inbound + r.outbound }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [filteredRequests]);
 
   if (loading) {
     return (
@@ -241,7 +287,8 @@ export default function CustomerReportsPage() {
           ['io_history', 'Inbound/Outbound History'],
           ['turnover', 'Inventory Level & Turnover'],
           ['discrepancy', 'Checking & Discrepancy'],
-          ['alerts', 'Alerts & Trend Insights'],
+          ['request_status', 'Request Status Overview'],
+          ['top_products', 'Top Products by Quantity'],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -354,26 +401,56 @@ export default function CustomerReportsPage() {
         </section>
       )}
 
-      {tab === 'alerts' && (
+      {tab === 'request_status' && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Alerts & Trend Insights</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <KpiCard title="Low Stock Alerts" value={alertsData.lowStock} icon="warning" />
-            <KpiCard title="Discrepancy Events" value={alertsData.discrepancy} icon="report_problem" />
-            <KpiCard title="Pending Confirmations" value={alertsData.pendingConfirm} icon="fact_check" />
-            <KpiCard title="Pending Requests" value={alertsData.pendingRequests} icon="pending_actions" />
+          <h2 className="text-lg font-black text-slate-900 mb-4">Request Status Overview</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={requestStatusSummary} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
+                    {requestStatusSummary.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={requestStatusSummary}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="value" fill="#0ea5e9" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
+        </section>
+      )}
+
+      {tab === 'top_products' && (
+        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <h2 className="text-lg font-black text-slate-900 mb-4">Top Products by Quantity</h2>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={ioTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" />
-                <YAxis />
+              <BarChart data={topProductsByQuantity} layout="vertical" margin={{ left: 28, right: 16, top: 8, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" tickMargin={10} />
+                <YAxis
+                  dataKey="item"
+                  type="category"
+                  width={180}
+                  tickMargin={10}
+                  interval={0}
+                />
                 <Tooltip />
-                <Legend />
-                <Line dataKey="inbound" stroke="#0ea5e9" strokeWidth={2} />
-                <Line dataKey="outbound" stroke="#6366f1" strokeWidth={2} />
-              </LineChart>
+                <Legend wrapperStyle={{ paddingTop: 8 }} />
+                <Bar dataKey="inbound" stackId="q" fill="#0ea5e9" name="Inbound quantity" />
+                <Bar dataKey="outbound" stackId="q" fill="#6366f1" name="Outbound quantity" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </section>
@@ -382,14 +459,3 @@ export default function CustomerReportsPage() {
   );
 }
 
-function KpiCard({ title, value, icon }: { title: string; value: number; icon: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="material-symbols-outlined text-primary">{icon}</span>
-        <p className="text-xs uppercase font-black tracking-wider text-slate-500">{title}</p>
-      </div>
-      <p className="text-2xl font-black text-slate-900">{value}</p>
-    </div>
-  );
-}

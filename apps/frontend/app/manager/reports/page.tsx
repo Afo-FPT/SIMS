@@ -47,10 +47,12 @@ const APPROVED_COLOR = '#059669';
 const REJECTED_COLOR = '#dc2626';
 const OUTBOUND_TOP_COLOR = '#0ea5e9';
 const GANTT_COLORS = ['#0ea5e9', '#6366f1', '#22c55e', '#f59e0b', '#14b8a6'];
+type ReportTab = 'summary' | 'approvals' | 'outbound' | 'processing' | 'contracts' | 'anomalies';
 
 export default function ManagerReportsPage() {
   const toast = useToastHelpers();
   const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState('2026-04-30');
@@ -73,11 +75,40 @@ export default function ManagerReportsPage() {
   const [processingTimeTrend, setProcessingTimeTrend] = useState<ProcessingTimeTrendPoint[]>([]);
   const [processingTimeBoxPlot, setProcessingTimeBoxPlot] = useState<ProcessingTimeBoxPlotItem[]>([]);
   const [processingTimeGranularity, setProcessingTimeGranularity] = useState<'week' | 'month'>('week');
+  const [tab, setTab] = useState<ReportTab>('summary');
+  const stockChartHeight = Math.max(288, inventoryData.length * 44);
+  const outboundChartHeight = Math.max(220, topOutboundProducts.length * 42);
+  const trendXAxisInterval = granularity === 'day' ? Math.max(0, Math.ceil(trendData.length / 8) - 1) : 'preserveStartEnd';
+  const processingTrendXAxisInterval =
+    processingTimeGranularity === 'week'
+      ? Math.max(0, Math.ceil(processingTimeTrend.length / 6) - 1)
+      : 'preserveStartEnd';
+
+  const formatTrendLabel = (value: string) => {
+    if (granularity !== 'day') return value;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+  };
+
+  const formatProcessingPeriodLabel = (value: string) => {
+    if (processingTimeGranularity === 'month') {
+      const date = new Date(`${value}-01`);
+      if (!Number.isNaN(date.getTime())) {
+        return date.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+      }
+      return value;
+    }
+    return value.replace(/\s+/g, ' ');
+  };
 
   useEffect(() => {
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let cancelled = false;
+
     const fetchData = async () => {
       try {
-        setLoading(true);
+        if (!hasLoaded) setLoading(true);
         setError(null);
         if (!startDate || !endDate) return;
 
@@ -88,6 +119,7 @@ export default function ManagerReportsPage() {
           getProcessingTime(startDate, endDate, processingTimeGranularity),
         ]);
 
+        if (cancelled) return;
         setStats(report.stats);
         setCapacityData(
           report.capacityData?.length
@@ -106,15 +138,38 @@ export default function ManagerReportsPage() {
         setProcessingTimeTrend(processingTimeData?.trendData ?? []);
         setProcessingTimeBoxPlot(processingTimeData?.boxPlotData ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load reports');
-        toast.error('Failed to load report data');
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load reports');
+          toast.error('Failed to load report data');
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setHasLoaded(true);
+        }
       }
     };
 
-    fetchData();
-  }, [startDate, endDate, granularity, processingTimeGranularity]);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchData();
+      }
+    };
+
+    void fetchData();
+    pollTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchData();
+      }
+    }, 30000);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [startDate, endDate, granularity, processingTimeGranularity, hasLoaded, toast]);
 
   // ====================== EXPORT CSV ======================
   const handleExportCSV = () => {
@@ -383,20 +438,148 @@ export default function ManagerReportsPage() {
         </div>
       </section>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Inbound Flow" value={stats.inbound} unit="units" />
-        <StatCard title="Outbound Flow" value={stats.outbound} unit="units" />
-        <StatCard title="Task Accuracy" value={`${stats.completion}%`} />
-        <StatCard 
-          title="Stock Discrepancy" 
-          value={stats.discrepancies} 
-          unit="items mismatched" 
-          isWarning={stats.discrepancies > 0} 
-        />
+      <div className="flex flex-wrap gap-2">
+        {[
+          ['summary', 'Summary'],
+          ['approvals', 'Approval Rate'],
+          ['outbound', 'Top Outbound Products'],
+          ['processing', 'Processing Time'],
+          ['contracts', 'Contract Risk'],
+          ['anomalies', 'Anomalies'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id as ReportTab)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
+              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Approval Rate by Manager - KPI Cards + Horizontal Bar Chart */}
+      {tab === 'summary' && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard title="Inbound Flow" value={stats.inbound} unit="units" />
+            <StatCard title="Outbound Flow" value={stats.outbound} unit="units" />
+            <StatCard title="Task Accuracy" value={`${stats.completion}%`} />
+            <StatCard title="Stock Discrepancy" value={stats.discrepancies} unit="items mismatched" isWarning={stats.discrepancies > 0} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={capacityData} innerRadius={80} outerRadius={100} paddingAngle={5} dataKey="value">
+                      {capacityData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
+              <div className="max-h-[28rem] overflow-y-auto pr-1">
+                <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={inventoryData} layout="vertical" margin={{ left: 20, right: 16 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                      <XAxis type="number" hide />
+                      <YAxis
+                        dataKey="name"
+                        type="category"
+                        width={170}
+                        stroke="#94a3b8"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={10}
+                      />
+                      <Tooltip cursor={{ fill: '#f8fafc' }} />
+                      <Bar dataKey="qty" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={22} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
+              Inbound / Outbound Trend {granularity === 'week' ? '(by week)' : '(by day)'}
+            </h3>
+            <div className="h-80">
+              {trendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      tickMargin={12}
+                      dy={6}
+                      interval={trendXAxisInterval}
+                      minTickGap={18}
+                      tickFormatter={formatTrendLabel}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      allowDecimals={false}
+                      tickMargin={10}
+                      width={40}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                      formatter={(value: number) => [value, '']}
+                      labelFormatter={(label) => `Period: ${formatTrendLabel(String(label))}`}
+                    />
+                    <Legend verticalAlign="top" height={36} />
+                    <Line
+                      type="monotone"
+                      dataKey="inbound"
+                      name="Inbound"
+                      stroke={INBOUND_COLOR}
+                      strokeWidth={2}
+                      dot={{ fill: INBOUND_COLOR, r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="outbound"
+                      name="Outbound"
+                      stroke={OUTBOUND_COLOR}
+                      strokeWidth={2}
+                      dot={{ fill: OUTBOUND_COLOR, r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+                  No trend data in this period
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === 'approvals' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Approval Rate by Manager
@@ -513,8 +696,9 @@ export default function ManagerReportsPage() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Top 10 Outbound Products - Horizontal Bar Chart + Detail Table */}
+      {tab === 'outbound' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Top 10 Outbound Products
@@ -526,39 +710,50 @@ export default function ManagerReportsPage() {
         {topOutboundProducts.length > 0 ? (
           <>
             {/* Horizontal Bar Chart */}
-            <div className="h-[320px] min-h-[200px] mb-8">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={topOutboundProducts}
-                  layout="vertical"
-                  margin={{ left: 12, right: 24, top: 8, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <YAxis
-                    dataKey="itemName"
-                    type="category"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    width={140}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                    formatter={(value: any) => [value, 'Total quantity']}
-                    labelFormatter={(label: string) => `Product: ${label}`}
-                  />
-                  <Bar
-                    dataKey="totalQuantity"
-                    name="totalQuantity"
-                    fill={OUTBOUND_TOP_COLOR}
-                    radius={[0, 4, 4, 0]}
-                    barSize={24}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+              <div style={{ height: `${outboundChartHeight}px` }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={topOutboundProducts}
+                    layout="vertical"
+                    margin={{ left: 8, right: 24, top: 6, bottom: 6 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                    <XAxis
+                      type="number"
+                      stroke="#94a3b8"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      allowDecimals={false}
+                      tickMargin={8}
+                    />
+                    <YAxis
+                      dataKey="itemName"
+                      type="category"
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      width={170}
+                      tickMargin={8}
+                    />
+                    <Tooltip
+                      cursor={{ fill: '#f8fafc' }}
+                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                      formatter={(value: any) => [value, 'Total quantity']}
+                      labelFormatter={(label: string) => `Product: ${label}`}
+                    />
+                    <Bar
+                      dataKey="totalQuantity"
+                      name="Total quantity"
+                      fill={OUTBOUND_TOP_COLOR}
+                      radius={[0, 6, 6, 0]}
+                      barSize={16}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
             {/* Detail Table */}
@@ -567,35 +762,39 @@ export default function ManagerReportsPage() {
                 Detail Table
               </h4>
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[720px] text-sm">
                   <thead>
                     <tr className="bg-slate-50 text-left text-slate-500 font-bold border-b border-slate-200">
-                      <th className="pb-3 pt-3 px-4">Rank</th>
-                      <th className="pb-3 pt-3 px-4">Product name</th>
-                      <th className="pb-3 pt-3 px-4 text-right">Total quantity</th>
-                      <th className="pb-3 pt-3 px-4 text-right">Outbound count</th>
-                      <th className="pb-3 pt-3 px-4">Unit</th>
+                      <th className="py-3 px-4 w-20">Rank</th>
+                      <th className="py-3 px-4">Product name</th>
+                      <th className="py-3 px-4 text-right w-44">Total quantity</th>
+                      <th className="py-3 px-4 text-right w-44">Outbound count</th>
+                      <th className="py-3 px-4 w-24">Unit</th>
                     </tr>
                   </thead>
                   <tbody>
                     {topOutboundProducts.map((p) => (
                       <tr
                         key={`${p.itemName}-${p.rank}`}
-                        className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors"
+                        className="border-b border-slate-100 last:border-0 odd:bg-white even:bg-slate-50/40 hover:bg-slate-50 transition-colors"
                       >
-                        <td className="py-3 px-4">
+                        <td className="py-2.5 px-4">
                           <span className="inline-flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs">
                             {p.rank}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-medium text-slate-900">{p.itemName}</td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">
-                          {p.totalQuantity.toLocaleString()}
+                        <td className="py-2.5 px-4 font-medium text-slate-900">
+                          <span className="line-clamp-1">{p.itemName}</span>
                         </td>
-                        <td className="py-3 px-4 text-right text-slate-600">
+                        <td className="py-2.5 px-4 text-right">
+                          <span className="inline-flex items-center justify-end rounded-lg bg-sky-50 px-2.5 py-1 font-bold text-sky-700">
+                            {p.totalQuantity.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right text-slate-700 font-semibold">
                           {p.outboundCount} shipments
                         </td>
-                        <td className="py-3 px-4 text-slate-500">{p.unit}</td>
+                        <td className="py-2.5 px-4 text-slate-500">{p.unit}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -609,8 +808,9 @@ export default function ManagerReportsPage() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Average Processing Time - Line Chart + Box Plot */}
+      {tab === 'processing' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
           Average Processing Time
@@ -648,30 +848,36 @@ export default function ManagerReportsPage() {
                 <div className="h-72">
                   {processingTimeTrend.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={processingTimeTrend} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                      <LineChart data={processingTimeTrend} margin={{ top: 8, right: 16, left: 8, bottom: 26 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis
                           dataKey="period"
                           stroke="#94a3b8"
                           fontSize={11}
                           tickLine={false}
-                          axisLine={false}
-                          interval="preserveStartEnd"
+                          axisLine={{ stroke: '#cbd5e1' }}
+                          interval={processingTrendXAxisInterval}
+                          minTickGap={18}
+                          tickMargin={12}
+                          dy={6}
+                          tickFormatter={formatProcessingPeriodLabel}
                         />
                         <YAxis
                           stroke="#94a3b8"
                           fontSize={11}
                           tickLine={false}
-                          axisLine={false}
+                          axisLine={{ stroke: '#cbd5e1' }}
                           allowDecimals
-                          unit="h"
+                          tickMargin={10}
+                          width={44}
+                          tickFormatter={(v) => `${Number(v).toFixed(1)}h`}
                         />
                         <Tooltip
                           contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                           formatter={(value: any) => [`${(value as number).toFixed(2)} h`, '']}
-                          labelFormatter={(label: string) => `Period: ${label}`}
+                          labelFormatter={(label: string) => `Period: ${formatProcessingPeriodLabel(label)}`}
                         />
-                        <Legend verticalAlign="top" height={36} />
+                        <Legend verticalAlign="top" height={36} wrapperStyle={{ paddingBottom: 8 }} />
                         <Line
                           type="monotone"
                           dataKey="inboundAvgHours"
@@ -715,99 +921,9 @@ export default function ManagerReportsPage() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Pie Chart - Space Utilization */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={capacityData} innerRadius={80} outerRadius={100} paddingAngle={5} dataKey="value">
-                  {capacityData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" height={36} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Bar Chart - Stock by Category */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={inventoryData} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="qty" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={32} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* Inbound/Outbound Trend - Line Chart */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
-          Inbound / Outbound Trend {granularity === 'week' ? '(by week)' : '(by day)'}
-        </h3>
-        <div className="h-80">
-          {trendData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="date"
-                  stroke="#94a3b8"
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                  formatter={(value: number) => [value, '']}
-                  labelFormatter={(label) => `Period: ${label}`}
-                />
-                <Legend verticalAlign="top" height={36} />
-                <Line
-                  type="monotone"
-                  dataKey="inbound"
-                  name="Inbound"
-                  stroke={INBOUND_COLOR}
-                  strokeWidth={2}
-                  dot={{ fill: INBOUND_COLOR, r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="outbound"
-                  name="Outbound"
-                  stroke={OUTBOUND_COLOR}
-                  strokeWidth={2}
-                  dot={{ fill: OUTBOUND_COLOR, r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
-              No trend data in this period
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Expiring contracts & capacity risk */}
-      {expiringAndCapacity && (
+      {tab === 'contracts' && expiringAndCapacity && (
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
             Contracts expiring & capacity risk
@@ -840,7 +956,7 @@ export default function ManagerReportsPage() {
         </div>
       )}
 
-      {/* Anomaly detection */}
+      {tab === 'anomalies' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
           Anomaly Detection
@@ -879,6 +995,7 @@ export default function ManagerReportsPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -914,80 +1031,94 @@ function BoxPlotChart({ data }: { data: ProcessingTimeBoxPlotItem[] }) {
   const maxVal = allValues.length > 0 ? Math.max(...allValues, 0) : 1;
   const padding = maxVal * 0.05 || 1;
   const scaleMax = Math.max(maxVal + padding, 1);
-  const boxWidth = 220;
-
-  const toX = (hours: number) => (hours / scaleMax) * boxWidth;
+  const toPercent = (hours: number) => (hours / scaleMax) * 100;
 
   return (
-    <div className="h-64">
-      <div className="flex flex-col gap-4">
+    <div className="space-y-4">
         {data.map((d) => {
           if (d.count === 0) return null;
           const fill = d.type === 'IN' ? INBOUND_COLOR : OUTBOUND_COLOR;
           const label = d.type === 'IN' ? 'Inbound' : 'Outbound';
-          const xMin = toX(d.min);
-          const xQ1 = toX(d.q1);
-          const xMedian = toX(d.median);
-          const xQ3 = toX(d.q3);
-          const xMax = toX(d.max);
+          const xMin = toPercent(d.min);
+          const xQ1 = toPercent(d.q1);
+          const xMedian = toPercent(d.median);
+          const xQ3 = toPercent(d.q3);
+          const xMax = toPercent(d.max);
 
           return (
-            <div key={d.type}>
-              <div className="text-xs font-bold text-slate-500 mb-2">
-                {label} (n={d.count}, avg={d.avgHours.toFixed(1)}h)
-              </div>
-              <div className="relative h-12" style={{ width: boxWidth + 40 }}>
-                {/* axis */}
-                <div className="absolute -bottom-5 left-0 right-0 flex justify-between text-[10px] text-slate-400 font-medium">
-                  <span>0h</span>
-                  <span>{scaleMax.toFixed(0)}h</span>
+            <div key={d.type} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-sm font-bold text-slate-800">
+                  {label}
+                  <span className="ml-2 text-xs text-slate-500 font-medium">(n={d.count})</span>
                 </div>
+                <div className="text-xs font-semibold text-slate-600">Avg: {d.avgHours.toFixed(1)}h</div>
+              </div>
+
+              <div className="relative h-12 rounded-xl bg-white px-2">
+                {/* baseline */}
+                <div className="absolute left-2 right-2 top-1/2 h-px -translate-y-1/2 bg-slate-200" />
+                {/* grid markers */}
+                {[0, 25, 50, 75, 100].map((tick) => (
+                  <div
+                    key={`${d.type}-${tick}`}
+                    className="absolute top-2 bottom-2 w-px bg-slate-100"
+                    style={{ left: `calc(${tick}% + 0.5rem)` }}
+                  />
+                ))}
+
                 {/* whisker min-Q1 */}
                 <div
                   className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-slate-300"
-                  style={{ left: xMin, width: Math.max(xQ1 - xMin, 0) }}
+                  style={{ left: `calc(${xMin}% + 0.5rem)`, width: `max(calc(${xQ1 - xMin}% - 1px), 0px)` }}
                 />
                 {/* box Q1-Q3 */}
                 <div
-                  className="absolute top-2 bottom-2 rounded-sm opacity-80"
+                  className="absolute top-2 bottom-2 rounded-md"
                   style={{
-                    left: xQ1,
-                    width: Math.max(xQ3 - xQ1, 2),
+                    left: `calc(${xQ1}% + 0.5rem)`,
+                    width: `max(calc(${xQ3 - xQ1}% - 1px), 2px)`,
                     backgroundColor: fill,
+                    opacity: 0.85,
                   }}
                 />
                 {/* median */}
                 <div
-                  className="absolute top-1 bottom-1 w-0.5 bg-slate-900"
-                  style={{ left: xMedian }}
+                  className="absolute top-1 bottom-1 w-0.5 rounded-full bg-slate-900"
+                  style={{ left: `calc(${xMedian}% + 0.5rem)` }}
                 />
                 {/* whisker Q3-max */}
                 <div
                   className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-slate-300"
-                  style={{ left: xQ3, width: Math.max(xMax - xQ3, 0) }}
+                  style={{ left: `calc(${xQ3}% + 0.5rem)`, width: `max(calc(${xMax - xQ3}% - 1px), 0px)` }}
                 />
                 {/* caps */}
                 <div
-                  className="absolute top-1/2 w-1 h-3 -translate-y-1/2 -translate-x-1/2 bg-slate-400 rounded-sm"
-                  style={{ left: xMin }}
+                  className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-slate-400"
+                  style={{ left: `calc(${xMin}% + 0.5rem)` }}
                 />
                 <div
-                  className="absolute top-1/2 w-1 h-3 -translate-y-1/2 translate-x-1/2 bg-slate-400 rounded-sm"
-                  style={{ left: xMax }}
+                  className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 rounded-full bg-slate-400"
+                  style={{ left: `calc(${xMax}% + 0.5rem)` }}
                 />
               </div>
-              <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-500">
-                <span>Min: {d.min.toFixed(1)}h</span>
-                <span>Q1: {d.q1.toFixed(1)}h</span>
-                <span>Med: {d.median.toFixed(1)}h</span>
-                <span>Q3: {d.q3.toFixed(1)}h</span>
-                <span>Max: {d.max.toFixed(1)}h</span>
+
+              <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
+                <span>0h</span>
+                <span>{scaleMax.toFixed(0)}h</span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-600 sm:grid-cols-5">
+                <div className="rounded-md bg-white px-2 py-1">Min: {d.min.toFixed(1)}h</div>
+                <div className="rounded-md bg-white px-2 py-1">Q1: {d.q1.toFixed(1)}h</div>
+                <div className="rounded-md bg-white px-2 py-1">Median: {d.median.toFixed(1)}h</div>
+                <div className="rounded-md bg-white px-2 py-1">Q3: {d.q3.toFixed(1)}h</div>
+                <div className="rounded-md bg-white px-2 py-1">Max: {d.max.toFixed(1)}h</div>
               </div>
             </div>
           );
         })}
       </div>
-    </div>
   );
 }
 
