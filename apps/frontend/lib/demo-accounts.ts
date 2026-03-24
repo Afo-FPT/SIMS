@@ -16,7 +16,7 @@ export interface DemoAccount {
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     email: 'admin@sims.ai',
-    password: '123456',
+    password: 'Admin@123',
     role: 'ADMIN',
     name: 'John Doe',
     avatar: 'https://picsum.photos/seed/admin/100/100',

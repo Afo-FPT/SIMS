@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
+import { AiChatWidget } from '../components/AiChatWidget';
 import { Persona, User } from '../types';
 import { useToastHelpers } from './toast';
 
@@ -205,6 +206,7 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
           </div>
         </main>
       </div>
+      <AiChatWidget />
     </div>
   );
 }

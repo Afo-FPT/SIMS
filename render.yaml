@@ -37,6 +37,11 @@ services:
         sync: false
       - key: VNPAY_URL
         sync: false
+      # SIMS Assistant (Gemini) — server-side only
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
 
   - type: web
     name: sims-frontend
@@ -50,8 +55,5 @@ services:
         value: production
       # Point this to the backend public URL + /api after backend is created
       - key: NEXT_PUBLIC_API_URL
-        sync: false
-      # Optional - used by Next build/runtime
-      - key: GEMINI_API_KEY
         sync: false
 

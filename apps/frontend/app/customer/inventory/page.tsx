@@ -225,8 +225,8 @@ export default function CustomerInventoryPage() {
       </section>
 
       {filtered.length > 0 && (
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <p className="text-sm text-slate-500">
+        <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
+          <p className="text-sm text-slate-500 whitespace-nowrap">
             Showing{' '}
             <span className="font-bold text-slate-700">
               {Math.min((page - 1) * PAGE_SIZE + 1, filtered.length)}
