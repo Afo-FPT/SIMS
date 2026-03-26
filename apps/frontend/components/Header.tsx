@@ -149,15 +149,6 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
       </div>
 
       <div className="flex items-center gap-5">
-        <div className="relative group hidden md:flex items-center">
-          <span className="material-symbols-outlined absolute left-4 text-slate-400 text-lg">search</span>
-          <input
-            className="pl-11 pr-4 py-2.5 bg-slate-100/50 border border-slate-200/50 rounded-2xl text-xs w-80 focus:ring-4 focus:ring-primary/5 focus:border-primary/50 focus:bg-white transition-all outline-none font-medium"
-            placeholder="Search SKUs, orders, or logs..."
-            type="text"
-          />
-        </div>
-
         <div className="flex items-center gap-2">
           <button
             type="button"

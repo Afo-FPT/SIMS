@@ -120,6 +120,24 @@ export async function updateWarehouse(
   return mapBackendWarehouseToManagerWarehouse(backend as BackendWarehouseResponse);
 }
 
+export async function updateWarehouseStatus(
+  warehouseId: string,
+  status: 'ACTIVE' | 'INACTIVE',
+): Promise<ManagerWarehouse> {
+  const res = await apiJson<{ message?: string; data?: BackendWarehouseResponse } | BackendWarehouseResponse>(
+    `/warehouses/${warehouseId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    },
+  );
+  const backend = (res as any).warehouse_id ? (res as any) : (res as any).data;
+  if (!backend) {
+    throw new Error('Invalid response while updating warehouse status');
+  }
+  return mapBackendWarehouseToManagerWarehouse(backend as BackendWarehouseResponse);
+}
+
 // --- Zones (within warehouse) ---
 
 export interface ManagerZoneOption {
@@ -247,6 +265,11 @@ function mapBackendShelfToShelf(s: BackendShelfResponse, zoneDisplay?: string): 
     status: s.status === 'RENTED' ? 'Occupied' : 'Available',
     contractId: undefined,
     contractCode: undefined,
+    tierCount: s.tier_count,
+    tierDimensions: s.tier_dimensions ?? [],
+    width: s.width,
+    depth: s.depth,
+    maxCapacity: s.max_capacity,
   };
 }
 
@@ -291,6 +314,38 @@ export async function updateShelfStatus(
   if (!backend) {
     throw new Error('Invalid response while updating shelf status');
   }
+  return mapBackendShelfToShelf(backend as BackendShelfResponse);
+}
+
+export async function updateShelfInfo(
+  shelfId: string,
+  payload: {
+    shelfCode: string;
+    tierCount: number;
+    tierDimensions: Array<{ height: number; width: number; depth: number }>;
+    status?: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+  },
+): Promise<Shelf> {
+  const body: any = {
+    shelfCode: payload.shelfCode,
+    tierCount: payload.tierCount,
+    tierDimensions: payload.tierDimensions,
+  };
+  if (payload.status) body.status = payload.status;
+
+  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(
+    `/shelves/${shelfId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    },
+  );
+
+  const backend = (res as any).shelf_id ? (res as any) : (res as any).data;
+  if (!backend) {
+    throw new Error('Invalid response while updating shelf info');
+  }
+
   return mapBackendShelfToShelf(backend as BackendShelfResponse);
 }
 
@@ -629,6 +684,11 @@ export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf
     status: s.contract_code ? 'Occupied' : (s.status === 'RENTED' ? 'Occupied' : 'Available'),
     contractId: s.contract_id ?? undefined,
     contractCode: s.contract_code ?? undefined,
+    tierCount: s.tier_count ?? s.tierCount ?? undefined,
+    tierDimensions: s.tier_dimensions ?? s.tierDimensions ?? [],
+    width: s.width ?? undefined,
+    depth: s.depth ?? undefined,
+    maxCapacity: s.max_capacity ?? s.maxCapacity ?? undefined,
   })) as Shelf[];
 }
 

@@ -1,21 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  Legend,
-  LineChart,
-  Line,
-} from 'recharts';
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJSCore,
+  Legend as ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip as ChartTooltip,
+} from 'chart.js';
+import { Pie, Line, Bar } from 'react-chartjs-2';
 
 import {
   getManagerReport,
@@ -49,6 +47,17 @@ const OUTBOUND_TOP_COLOR = '#0ea5e9';
 const GANTT_COLORS = ['#0ea5e9', '#6366f1', '#22c55e', '#f59e0b', '#14b8a6'];
 type ReportTab = 'summary' | 'approvals' | 'outbound' | 'processing' | 'contracts' | 'anomalies';
 
+ChartJSCore.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  ChartTooltip,
+);
+
 export default function ManagerReportsPage() {
   const toast = useToastHelpers();
   const [loading, setLoading] = useState(true);
@@ -77,7 +86,10 @@ export default function ManagerReportsPage() {
   const [processingTimeGranularity, setProcessingTimeGranularity] = useState<'week' | 'month'>('week');
   const [tab, setTab] = useState<ReportTab>('summary');
   const stockChartHeight = Math.max(288, inventoryData.length * 44);
-  const outboundChartHeight = Math.max(220, topOutboundProducts.length * 42);
+  // Keep stable height to avoid reflow / label jump during polling
+  const outboundChartHeight = Math.max(220, 10 * 42);
+  const topOutboundProductsSignatureRef = useRef<string>('');
+  const topOutboundOrderRef = useRef<string[]>([]);
   const trendXAxisInterval = granularity === 'day' ? Math.max(0, Math.ceil(trendData.length / 8) - 1) : 'preserveStartEnd';
   const processingTrendXAxisInterval =
     processingTimeGranularity === 'week'
@@ -101,6 +113,118 @@ export default function ManagerReportsPage() {
     }
     return value.replace(/\s+/g, ' ');
   };
+
+  const normalizeTopOutboundProducts = (list: TopOutboundProductItem[]): TopOutboundProductItem[] => {
+    const incoming = Array.isArray(list) ? list : [];
+    const keyOf = (p: TopOutboundProductItem) => String(p.itemName ?? '').trim();
+
+    const byKey = new Map<string, TopOutboundProductItem>();
+    for (const p of incoming) {
+      const k = keyOf(p);
+      if (!k) continue;
+      byKey.set(k, p);
+    }
+
+    // Initialize stable order (deterministic) on first load
+    if (topOutboundOrderRef.current.length === 0) {
+      topOutboundOrderRef.current = [...byKey.values()]
+        .slice()
+        .sort((a, b) => {
+          const aq = Number(a.totalQuantity) || 0;
+          const bq = Number(b.totalQuantity) || 0;
+          if (bq !== aq) return bq - aq;
+          return String(a.itemName).localeCompare(String(b.itemName));
+        })
+        .slice(0, 10)
+        .map((p) => keyOf(p));
+    } else {
+      const nextOrder: string[] = [];
+      const existing = topOutboundOrderRef.current;
+      for (const k of existing) {
+        if (byKey.has(k)) nextOrder.push(k);
+      }
+      for (const k of byKey.keys()) {
+        if (!nextOrder.includes(k)) nextOrder.push(k);
+      }
+      topOutboundOrderRef.current = nextOrder.slice(0, 10);
+    }
+
+    // Stable "rank" based on stable order position
+    return topOutboundOrderRef.current
+      .map((k, idx) => {
+        const p = byKey.get(k);
+        if (!p) return null;
+        return { ...p, rank: idx + 1 };
+      })
+      .filter(Boolean) as TopOutboundProductItem[];
+  };
+
+  const stockByCategoryData = useMemo(() => {
+    return {
+      labels: inventoryData.map((d) => d.name),
+      datasets: [
+        {
+          label: 'Quantity',
+          data: inventoryData.map((d) => d.qty),
+          backgroundColor: '#6366f1',
+        },
+      ],
+    };
+  }, [inventoryData]);
+
+  const stockByCategoryOptions = useMemo(() => {
+    return {
+      animation: false as const,
+      responsiveAnimationDuration: 0,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      indexAxis: 'y' as const,
+      scales: {
+        x: { beginAtZero: true },
+        y: {
+          ticks: {
+            font: { size: 12 },
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+          },
+        },
+      },
+    };
+  }, []);
+
+  const topOutboundProductsBarData = useMemo(() => {
+    return {
+      labels: topOutboundProducts.map((d) => d.itemName),
+      datasets: [
+        {
+          label: 'Total quantity',
+          data: topOutboundProducts.map((d) => d.totalQuantity),
+          backgroundColor: OUTBOUND_TOP_COLOR,
+        },
+      ],
+    };
+  }, [topOutboundProducts]);
+
+  const topOutboundProductsBarOptions = useMemo(() => {
+    return {
+      animation: false as const,
+      responsiveAnimationDuration: 0,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      indexAxis: 'y' as const,
+      scales: {
+        x: { beginAtZero: true },
+        y: {
+          ticks: {
+            autoSkip: false,
+            maxRotation: 0,
+            minRotation: 0,
+          },
+        },
+      },
+    };
+  }, []);
 
   useEffect(() => {
     let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -129,12 +253,21 @@ export default function ManagerReportsPage() {
                 { name: 'Empty', value: 100 },
               ],
         );
-        setInventoryData(report.inventoryData ?? []);
+        setInventoryData(
+          (report.inventoryData ?? []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
+        );
         setTrendData(report.trendData ?? []);
         setAnomalies(report.anomalies ?? []);
         setExpiringAndCapacity(report.expiringAndCapacity ?? null);
         setApprovalByManager(approvalData ?? []);
-        setTopOutboundProducts(topOutboundData ?? []);
+        const nextTopOutbound = normalizeTopOutboundProducts(topOutboundData ?? []);
+        const signature = nextTopOutbound
+          .map((d) => `${d.itemName}|${d.totalQuantity}|${d.outboundCount}|${d.unit}`)
+          .join('~');
+        if (topOutboundProductsSignatureRef.current !== signature) {
+          topOutboundProductsSignatureRef.current = signature;
+          setTopOutboundProducts(nextTopOutbound);
+        }
         setProcessingTimeTrend(processingTimeData?.trendData ?? []);
         setProcessingTimeBoxPlot(processingTimeData?.boxPlotData ?? []);
       } catch (err) {
@@ -472,17 +605,21 @@ export default function ManagerReportsPage() {
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
               <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={capacityData} innerRadius={80} outerRadius={100} paddingAngle={5} dataKey="value">
-                      {capacityData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                    <Legend verticalAlign="bottom" height={36} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <Pie
+                  data={{
+                    labels: capacityData.map((d) => d.name),
+                    datasets: [
+                      {
+                        data: capacityData.map((d) => d.value),
+                        backgroundColor: capacityData.map((_, i) => COLORS[i % COLORS.length]),
+                      },
+                    ],
+                  }}
+                  options={{
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                  }}
+                />
               </div>
             </div>
 
@@ -490,24 +627,10 @@ export default function ManagerReportsPage() {
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
               <div className="max-h-[28rem] overflow-y-auto pr-1">
                 <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={inventoryData} layout="vertical" margin={{ left: 20, right: 16 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                      <XAxis type="number" hide />
-                      <YAxis
-                        dataKey="name"
-                        type="category"
-                        width={170}
-                        stroke="#94a3b8"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={10}
-                      />
-                      <Tooltip cursor={{ fill: '#f8fafc' }} />
-                      <Bar dataKey="qty" fill="#6366f1" radius={[0, 8, 8, 0]} barSize={22} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <Bar
+                    data={stockByCategoryData}
+                    options={stockByCategoryOptions}
+                  />
                 </div>
               </div>
             </div>
@@ -519,56 +642,35 @@ export default function ManagerReportsPage() {
             </h3>
             <div className="h-80">
               {trendData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 28 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#94a3b8"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={{ stroke: '#cbd5e1' }}
-                      tickMargin={12}
-                      dy={6}
-                      interval={trendXAxisInterval}
-                      minTickGap={18}
-                      tickFormatter={formatTrendLabel}
-                    />
-                    <YAxis
-                      stroke="#94a3b8"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={{ stroke: '#cbd5e1' }}
-                      allowDecimals={false}
-                      tickMargin={10}
-                      width={40}
-                    />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                      formatter={(value: number) => [value, '']}
-                      labelFormatter={(label) => `Period: ${formatTrendLabel(String(label))}`}
-                    />
-                    <Legend verticalAlign="top" height={36} />
-                    <Line
-                      type="monotone"
-                      dataKey="inbound"
-                      name="Inbound"
-                      stroke={INBOUND_COLOR}
-                      strokeWidth={2}
-                      dot={{ fill: INBOUND_COLOR, r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="outbound"
-                      name="Outbound"
-                      stroke={OUTBOUND_COLOR}
-                      strokeWidth={2}
-                      dot={{ fill: OUTBOUND_COLOR, r: 4 }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
+                <Line
+                  data={{
+                    labels: trendData.map((d) => d.date),
+                    datasets: [
+                      {
+                        label: 'Inbound',
+                        data: trendData.map((d) => d.inbound),
+                        borderColor: INBOUND_COLOR,
+                        backgroundColor: INBOUND_COLOR,
+                        tension: 0.3,
+                      },
+                      {
+                        label: 'Outbound',
+                        data: trendData.map((d) => d.outbound),
+                        borderColor: OUTBOUND_COLOR,
+                        backgroundColor: OUTBOUND_COLOR,
+                        tension: 0.3,
+                      },
+                    ],
+                  }}
+                  options={{
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                      x: { ticks: { maxTicksLimit: 10 } },
+                      y: { beginAtZero: true },
+                    },
+                  }}
+                />
               ) : (
                 <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
                   No trend data in this period
@@ -625,38 +727,34 @@ export default function ManagerReportsPage() {
 
             {/* Horizontal Bar Chart - by Manager */}
             <div className="h-[400px] min-h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={approvalByManager}
-                  layout="vertical"
-                  margin={{ left: 12, right: 24, top: 8, bottom: 8 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <YAxis
-                    dataKey="managerName"
-                    type="category"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    width={120}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#f8fafc' }}
-                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                    formatter={(value: any, name: any) => [value, name === 'totalApproved' ? 'Approved' : 'Rejected']}
-                    labelFormatter={(label: string) => `Manager: ${label}`}
-                  />
-                  <Legend
-                    verticalAlign="top"
-                    height={36}
-                    formatter={(value: any) => (value === 'totalApproved' ? 'Approved' : 'Rejected')}
-                  />
-                  <Bar dataKey="totalApproved" name="totalApproved" fill={APPROVED_COLOR} radius={[0, 4, 4, 0]} barSize={20} stackId="a" />
-                  <Bar dataKey="totalRejected" name="totalRejected" fill={REJECTED_COLOR} radius={[0, 4, 4, 0]} barSize={20} stackId="a" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bar
+                data={{
+                  labels: approvalByManager.map((d) => d.managerName),
+                  datasets: [
+                    {
+                      label: 'Approved',
+                      data: approvalByManager.map((d) => d.totalApproved),
+                      backgroundColor: APPROVED_COLOR,
+                      stack: 'a',
+                    },
+                    {
+                      label: 'Rejected',
+                      data: approvalByManager.map((d) => d.totalRejected),
+                      backgroundColor: REJECTED_COLOR,
+                      stack: 'a',
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  indexAxis: 'y',
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: {
+                    x: { stacked: true, beginAtZero: true },
+                    y: { stacked: true },
+                  },
+                }}
+              />
             </div>
 
             {/* Summary table */}
@@ -712,47 +810,10 @@ export default function ManagerReportsPage() {
             {/* Horizontal Bar Chart */}
             <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
               <div style={{ height: `${outboundChartHeight}px` }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={topOutboundProducts}
-                    layout="vertical"
-                    margin={{ left: 8, right: 24, top: 6, bottom: 6 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                    <XAxis
-                      type="number"
-                      stroke="#94a3b8"
-                      fontSize={11}
-                      tickLine={false}
-                      axisLine={false}
-                      allowDecimals={false}
-                      tickMargin={8}
-                    />
-                    <YAxis
-                      dataKey="itemName"
-                      type="category"
-                      stroke="#94a3b8"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      width={170}
-                      tickMargin={8}
-                    />
-                    <Tooltip
-                      cursor={{ fill: '#f8fafc' }}
-                      contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                      formatter={(value: any) => [value, 'Total quantity']}
-                      labelFormatter={(label: string) => `Product: ${label}`}
-                    />
-                    <Bar
-                      dataKey="totalQuantity"
-                      name="Total quantity"
-                      fill={OUTBOUND_TOP_COLOR}
-                      radius={[0, 6, 6, 0]}
-                      barSize={16}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
+                <Bar
+                  data={topOutboundProductsBarData}
+                  options={topOutboundProductsBarOptions}
+                />
               </div>
             </div>
 
@@ -775,7 +836,7 @@ export default function ManagerReportsPage() {
                   <tbody>
                     {topOutboundProducts.map((p) => (
                       <tr
-                        key={`${p.itemName}-${p.rank}`}
+                        key={p.itemName}
                         className="border-b border-slate-100 last:border-0 odd:bg-white even:bg-slate-50/40 hover:bg-slate-50 transition-colors"
                       >
                         <td className="py-2.5 px-4">
@@ -847,57 +908,32 @@ export default function ManagerReportsPage() {
                 </h4>
                 <div className="h-72">
                   {processingTimeTrend.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={processingTimeTrend} margin={{ top: 8, right: 16, left: 8, bottom: 26 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis
-                          dataKey="period"
-                          stroke="#94a3b8"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={{ stroke: '#cbd5e1' }}
-                          interval={processingTrendXAxisInterval}
-                          minTickGap={18}
-                          tickMargin={12}
-                          dy={6}
-                          tickFormatter={formatProcessingPeriodLabel}
-                        />
-                        <YAxis
-                          stroke="#94a3b8"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={{ stroke: '#cbd5e1' }}
-                          allowDecimals
-                          tickMargin={10}
-                          width={44}
-                          tickFormatter={(v) => `${Number(v).toFixed(1)}h`}
-                        />
-                        <Tooltip
-                          contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
-                          formatter={(value: any) => [`${(value as number).toFixed(2)} h`, '']}
-                          labelFormatter={(label: string) => `Period: ${formatProcessingPeriodLabel(label)}`}
-                        />
-                        <Legend verticalAlign="top" height={36} wrapperStyle={{ paddingBottom: 8 }} />
-                        <Line
-                          type="monotone"
-                          dataKey="inboundAvgHours"
-                          name="Inbound (avg hours)"
-                          stroke={INBOUND_COLOR}
-                          strokeWidth={2}
-                          dot={{ fill: INBOUND_COLOR, r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="outboundAvgHours"
-                          name="Outbound (avg hours)"
-                          stroke={OUTBOUND_COLOR}
-                          strokeWidth={2}
-                          dot={{ fill: OUTBOUND_COLOR, r: 4 }}
-                          activeDot={{ r: 6 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <Line
+                      data={{
+                        labels: processingTimeTrend.map((d) => d.period),
+                        datasets: [
+                          {
+                            label: 'Inbound (avg hours)',
+                            data: processingTimeTrend.map((d) => d.inboundAvgHours),
+                            borderColor: INBOUND_COLOR,
+                            backgroundColor: INBOUND_COLOR,
+                            tension: 0.3,
+                          },
+                          {
+                            label: 'Outbound (avg hours)',
+                            data: processingTimeTrend.map((d) => d.outboundAvgHours),
+                            borderColor: OUTBOUND_COLOR,
+                            backgroundColor: OUTBOUND_COLOR,
+                            tension: 0.3,
+                          },
+                        ],
+                      }}
+                      options={{
+                        maintainAspectRatio: false,
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { x: { ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true } },
+                      }}
+                    />
                   ) : (
                     <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
                       No trend data in this period

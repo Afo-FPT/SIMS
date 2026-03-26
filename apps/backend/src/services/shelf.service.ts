@@ -57,6 +57,15 @@ export interface WarehouseShelfViewDTO extends ShelfViewDTO {
   warehouse_id: string;
   contract_id?: string;
   contract_code?: string;
+  tier_count: number;
+  tier_dimensions: Array<{
+    height: number;
+    width: number;
+    depth: number;
+  }>;
+  width: number;
+  depth: number;
+  max_capacity: number;
 }
 
 export async function listShelvesByWarehouse(
@@ -77,7 +86,7 @@ export async function listShelvesByWarehouse(
   const zoneCodeById = new Map(zones.map((z: any) => [z._id.toString(), z.zoneCode]));
 
   const shelves = await Shelf.find({ zoneId: { $in: zoneIds } })
-    .select("_id shelfCode status zoneId")
+    .select("_id shelfCode status zoneId tierCount tierDimensions width depth maxCapacity")
     .sort({ shelfCode: 1 })
     .lean();
 
@@ -124,9 +133,29 @@ export async function listShelvesByWarehouse(
       zone_code: zid ? zoneCodeById.get(String(zid)) : undefined,
       status: s.status,
       contract_id: assigned?.contract_id,
-      contract_code: assigned?.contract_code
+      contract_code: assigned?.contract_code,
+      tier_count: s.tierCount,
+      tier_dimensions: (s.tierDimensions || []).map((t: any) => ({
+        height: t.height,
+        width: t.width,
+        depth: t.depth,
+      })),
+      width: s.width,
+      depth: s.depth,
+      max_capacity: s.maxCapacity,
     } satisfies WarehouseShelfViewDTO;
   });
+}
+
+export interface UpdateShelfInfoRequest {
+  shelfCode: string;
+  tierCount: number;
+  tierDimensions: Array<{
+    height: number;
+    width: number;
+    depth: number;
+  }>;
+  status?: "AVAILABLE" | "RENTED" | "MAINTENANCE";
 }
 
 export async function listAvailableShelvesByZone(
@@ -511,5 +540,76 @@ export async function updateRackStatus(
   }
 
   // Return response DTO
+  return mapShelfResponse(shelf);
+}
+
+/**
+ * Update shelf metadata (shelfCode + tier dimensions + derived capacity).
+ * Authorization: Manager only (enforced in route/middleware).
+ */
+export async function updateShelfInfo(
+  shelfId: string,
+  payload: UpdateShelfInfoRequest
+): Promise<ShelfResponse> {
+  // Validate shelf ID
+  if (!Types.ObjectId.isValid(shelfId)) {
+    throw new Error("Invalid shelf ID");
+  }
+
+  const nextShelfCode = payload.shelfCode?.trim();
+  if (!nextShelfCode) {
+    throw new Error("shelfCode is required");
+  }
+
+  if (!payload.tierCount || typeof payload.tierCount !== "number" || isNaN(payload.tierCount) || payload.tierCount < 1) {
+    throw new Error("tierCount must be a valid number >= 1");
+  }
+
+  if (!Array.isArray(payload.tierDimensions) || payload.tierDimensions.length === 0) {
+    throw new Error("tierDimensions is required and must not be empty");
+  }
+  if (payload.tierDimensions.length !== payload.tierCount) {
+    throw new Error("tierDimensions length must equal tierCount");
+  }
+
+  // Validate tierDimensions using existing validator
+  validateShelfItem({
+    shelfCode: nextShelfCode,
+    tierCount: payload.tierCount,
+    tierDimensions: payload.tierDimensions,
+  });
+
+  // Find shelf
+  const shelf = await Shelf.findById(shelfId);
+  if (!shelf) {
+    throw new Error("Shelf not found");
+  }
+
+  // Unique shelf code within the same zone (exclude current shelf)
+  const duplicated = await Shelf.findOne({
+    zoneId: shelf.zoneId,
+    shelfCode: nextShelfCode,
+    _id: { $ne: shelf._id },
+  });
+  if (duplicated) {
+    throw new Error("Shelf code already exists in this zone");
+  }
+
+  const normalizedTierDimensions = normalizeTierDimensions(payload.tierDimensions);
+  const { width, depth } = getRepresentativeWidthDepth(normalizedTierDimensions);
+  const maxCapacity = calculateShelfMaxCapacity(normalizedTierDimensions);
+
+  shelf.shelfCode = nextShelfCode;
+  shelf.tierCount = payload.tierCount;
+  shelf.tierDimensions = normalizedTierDimensions;
+  shelf.width = width;
+  shelf.depth = depth;
+  shelf.maxCapacity = maxCapacity;
+
+  if (payload.status) {
+    shelf.status = payload.status;
+  }
+
+  await shelf.save();
   return mapShelfResponse(shelf);
 }

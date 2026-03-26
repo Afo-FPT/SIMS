@@ -1,21 +1,19 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJSCore,
+  Legend as ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip as ChartTooltip,
+} from 'chart.js';
+import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { Input } from '../../../components/ui/Input';
@@ -23,6 +21,16 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+ChartJSCore.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  ChartTooltip,
+);
 type ReportTab = 'performance' | 'history' | 'discrepancy' | 'cycle' | 'workload';
 
 function dayKey(ts: string): string {
@@ -292,17 +300,28 @@ export default function StaffReportsPage() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={inOutPerDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="inbound" fill="#0ea5e9" />
-                <Bar dataKey="outbound" fill="#6366f1" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: inOutPerDay.map((d) => d.day),
+                datasets: [
+                  {
+                    label: 'Inbound',
+                    data: inOutPerDay.map((d) => d.inbound),
+                    backgroundColor: '#0ea5e9',
+                  },
+                  {
+                    label: 'Outbound',
+                    data: inOutPerDay.map((d) => d.outbound),
+                    backgroundColor: '#6366f1',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { x: { ticks: { autoSkip: false } }, y: { beginAtZero: true } },
+              }}
+            />
           </div>
           <div className="flex items-center justify-center">
             <div className="w-56">
@@ -322,29 +341,60 @@ export default function StaffReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-4">Personal Operation History Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={operationHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Line dataKey="totalOps" stroke="#0ea5e9" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
+            <Line
+              data={{
+                labels: operationHistory.map((d) => d.day),
+                datasets: [
+                  {
+                    label: 'Total operations',
+                    data: operationHistory.map((d) => d.totalOps),
+                    borderColor: '#0ea5e9',
+                    backgroundColor: '#0ea5e9',
+                    tension: 0.3,
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true } },
+              }}
+            />
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={operationHistory}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="day" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="inbound" stackId="a" fill="#0ea5e9" />
-                <Bar dataKey="outbound" stackId="a" fill="#6366f1" />
-                <Bar dataKey="cycle" stackId="a" fill="#22c55e" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: operationHistory.map((d) => d.day),
+                datasets: [
+                  {
+                    label: 'Inbound',
+                    data: operationHistory.map((d) => d.inbound),
+                    backgroundColor: '#0ea5e9',
+                    stack: 'ops',
+                  },
+                  {
+                    label: 'Outbound',
+                    data: operationHistory.map((d) => d.outbound),
+                    backgroundColor: '#6366f1',
+                    stack: 'ops',
+                  },
+                  {
+                    label: 'Cycle count',
+                    data: operationHistory.map((d) => d.cycle),
+                    backgroundColor: '#22c55e',
+                    stack: 'ops',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                  x: { stacked: true, ticks: { autoSkip: false } },
+                  y: { stacked: true, beginAtZero: true },
+                },
+              }}
+            />
           </div>
         </div>
       </section>
@@ -355,26 +405,40 @@ export default function StaffReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-4">Discrepancy & Issue Summary Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={discrepancySummary} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                  {discrepancySummary.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <Pie
+              data={{
+                labels: discrepancySummary.map((d) => d.name),
+                datasets: [
+                  {
+                    data: discrepancySummary.map((d) => d.value),
+                    backgroundColor: discrepancySummary.map((_, i) => COLORS[i % COLORS.length]),
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+              }}
+            />
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={discrepancySummary}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="value" fill="#f59e0b" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: discrepancySummary.map((d) => d.name),
+                datasets: [
+                  {
+                    label: 'Count',
+                    data: discrepancySummary.map((d) => d.value),
+                    backgroundColor: '#f59e0b',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true } },
+              }}
+            />
           </div>
         </div>
       </section>
@@ -385,17 +449,28 @@ export default function StaffReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-4">Cycle Count Execution Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cycleAccuracy}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="id" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="system" fill="#0ea5e9" />
-                <Bar dataKey="actual" fill="#22c55e" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: cycleAccuracy.map((d) => d.id),
+                datasets: [
+                  {
+                    label: 'System',
+                    data: cycleAccuracy.map((d) => d.system),
+                    backgroundColor: '#0ea5e9',
+                  },
+                  {
+                    label: 'Actual',
+                    data: cycleAccuracy.map((d) => d.actual),
+                    backgroundColor: '#22c55e',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true } },
+              }}
+            />
           </div>
           <div className="space-y-3">
             {cycleAccuracy.slice(0, 6).map((row) => (
@@ -419,28 +494,45 @@ export default function StaffReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-4">Task Workload Overview</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={taskTypeDistribution} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                  {taskTypeDistribution.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            <Pie
+              data={{
+                labels: taskTypeDistribution.map((d) => d.name),
+                datasets: [
+                  {
+                    data: taskTypeDistribution.map((d) => d.value),
+                    backgroundColor: taskTypeDistribution.map((_, i) => COLORS[i % COLORS.length]),
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+              }}
+            />
           </div>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={workloadByStatus}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="status" />
-                <YAxis allowDecimals={false} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="requests" fill="#0ea5e9" name="Storage requests" />
-                <Bar dataKey="cycleCounts" fill="#22c55e" name="Cycle counts" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: workloadByStatus.map((d) => d.status),
+                datasets: [
+                  {
+                    label: 'Storage requests',
+                    data: workloadByStatus.map((d) => d.requests),
+                    backgroundColor: '#0ea5e9',
+                  },
+                  {
+                    label: 'Cycle counts',
+                    data: workloadByStatus.map((d) => d.cycleCounts),
+                    backgroundColor: '#22c55e',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true } },
+              }}
+            />
           </div>
         </div>
       </section>

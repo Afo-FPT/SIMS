@@ -1,21 +1,19 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJSCore,
+  Legend as ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip as ChartTooltip,
+} from 'chart.js';
+import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listUsers } from '../../../lib/mockApi/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
@@ -23,6 +21,17 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+
+ChartJSCore.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  ChartTooltip,
+);
 
 function toIsoLocalDate(d: Date): string {
   const year = d.getFullYear();
@@ -264,29 +273,60 @@ export default function AdminReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-6">User & Role Overview</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={roleDistribution} dataKey="value" nameKey="role" innerRadius={70} outerRadius={102}>
-                  {roleDistribution.map((d, i) => <Cell key={d.role} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <Pie
+              data={{
+                labels: roleDistribution.map((d) => d.role),
+                datasets: [
+                  {
+                    data: roleDistribution.map((d) => d.value),
+                    backgroundColor: roleDistribution.map((_, i) => COLORS[i % COLORS.length]),
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'bottom' },
+                },
+              }}
+            />
           </div>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={userGrowthByMonth}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" dy={8} tickMargin={10} />
-                <YAxis />
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-                <Line dataKey="total" name="New users" stroke="#0ea5e9" strokeWidth={2.5} />
-                <Line dataKey="active" name="Active users" stroke="#22c55e" strokeWidth={2} />
-                <Line dataKey="locked" name="Locked users" stroke="#ef4444" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
+            <Line
+              data={{
+                labels: userGrowthByMonth.map((d) => d.month),
+                datasets: [
+                  {
+                    label: 'New users',
+                    data: userGrowthByMonth.map((d) => d.total),
+                    borderColor: '#0ea5e9',
+                    backgroundColor: '#0ea5e9',
+                    tension: 0.3,
+                  },
+                  {
+                    label: 'Active users',
+                    data: userGrowthByMonth.map((d) => d.active),
+                    borderColor: '#22c55e',
+                    backgroundColor: '#22c55e',
+                    tension: 0.3,
+                  },
+                  {
+                    label: 'Locked users',
+                    data: userGrowthByMonth.map((d) => d.locked),
+                    borderColor: '#ef4444',
+                    backgroundColor: '#ef4444',
+                    tension: 0.3,
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'bottom' },
+                },
+                scales: { x: { ticks: { maxTicksLimit: 8 } } },
+              }}
+            />
           </div>
         </div>
       </section>
@@ -295,30 +335,60 @@ export default function AdminReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-6">System Operations Volume</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={operationsTimeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" dy={8} tickMargin={10} />
-                <YAxis />
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-                <Bar dataKey="inbound" stackId="ops" fill="#0ea5e9" />
-                <Bar dataKey="outbound" stackId="ops" fill="#6366f1" />
-                <Bar dataKey="cycleCount" stackId="ops" fill="#22c55e" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: operationsTimeline.map((d) => d.period),
+                datasets: [
+                  {
+                    label: 'Inbound',
+                    data: operationsTimeline.map((d) => d.inbound),
+                    backgroundColor: '#0ea5e9',
+                    stack: 'ops',
+                  },
+                  {
+                    label: 'Outbound',
+                    data: operationsTimeline.map((d) => d.outbound),
+                    backgroundColor: '#6366f1',
+                    stack: 'ops',
+                  },
+                  {
+                    label: 'Cycle count',
+                    data: operationsTimeline.map((d) => d.cycleCount),
+                    backgroundColor: '#22c55e',
+                    stack: 'ops',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                  x: { stacked: true, ticks: { maxTicksLimit: 10 } },
+                  y: { stacked: true, beginAtZero: true },
+                },
+              }}
+            />
           </div>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={operationsTimeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" dy={8} tickMargin={10} />
-                <YAxis />
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-                <Line dataKey="total" name="Total operations" stroke="#f59e0b" strokeWidth={2.5} />
-              </LineChart>
-            </ResponsiveContainer>
+            <Line
+              data={{
+                labels: operationsTimeline.map((d) => d.period),
+                datasets: [
+                  {
+                    label: 'Total operations',
+                    data: operationsTimeline.map((d) => d.total),
+                    borderColor: '#f59e0b',
+                    backgroundColor: '#f59e0b',
+                    tension: 0.3,
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { x: { ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true } },
+              }}
+            />
           </div>
         </div>
       </section>
@@ -327,31 +397,77 @@ export default function AdminReportsPage() {
         <h2 className="text-lg font-black text-slate-900 mb-6">Task/Request Completion & Pending</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={completionOverview} dataKey="value" nameKey="name" innerRadius={70} outerRadius={102}>
-                  {completionOverview.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                </Pie>
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+            <Pie
+              data={{
+                labels: completionOverview.map((d) => d.name),
+                datasets: [
+                  {
+                    data: completionOverview.map((d) => d.value),
+                    backgroundColor: completionOverview.map((_, i) => COLORS[i % COLORS.length]),
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+              }}
+            />
           </div>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={completionRateByPeriod}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="period" dy={8} tickMargin={10} />
-                <YAxis yAxisId="left" />
-                <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 12 }} />
-                <Bar yAxisId="left" dataKey="completed" fill="#22c55e" />
-                <Bar yAxisId="left" dataKey="pending" fill="#f59e0b" />
-                <Bar yAxisId="left" dataKey="rejected" fill="#ef4444" />
-                <Line yAxisId="right" dataKey="completionRate" stroke="#0ea5e9" strokeWidth={2.5} name="Completion rate %" />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartJSComponent
+              type="bar"
+              data={{
+                labels: completionRateByPeriod.map((d) => d.period),
+                datasets: [
+                  {
+                    type: 'bar',
+                    label: 'Completed',
+                    data: completionRateByPeriod.map((d) => d.completed),
+                    backgroundColor: '#22c55e',
+                    yAxisID: 'y',
+                  },
+                  {
+                    type: 'bar',
+                    label: 'Pending',
+                    data: completionRateByPeriod.map((d) => d.pending),
+                    backgroundColor: '#f59e0b',
+                    yAxisID: 'y',
+                  },
+                  {
+                    type: 'bar',
+                    label: 'Rejected',
+                    data: completionRateByPeriod.map((d) => d.rejected),
+                    backgroundColor: '#ef4444',
+                    yAxisID: 'y',
+                  },
+                  {
+                    type: 'line',
+                    label: 'Completion rate %',
+                    data: completionRateByPeriod.map((d) => d.completionRate),
+                    borderColor: '#0ea5e9',
+                    backgroundColor: '#0ea5e9',
+                    yAxisID: 'y1',
+                    tension: 0.3,
+                    fill: false,
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                  x: { ticks: { maxTicksLimit: 10 } },
+                  y: { beginAtZero: true, position: 'left' },
+                  y1: {
+                    beginAtZero: true,
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    grid: { drawOnChartArea: false },
+                  },
+                },
+              }}
+            />
           </div>
         </div>
       </section>

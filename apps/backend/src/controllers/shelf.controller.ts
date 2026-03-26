@@ -4,6 +4,8 @@ import {
   CreateShelfRequest,
   getRackUtilization,
   updateRackStatus,
+  updateShelfInfo,
+  type UpdateShelfInfoRequest,
   listShelvesForContract,
   listShelvesByWarehouse
 } from "../services/shelf.service";
@@ -171,6 +173,47 @@ export async function updateRackStatusController(
     res.status(500).json({
       message: error.message || "Internal server error"
     });
+  }
+}
+
+/**
+ * Update shelf metadata (shelfCode + tier dimensions + optionally status)
+ * Authorization: Manager only
+ */
+export async function updateShelfInfoController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const { shelfCode, tierCount, tierDimensions, status } = req.body;
+
+    const payload: UpdateShelfInfoRequest = {
+      shelfCode,
+      tierCount: Number(tierCount),
+      tierDimensions: Array.isArray(tierDimensions) ? tierDimensions : [],
+      status,
+    } as any;
+
+    if (!payload.shelfCode || !payload.tierCount || !payload.tierDimensions.length) {
+      return res.status(400).json({
+        message: "shelfCode, tierCount, and tierDimensions are required",
+      });
+    }
+
+    const shelf = await updateShelfInfo(String(id), payload);
+
+    return res.json({
+      message: "Shelf updated successfully",
+      data: shelf,
+    });
+  } catch (error: any) {
+    const msg = error?.message || "Internal server error";
+    if (msg.includes("Invalid") || msg.includes("required") || msg.includes("already exists") || msg.includes("not found") || msg.includes("must be")) {
+      return res.status(400).json({ message: msg });
+    }
+    return res.status(500).json({ message: msg });
   }
 }
 

@@ -13,6 +13,8 @@ import {
   createShelvesForWarehouse,
   listShelvesByWarehouse,
   updateWarehouse,
+  updateWarehouseStatus,
+  updateShelfInfo,
   updateShelfStatus,
 } from '../../../../lib/mockApi/manager.api';
 import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
@@ -58,7 +60,6 @@ export default function ManagerWarehouseDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingZone, setCreatingZone] = useState(false);
-  const [zoneEditMode, setZoneEditMode] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [savingZoneId, setSavingZoneId] = useState<string | null>(null);
   const [zoneEditForm, setZoneEditForm] = useState({
@@ -68,10 +69,20 @@ export default function ManagerWarehouseDetailPage() {
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
   const [creatingShelf, setCreatingShelf] = useState(false);
-  const [shelfEditMode, setShelfEditMode] = useState(false);
-  const [updatingShelfId, setUpdatingShelfId] = useState<string | null>(null);
-  const [editingShelfId, setEditingShelfId] = useState<string | null>(null);
-  const [shelfStatusDraft, setShelfStatusDraft] = useState<Record<string, 'AVAILABLE' | 'RENTED' | 'MAINTENANCE'>>({});
+  const [editingShelvesSection, setEditingShelvesSection] = useState(false);
+  const [savingShelves, setSavingShelves] = useState(false);
+  const [shelfDraftById, setShelfDraftById] = useState<
+    Record<
+      string,
+      {
+        shelfCode: string;
+        height: string;
+        width: string;
+        depth: string;
+        status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+      }
+    >
+  >({});
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
   const [infoForm, setInfoForm] = useState({
@@ -80,6 +91,7 @@ export default function ManagerWarehouseDetailPage() {
     length: '',
     width: '',
     description: '',
+    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
 
   useEffect(() => {
@@ -152,12 +164,128 @@ export default function ManagerWarehouseDetailPage() {
   }, [shelves]);
 
   useEffect(() => {
-    const next: Record<string, 'AVAILABLE' | 'RENTED' | 'MAINTENANCE'> = {};
+    if (editingShelvesSection) return;
+    const buildDraft = (
+      s: Shelf,
+    ): {
+      shelfCode: string;
+      height: string;
+      width: string;
+      depth: string;
+      status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+    } => {
+      const firstTier = s.tierDimensions?.[0];
+      return {
+        shelfCode: s.code,
+        height: firstTier ? String(firstTier.height) : '',
+        width: firstTier ? String(firstTier.width) : '',
+        depth: firstTier ? String(firstTier.depth) : '',
+        status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+      };
+    };
+    const next: typeof shelfDraftById = {};
     shelves.forEach((s) => {
-      next[s.id] = s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE';
+      next[s.id] = buildDraft(s);
     });
-    setShelfStatusDraft(next);
-  }, [shelves]);
+    setShelfDraftById(next);
+  }, [shelves, editingShelvesSection]);
+
+  const buildShelfBaselineDraft = (
+    s: Shelf,
+  ): {
+    shelfCode: string;
+    height: string;
+    width: string;
+    depth: string;
+    status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
+  } => {
+    const firstTier = s.tierDimensions?.[0];
+    return {
+      shelfCode: s.code,
+      height: firstTier ? String(firstTier.height) : '',
+      width: firstTier ? String(firstTier.width) : '',
+      depth: firstTier ? String(firstTier.depth) : '',
+      status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+    };
+  };
+
+  const resetShelfDraftFromShelves = () => {
+    const next: typeof shelfDraftById = {};
+    shelves.forEach((s) => {
+      next[s.id] = buildShelfBaselineDraft(s);
+    });
+    setShelfDraftById(next);
+  };
+
+  const handleCancelShelvesSectionEdit = () => {
+    setEditingShelvesSection(false);
+    resetShelfDraftFromShelves();
+  };
+
+  const handleSaveAllShelfInfos = async () => {
+    const changed = shelves.filter((s) => {
+      const d = shelfDraftById[s.id];
+      if (!d) return false;
+      const base = buildShelfBaselineDraft(s);
+      return (
+        d.shelfCode !== base.shelfCode ||
+        d.status !== base.status ||
+        d.height !== base.height ||
+        d.width !== base.width ||
+        d.depth !== base.depth
+      );
+    });
+
+    if (changed.length === 0) {
+      toast.info('No changes to save');
+      setEditingShelvesSection(false);
+      return;
+    }
+
+    try {
+      setSavingShelves(true);
+      for (const s of changed) {
+        const d = shelfDraftById[s.id];
+        if (!d) continue;
+
+        const tierCount = s.tierCount ?? 1;
+        const h = Number(d.height);
+        const w = Number(d.width);
+        const dep = Number(d.depth);
+
+        if (!d.shelfCode.trim()) {
+          toast.warning('Shelf code is required');
+          continue;
+        }
+        if ([h, w, dep].some((x) => !Number.isFinite(x) || x <= 0)) {
+          toast.warning('Height, width, and depth must be valid numbers > 0');
+          continue;
+        }
+
+        const tierDimensions = Array.from({ length: tierCount }, () => ({
+          height: h,
+          width: w,
+          depth: dep,
+        }));
+
+        await updateShelfInfo(s.id, {
+          shelfCode: d.shelfCode.trim(),
+          tierCount,
+          tierDimensions,
+          status: d.status,
+        });
+      }
+
+      const refreshed = await listShelvesByWarehouse(id);
+      setShelves(refreshed);
+      setEditingShelvesSection(false);
+      toast.success('Shelves updated successfully');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update shelves');
+    } finally {
+      setSavingShelves(false);
+    }
+  };
 
   const previewMaxM3 = useMemo(() => {
     const n = shelfForm.tierRows.length;
@@ -182,6 +310,7 @@ export default function ManagerWarehouseDetailPage() {
         length: String(warehouse.length),
         width: String(warehouse.width),
         description: warehouse.description ?? '',
+        status: warehouse.status,
       });
     }
   }, [warehouse, editingInfo]);
@@ -325,7 +454,11 @@ export default function ManagerWarehouseDetailPage() {
         width: widthNum,
         description: infoForm.description.trim() || undefined,
       });
-      setWarehouse(updated);
+      let next = updated;
+      if (infoForm.status && infoForm.status !== warehouse.status) {
+        next = await updateWarehouseStatus(warehouse.id, infoForm.status);
+      }
+      setWarehouse(next);
       toast.success('Warehouse information updated');
       setEditingInfo(false);
     } catch (err) {
@@ -336,7 +469,21 @@ export default function ManagerWarehouseDetailPage() {
   };
 
   const handleStartEditZone = (zone: ManagerZoneOption) => {
+    if (editingZoneId && editingZoneId !== zone.id) {
+      toast.warning('Save or cancel the zone you are editing first');
+      return;
+    }
     setEditingZoneId(zone.id);
+    setZoneEditForm({
+      zoneCode: zone.zoneCode ?? '',
+      name: zone.name ?? '',
+      description: zone.description ?? '',
+      status: zone.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    });
+  };
+
+  const handleCancelZoneEdit = (zone: ManagerZoneOption) => {
+    setEditingZoneId(null);
     setZoneEditForm({
       zoneCode: zone.zoneCode ?? '',
       name: zone.name ?? '',
@@ -366,23 +513,6 @@ export default function ManagerWarehouseDetailPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to update zone');
     } finally {
       setSavingZoneId(null);
-    }
-  };
-
-  const handleSaveShelfStatus = async (shelf: Shelf) => {
-    const selected = shelfStatusDraft[shelf.id];
-    if (!selected) return;
-    try {
-      setUpdatingShelfId(shelf.id);
-      await updateShelfStatus(shelf.id, selected);
-      const refreshed = await listShelvesByWarehouse(id);
-      setShelves(refreshed);
-      setEditingShelfId(null);
-      toast.success('Shelf status updated');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update shelf status');
-    } finally {
-      setUpdatingShelfId(null);
     }
   };
 
@@ -488,6 +618,15 @@ export default function ManagerWarehouseDetailPage() {
               onChange={(e) => setInfoForm((p) => ({ ...p, width: e.target.value }))}
               required
             />
+            <Select
+              label="Status"
+              value={infoForm.status}
+              onChange={(e) => setInfoForm((p) => ({ ...p, status: e.target.value as 'ACTIVE' | 'INACTIVE' }))}
+              options={[
+                { value: 'ACTIVE', label: 'ACTIVE' },
+                { value: 'INACTIVE', label: 'INACTIVE' },
+              ]}
+            />
             <div className="md:col-span-2 lg:col-span-3">
               <Input
                 label="Description (optional)"
@@ -507,6 +646,7 @@ export default function ManagerWarehouseDetailPage() {
                     length: String(warehouse.length),
                     width: String(warehouse.width),
                     description: warehouse.description ?? '',
+                    status: warehouse.status,
                   });
                 }}
               >
@@ -524,19 +664,6 @@ export default function ManagerWarehouseDetailPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Zones</h2>
-          <Button
-            variant={zoneEditMode ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => {
-              setZoneEditMode((prev) => {
-                const next = !prev;
-                if (!next) setEditingZoneId(null);
-                return next;
-              });
-            }}
-          >
-            {zoneEditMode ? 'Cancel edit' : 'Edit'}
-          </Button>
         </div>
         <p className="text-sm text-slate-600">
           Zones group shelves for location tracking. Contracts are assigned to zones.
@@ -592,42 +719,42 @@ export default function ManagerWarehouseDetailPage() {
               ) : (
                 zones.map((z) => (
                   <tr key={z.id} className="border-b border-slate-50">
-                    <td className="py-2 pr-4 font-bold text-slate-900">
+                    <td className="py-2 pr-4 font-bold text-slate-900 align-top">
                       {editingZoneId === z.id ? (
-                        <input
+                        <Input
                           value={zoneEditForm.zoneCode}
                           onChange={(e) => setZoneEditForm((prev) => ({ ...prev, zoneCode: e.target.value }))}
-                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                          className="!py-2 !px-3 !rounded-xl text-sm"
                         />
                       ) : (
                         z.zoneCode
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-slate-700">
+                    <td className="py-2 pr-4 text-slate-700 align-top">
                       {editingZoneId === z.id ? (
-                        <input
+                        <Input
                           value={zoneEditForm.name}
                           onChange={(e) => setZoneEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                          className="!py-2 !px-3 !rounded-xl text-sm"
                         />
                       ) : (
                         z.name
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-slate-700">
+                    <td className="py-2 pr-4 text-slate-700 align-top">
                       {editingZoneId === z.id ? (
-                        <input
+                        <Input
                           value={zoneEditForm.description}
                           onChange={(e) => setZoneEditForm((prev) => ({ ...prev, description: e.target.value }))}
-                          className="h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
+                          className="!py-2 !px-3 !rounded-xl text-sm"
                         />
                       ) : (
                         z.description || '—'
                       )}
                     </td>
-                    <td className="py-2 pr-4">
+                    <td className="py-2 pr-4 align-top">
                       {editingZoneId === z.id ? (
-                        <select
+                        <Select
                           value={zoneEditForm.status}
                           onChange={(e) =>
                             setZoneEditForm((prev) => ({
@@ -635,41 +762,48 @@ export default function ManagerWarehouseDetailPage() {
                               status: e.target.value as 'ACTIVE' | 'INACTIVE',
                             }))
                           }
-                          className="h-9 rounded-lg border border-slate-200 px-2 text-sm"
-                        >
-                          <option value="ACTIVE">ACTIVE</option>
-                          <option value="INACTIVE">INACTIVE</option>
-                        </select>
+                          options={[
+                            { value: 'ACTIVE', label: 'ACTIVE' },
+                            { value: 'INACTIVE', label: 'INACTIVE' },
+                          ]}
+                          className="!py-2 !px-3 !rounded-xl text-sm min-w-[9rem]"
+                        />
                       ) : (
                         <Badge variant={z.status === 'ACTIVE' ? 'success' : 'warning'}>
                           {z.status ?? '—'}
                         </Badge>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right">
-                      {!zoneEditMode ? (
-                        <span className="text-slate-400 text-xs">—</span>
-                      ) : editingZoneId === z.id ? (
-                        <div className="inline-flex items-center gap-2">
+                    <td className="py-2 pr-4 text-right align-top">
+                      {editingZoneId === z.id ? (
+                        <div className="inline-flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
                           <Button
+                            type="button"
                             size="sm"
                             onClick={() => handleSaveZone(z.id)}
                             isLoading={savingZoneId === z.id}
                             disabled={savingZoneId === z.id}
                           >
-                            Save
+                            Save changes
                           </Button>
                           <Button
+                            type="button"
                             size="sm"
                             variant="ghost"
-                            onClick={() => setEditingZoneId(null)}
+                            onClick={() => handleCancelZoneEdit(z)}
                             disabled={savingZoneId === z.id}
                           >
                             Cancel
                           </Button>
                         </div>
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => handleStartEditZone(z)}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleStartEditZone(z)}
+                          disabled={editingZoneId !== null && editingZoneId !== z.id}
+                        >
                           Edit
                         </Button>
                       )}
@@ -686,19 +820,23 @@ export default function ManagerWarehouseDetailPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Shelves</h2>
-          <Button
-            variant={shelfEditMode ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => {
-              setShelfEditMode((prev) => {
-                const next = !prev;
-                if (!next) setEditingShelfId(null);
-                return next;
-              });
-            }}
-          >
-            {shelfEditMode ? 'Cancel edit' : 'Edit'}
-          </Button>
+          {shelves.length > 0 && (
+            <Button
+              variant={editingShelvesSection ? 'secondary' : 'ghost'}
+              size="sm"
+              type="button"
+              onClick={() => {
+                if (editingShelvesSection) {
+                  handleCancelShelvesSectionEdit();
+                } else {
+                  resetShelfDraftFromShelves();
+                  setEditingShelvesSection(true);
+                }
+              }}
+            >
+              {editingShelvesSection ? 'Cancel edit' : 'Edit'}
+            </Button>
+          )}
         </div>
         <p className="text-sm text-slate-600">
           Create shelves inside zones and see their current status.
@@ -790,7 +928,7 @@ export default function ManagerWarehouseDetailPage() {
 
         <div className="mt-6">
           {loading ? (
-            <TableSkeleton rows={5} cols={4} />
+            <TableSkeleton rows={5} cols={12} />
           ) : shelves.length === 0 ? (
             <EmptyState icon="warehouse" title="No shelves" message="No shelf data" />
           ) : (
@@ -805,7 +943,9 @@ export default function ManagerWarehouseDetailPage() {
                   <TableHeader>Shelf code</TableHeader>
                   <TableHeader>Zone</TableHeader>
                   <TableHeader>Status</TableHeader>
-                  <TableHeader className="text-right">Action</TableHeader>
+                  <TableHeader className="text-right">Height (m)</TableHeader>
+                  <TableHeader className="text-right">Width (m)</TableHeader>
+                  <TableHeader className="text-right">Depth (m)</TableHeader>
                   <TableHeader>Contract</TableHeader>
                   <TableHeader className="text-right">Đã dùng</TableHeader>
                   <TableHeader className="text-right">Max</TableHeader>
@@ -821,65 +961,149 @@ export default function ManagerWarehouseDetailPage() {
                     const remaining = max > 0 ? Math.max(0, max - used) : 0;
                     const pct = u?.utilization_percentage ?? 0;
                     const hint = utilizationHint(pct);
+                    const firstTier = s.tierDimensions?.[0];
+                    const draft = shelfDraftById[s.id];
                     return (
                       <TableRow key={s.id}>
-                        <TableCell className="font-bold text-slate-900">{s.code}</TableCell>
+                        <TableCell className="font-bold text-slate-900">
+                          {editingShelvesSection ? (
+                            <input
+                              value={draft?.shelfCode ?? s.code}
+                              onChange={(e) =>
+                                setShelfDraftById((prev) => ({
+                                  ...prev,
+                                  [s.id]: {
+                                    ...(prev[s.id] ?? {
+                                      shelfCode: s.code,
+                                      height: draft?.height ?? String(firstTier?.height ?? ''),
+                                      width: draft?.width ?? String(firstTier?.width ?? ''),
+                                      depth: draft?.depth ?? String(firstTier?.depth ?? ''),
+                                      status: draft?.status ?? (s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE'),
+                                    }),
+                                    shelfCode: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                            />
+                          ) : (
+                            s.code
+                          )}
+                        </TableCell>
                         <TableCell className="text-slate-700">{s.zone || '—'}</TableCell>
                         <TableCell>
-                          <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>
-                            {s.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {!shelfEditMode ? (
-                            <div className="flex justify-end">
-                              <span className="text-slate-400 text-xs">—</span>
-                            </div>
-                          ) : editingShelfId === s.id ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <select
-                                value={shelfStatusDraft[s.id] ?? (s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE')}
-                                onChange={(e) =>
-                                  setShelfStatusDraft((prev) => ({
-                                    ...prev,
-                                    [s.id]: e.target.value as 'AVAILABLE' | 'RENTED' | 'MAINTENANCE',
-                                  }))
-                                }
-                                className="h-9 rounded-lg border border-slate-200 px-2 text-xs"
-                              >
-                                <option value="AVAILABLE">AVAILABLE</option>
-                                <option value="MAINTENANCE">MAINTENANCE</option>
-                                <option value="RENTED">RENTED</option>
-                              </select>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={updatingShelfId === s.id}
-                                onClick={() => handleSaveShelfStatus(s)}
-                              >
-                                Save
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={updatingShelfId === s.id}
-                                onClick={() => {
-                                  setEditingShelfId(null);
-                                  setShelfStatusDraft((prev) => ({
-                                    ...prev,
-                                    [s.id]: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
-                                  }));
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
+                          {editingShelvesSection ? (
+                            <Select
+                              value={draft?.status ?? (s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE')}
+                              onChange={(e) =>
+                                setShelfDraftById((prev) => ({
+                                  ...prev,
+                                  [s.id]: {
+                                    ...(prev[s.id] ?? {
+                                      shelfCode: s.code,
+                                      height: draft?.height ?? String(firstTier?.height ?? ''),
+                                      width: draft?.width ?? String(firstTier?.width ?? ''),
+                                      depth: draft?.depth ?? String(firstTier?.depth ?? ''),
+                                      status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+                                    }),
+                                    status: e.target.value as 'AVAILABLE' | 'RENTED' | 'MAINTENANCE',
+                                  },
+                                }))
+                              }
+                              options={[
+                                { value: 'AVAILABLE', label: 'AVAILABLE' },
+                                { value: 'RENTED', label: 'RENTED' },
+                              ]}
+                              className="!py-2 !px-3 !rounded-xl text-xs min-w-[10rem]"
+                            />
                           ) : (
-                            <div className="flex justify-end">
-                              <Button size="sm" variant="ghost" onClick={() => setEditingShelfId(s.id)}>
-                                Edit
-                              </Button>
-                            </div>
+                            <Badge variant={s.status === 'Occupied' ? 'warning' : 'success'}>
+                              {s.status}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {editingShelvesSection ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              value={draft?.height ?? (firstTier ? String(firstTier.height) : '')}
+                              onChange={(e) =>
+                                setShelfDraftById((prev) => ({
+                                  ...prev,
+                                  [s.id]: {
+                                    ...(prev[s.id] ?? {
+                                      shelfCode: s.code,
+                                      height: '',
+                                      width: String(firstTier?.width ?? ''),
+                                      depth: String(firstTier?.depth ?? ''),
+                                      status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+                                    }),
+                                    height: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-24 rounded-xl border border-slate-200 px-2 py-2 text-sm text-right"
+                            />
+                          ) : (
+                            firstTier?.height ?? '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {editingShelvesSection ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              value={draft?.width ?? (firstTier ? String(firstTier.width) : '')}
+                              onChange={(e) =>
+                                setShelfDraftById((prev) => ({
+                                  ...prev,
+                                  [s.id]: {
+                                    ...(prev[s.id] ?? {
+                                      shelfCode: s.code,
+                                      height: String(firstTier?.height ?? ''),
+                                      width: '',
+                                      depth: String(firstTier?.depth ?? ''),
+                                      status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+                                    }),
+                                    width: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-24 rounded-xl border border-slate-200 px-2 py-2 text-sm text-right"
+                            />
+                          ) : (
+                            firstTier?.width ?? '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {editingShelvesSection ? (
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              value={draft?.depth ?? (firstTier ? String(firstTier.depth) : '')}
+                              onChange={(e) =>
+                                setShelfDraftById((prev) => ({
+                                  ...prev,
+                                  [s.id]: {
+                                    ...(prev[s.id] ?? {
+                                      shelfCode: s.code,
+                                      height: String(firstTier?.height ?? ''),
+                                      width: String(firstTier?.width ?? ''),
+                                      depth: '',
+                                      status: s.status === 'Occupied' ? 'RENTED' : 'AVAILABLE',
+                                    }),
+                                    depth: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-24 rounded-xl border border-slate-200 px-2 py-2 text-sm text-right"
+                            />
+                          ) : (
+                            firstTier?.depth ?? '—'
                           )}
                         </TableCell>
                         <TableCell className="text-slate-700">{s.contractCode || '—'}</TableCell>
@@ -903,6 +1127,21 @@ export default function ManagerWarehouseDetailPage() {
                   })}
                 </TableBody>
               </Table>
+              {editingShelvesSection && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={handleCancelShelvesSectionEdit}
+                    disabled={savingShelves}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" onClick={() => void handleSaveAllShelfInfos()} isLoading={savingShelves}>
+                    Save changes
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

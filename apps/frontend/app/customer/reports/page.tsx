@@ -1,21 +1,19 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJSCore,
+  Legend as ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip as ChartTooltip,
+} from 'chart.js';
+import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
@@ -25,6 +23,17 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+
+ChartJSCore.register(
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  ChartLegend,
+  LineElement,
+  LinearScale,
+  PointElement,
+  ChartTooltip,
+);
 
 type ReportTab =
   | 'io_history'
@@ -307,30 +316,36 @@ export default function CustomerReportsPage() {
           <h2 className="text-lg font-black text-slate-900 mb-4">Inbound/Outbound History Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={ioTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line dataKey="inbound" stroke="#0ea5e9" strokeWidth={2} />
-                  <Line dataKey="outbound" stroke="#6366f1" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+              <Line
+                data={{
+                  labels: ioTrend.map((d) => d.month),
+                  datasets: [
+                    { label: 'Inbound', data: ioTrend.map((d) => d.inbound), borderColor: '#0ea5e9', backgroundColor: '#0ea5e9', tension: 0.3 },
+                    { label: 'Outbound', data: ioTrend.map((d) => d.outbound), borderColor: '#6366f1', backgroundColor: '#6366f1', tension: 0.3 },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ioTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="inbound" fill="#0ea5e9" />
-                  <Bar dataKey="outbound" fill="#6366f1" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bar
+                data={{
+                  labels: ioTrend.map((d) => d.month),
+                  datasets: [
+                    { label: 'Inbound', data: ioTrend.map((d) => d.inbound), backgroundColor: '#0ea5e9' },
+                    { label: 'Outbound', data: ioTrend.map((d) => d.outbound), backgroundColor: '#6366f1' },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
           </div>
         </section>
@@ -341,29 +356,57 @@ export default function CustomerReportsPage() {
           <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Level & Turnover Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={turnoverByProduct}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="item" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
-                  <Legend />
-                  <Line yAxisId="left" dataKey="stock" stroke="#0ea5e9" strokeWidth={2} />
-                  <Line yAxisId="right" dataKey="turnover" stroke="#f59e0b" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+              <ChartJSComponent
+                type="line"
+                data={{
+                  labels: turnoverByProduct.map((d) => d.item),
+                  datasets: [
+                    {
+                      label: 'Stock',
+                      data: turnoverByProduct.map((d) => d.stock),
+                      borderColor: '#0ea5e9',
+                      backgroundColor: '#0ea5e9',
+                      yAxisID: 'y',
+                      tension: 0.3,
+                    },
+                    {
+                      label: 'Turnover',
+                      data: turnoverByProduct.map((d) => d.turnover),
+                      borderColor: '#f59e0b',
+                      backgroundColor: '#f59e0b',
+                      yAxisID: 'y1',
+                      tension: 0.3,
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: {
+                    y: { position: 'left', beginAtZero: true },
+                    y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
+                  },
+                }}
+              />
             </div>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={turnoverByProduct}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="item" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="turnover" fill="#f59e0b" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bar
+                data={{
+                  labels: turnoverByProduct.map((d) => d.item),
+                  datasets: [
+                    {
+                      label: 'Turnover',
+                      data: turnoverByProduct.map((d) => d.turnover),
+                      backgroundColor: '#f59e0b',
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
           </div>
         </section>
@@ -374,28 +417,37 @@ export default function CustomerReportsPage() {
           <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Checking & Discrepancy Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={discrepancyRows}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="id" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="system" fill="#0ea5e9" />
-                  <Bar dataKey="actual" fill="#22c55e" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bar
+                data={{
+                  labels: discrepancyRows.map((d) => d.id),
+                  datasets: [
+                    { label: 'System', data: discrepancyRows.map((d) => d.system), backgroundColor: '#0ea5e9' },
+                    { label: 'Actual', data: discrepancyRows.map((d) => d.actual), backgroundColor: '#22c55e' },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={discrepancyPie} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                    {discrepancyPie.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <Pie
+                data={{
+                  labels: discrepancyPie.map((d) => d.name),
+                  datasets: [
+                    {
+                      data: discrepancyPie.map((d) => d.value),
+                      backgroundColor: discrepancyPie.map((_, i) => COLORS[i % COLORS.length]),
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                }}
+              />
             </div>
           </div>
         </section>
@@ -406,26 +458,40 @@ export default function CustomerReportsPage() {
           <h2 className="text-lg font-black text-slate-900 mb-4">Request Status Overview</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={requestStatusSummary} dataKey="value" nameKey="name" innerRadius={70} outerRadius={100}>
-                    {requestStatusSummary.map((d, i) => <Cell key={d.name} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+              <Pie
+                data={{
+                  labels: requestStatusSummary.map((d) => d.name),
+                  datasets: [
+                    {
+                      data: requestStatusSummary.map((d) => d.value),
+                      backgroundColor: requestStatusSummary.map((_, i) => COLORS[i % COLORS.length]),
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                }}
+              />
             </div>
             <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={requestStatusSummary}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#0ea5e9" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Bar
+                data={{
+                  labels: requestStatusSummary.map((d) => d.name),
+                  datasets: [
+                    {
+                      label: 'Count',
+                      data: requestStatusSummary.map((d) => d.value),
+                      backgroundColor: '#0ea5e9',
+                    },
+                  ],
+                }}
+                options={{
+                  maintainAspectRatio: false,
+                  plugins: { legend: { position: 'bottom' } },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
             </div>
           </div>
         </section>
@@ -435,23 +501,31 @@ export default function CustomerReportsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Top Products by Quantity</h2>
           <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topProductsByQuantity} layout="vertical" margin={{ left: 28, right: 16, top: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis type="number" tickMargin={10} />
-                <YAxis
-                  dataKey="item"
-                  type="category"
-                  width={180}
-                  tickMargin={10}
-                  interval={0}
-                />
-                <Tooltip />
-                <Legend wrapperStyle={{ paddingTop: 8 }} />
-                <Bar dataKey="inbound" stackId="q" fill="#0ea5e9" name="Inbound quantity" />
-                <Bar dataKey="outbound" stackId="q" fill="#6366f1" name="Outbound quantity" />
-              </BarChart>
-            </ResponsiveContainer>
+            <Bar
+              data={{
+                labels: topProductsByQuantity.map((d) => d.item),
+                datasets: [
+                  {
+                    label: 'Inbound quantity',
+                    data: topProductsByQuantity.map((d) => d.inbound),
+                    backgroundColor: '#0ea5e9',
+                    stack: 'q',
+                  },
+                  {
+                    label: 'Outbound quantity',
+                    data: topProductsByQuantity.map((d) => d.outbound),
+                    backgroundColor: '#6366f1',
+                    stack: 'q',
+                  },
+                ],
+              }}
+              options={{
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                indexAxis: 'y',
+                scales: { x: { stacked: true, beginAtZero: true }, y: { stacked: true } },
+              }}
+            />
           </div>
         </section>
       )}

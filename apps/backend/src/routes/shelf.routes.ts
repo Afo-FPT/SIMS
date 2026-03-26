@@ -1,7 +1,8 @@
 import { Router } from "express";
 import {
   getRackUtilizationController,
-  updateRackStatusController
+  updateRackStatusController,
+  updateShelfInfoController
 } from "../controllers/shelf.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 
@@ -29,6 +30,18 @@ router.patch(
   authenticate,
   authorizeRoles("manager"),
   updateRackStatusController
+);
+
+/**
+ * PATCH /api/shelves/:id
+ * Update shelf metadata (shelf code + tier dimensions)
+ * Authorization: Manager only
+ */
+router.patch(
+  "/:id",
+  authenticate,
+  authorizeRoles("manager"),
+  updateShelfInfoController
 );
 
 export default router;

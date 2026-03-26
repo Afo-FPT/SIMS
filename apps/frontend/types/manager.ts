@@ -10,6 +10,11 @@ export interface Shelf {
   status: ShelfStatus;
   contractId?: string;
   contractCode?: string;
+  tierCount?: number;
+  tierDimensions?: Array<{ height: number; width: number; depth: number }>;
+  width?: number;
+  depth?: number;
+  maxCapacity?: number;
 }
 
 export interface CheckingResult {
