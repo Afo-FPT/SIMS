@@ -17,8 +17,11 @@ import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listUsers } from '../../../lib/mockApi/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Button } from '../../../components/ui/Button';
+import { ChatMarkdown } from '../../../components/ChatMarkdown';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -80,6 +83,37 @@ export default function AdminReportsPage() {
     return toIsoLocalDate(start);
   });
   const [endDate, setEndDate] = useState(() => toIsoLocalDate(new Date()));
+  const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
+  const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setInsightsByKey({});
+    setInsightLoadingKey(null);
+    setInsightError(null);
+  }, [startDate, endDate, granularity]);
+
+  async function handleInsightRequest(chartKey: string, data: unknown) {
+    try {
+      setInsightError(null);
+      setInsightLoadingKey(chartKey);
+      const res = await requestReportInsight({ chartKey, startDate, endDate, data });
+      setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
+    } catch (e) {
+      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
+    } finally {
+      setInsightLoadingKey(null);
+    }
+  }
+
+  function clearInsight(chartKey: string) {
+    setInsightsByKey((prev) => {
+      if (!prev[chartKey]) return prev;
+      const next = { ...prev };
+      delete next[chartKey];
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -271,8 +305,23 @@ export default function AdminReportsPage() {
 
       <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-6">User & Role Overview</h2>
+        {insightError && (
+          <div className="mb-6 text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
+            {insightError}
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_role_distribution'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_role_distribution'}
+              onClick={() => handleInsightRequest('admin_role_distribution', { roleDistribution })}
+            >
+              Insight
+            </Button>
             <Pie
               data={{
                 labels: roleDistribution.map((d) => d.role),
@@ -291,7 +340,17 @@ export default function AdminReportsPage() {
               }}
             />
           </div>
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_user_growth'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_user_growth'}
+              onClick={() => handleInsightRequest('admin_user_growth', { userGrowthByMonth })}
+            >
+              Insight
+            </Button>
             <Line
               data={{
                 labels: userGrowthByMonth.map((d) => d.month),
@@ -327,14 +386,51 @@ export default function AdminReportsPage() {
                 scales: { x: { ticks: { maxTicksLimit: 8 } } },
               }}
             />
+
           </div>
         </div>
+        {(insightsByKey.admin_role_distribution || insightsByKey.admin_user_growth) && (
+          <div className="mt-6 space-y-3">
+            {insightsByKey.admin_role_distribution && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_role_distribution')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_role_distribution} />
+              </div>
+            )}
+            {insightsByKey.admin_user_growth && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_user_growth')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_user_growth} />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-6">System Operations Volume</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_operations_bar'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_operations_bar'}
+              onClick={() => handleInsightRequest('admin_operations_bar', { operationsTimeline, granularity })}
+            >
+              Insight
+            </Button>
             <Bar
               data={{
                 labels: operationsTimeline.map((d) => d.period),
@@ -369,7 +465,17 @@ export default function AdminReportsPage() {
               }}
             />
           </div>
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_operations_line'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_operations_line'}
+              onClick={() => handleInsightRequest('admin_operations_line', { operationsTimeline, granularity })}
+            >
+              Insight
+            </Button>
             <Line
               data={{
                 labels: operationsTimeline.map((d) => d.period),
@@ -389,14 +495,51 @@ export default function AdminReportsPage() {
                 scales: { x: { ticks: { maxTicksLimit: 10 } }, y: { beginAtZero: true } },
               }}
             />
+
           </div>
         </div>
+        {(insightsByKey.admin_operations_bar || insightsByKey.admin_operations_line) && (
+          <div className="mt-6 space-y-3">
+            {insightsByKey.admin_operations_bar && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_operations_bar')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_operations_bar} />
+              </div>
+            )}
+            {insightsByKey.admin_operations_line && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_operations_line')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_operations_line} />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="bg-white rounded-3xl border border-slate-200 p-7 md:p-8 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-6">Task/Request Completion & Pending</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_completion_pie'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_completion_pie'}
+              onClick={() => handleInsightRequest('admin_completion_pie', { completionOverview })}
+            >
+              Insight
+            </Button>
             <Pie
               data={{
                 labels: completionOverview.map((d) => d.name),
@@ -413,7 +556,17 @@ export default function AdminReportsPage() {
               }}
             />
           </div>
-          <div className="h-80">
+          <div className="h-80 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'admin_completion_rate'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'admin_completion_rate'}
+              onClick={() => handleInsightRequest('admin_completion_rate', { completionRateByPeriod, granularity })}
+            >
+              Insight
+            </Button>
             <ChartJSComponent
               type="bar"
               data={{
@@ -468,8 +621,35 @@ export default function AdminReportsPage() {
                 },
               }}
             />
+
           </div>
         </div>
+        {(insightsByKey.admin_completion_pie || insightsByKey.admin_completion_rate) && (
+          <div className="mt-6 space-y-3">
+            {insightsByKey.admin_completion_pie && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_completion_pie')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_completion_pie} />
+              </div>
+            )}
+            {insightsByKey.admin_completion_rate && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('admin_completion_rate')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.admin_completion_rate} />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
     </div>

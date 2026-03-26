@@ -17,10 +17,12 @@ import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { ChatMarkdown } from '../../../components/ChatMarkdown';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -61,6 +63,10 @@ export default function CustomerReportsPage() {
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
+
+  const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
+  const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +115,12 @@ export default function CustomerReportsPage() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [hasLoaded]);
+
+  useEffect(() => {
+    setInsightsByKey({});
+    setInsightLoadingKey(null);
+    setInsightError(null);
+  }, [startDate, endDate, tab]);
 
   const filteredRequests = useMemo(() => {
     if (!startDate || !endDate) return requests;
@@ -223,6 +235,28 @@ export default function CustomerReportsPage() {
       .slice(0, 8);
   }, [filteredRequests]);
 
+  async function handleInsightRequest(chartKey: string, data: unknown) {
+    try {
+      setInsightError(null);
+      setInsightLoadingKey(chartKey);
+      const res = await requestReportInsight({ chartKey, startDate, endDate, data });
+      setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
+    } catch (e) {
+      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
+    } finally {
+      setInsightLoadingKey(null);
+    }
+  }
+
+  function clearInsight(chartKey: string) {
+    setInsightsByKey((prev) => {
+      if (!prev[chartKey]) return prev;
+      const next = { ...prev };
+      delete next[chartKey];
+      return next;
+    });
+  }
+
   if (loading) {
     return (
       <div className="space-y-8">
@@ -242,6 +276,11 @@ export default function CustomerReportsPage() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
         <p className="text-slate-500 mt-1">Track your warehouse operations and inventory performance in one place</p>
       </div>
+      {insightError && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
+          {insightError}
+        </div>
+      )}
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -315,7 +354,17 @@ export default function CustomerReportsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Inbound/Outbound History Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'io_history_line'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_line'}
+                onClick={() => handleInsightRequest('io_history_line', { ioTrend })}
+              >
+                Insight
+              </Button>
               <Line
                 data={{
                   labels: ioTrend.map((d) => d.month),
@@ -331,7 +380,17 @@ export default function CustomerReportsPage() {
                 }}
               />
             </div>
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'io_history_bar'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_bar'}
+                onClick={() => handleInsightRequest('io_history_bar', { ioTrend })}
+              >
+                Insight
+              </Button>
               <Bar
                 data={{
                   labels: ioTrend.map((d) => d.month),
@@ -348,6 +407,28 @@ export default function CustomerReportsPage() {
               />
             </div>
           </div>
+          {insightsByKey.io_history_line && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('io_history_line')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.io_history_line} />
+            </div>
+          )}
+          {insightsByKey.io_history_bar && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('io_history_bar')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.io_history_bar} />
+            </div>
+          )}
         </section>
       )}
 
@@ -355,7 +436,17 @@ export default function CustomerReportsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Level & Turnover Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'turnover_line'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'turnover_line'}
+                onClick={() => handleInsightRequest('turnover_line', { turnoverByProduct })}
+              >
+                Insight
+              </Button>
               <ChartJSComponent
                 type="line"
                 data={{
@@ -389,7 +480,17 @@ export default function CustomerReportsPage() {
                 }}
               />
             </div>
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'turnover_bar'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'turnover_bar'}
+                onClick={() => handleInsightRequest('turnover_bar', { turnoverByProduct })}
+              >
+                Insight
+              </Button>
               <Bar
                 data={{
                   labels: turnoverByProduct.map((d) => d.item),
@@ -409,6 +510,28 @@ export default function CustomerReportsPage() {
               />
             </div>
           </div>
+          {insightsByKey.turnover_line && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('turnover_line')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.turnover_line} />
+            </div>
+          )}
+          {insightsByKey.turnover_bar && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('turnover_bar')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.turnover_bar} />
+            </div>
+          )}
         </section>
       )}
 
@@ -416,7 +539,17 @@ export default function CustomerReportsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Checking & Discrepancy Report</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'discrepancy_bar'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy_bar'}
+                onClick={() => handleInsightRequest('discrepancy_bar', { discrepancyRows })}
+              >
+                Insight
+              </Button>
               <Bar
                 data={{
                   labels: discrepancyRows.map((d) => d.id),
@@ -432,7 +565,17 @@ export default function CustomerReportsPage() {
                 }}
               />
             </div>
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'discrepancy_pie'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy_pie'}
+                onClick={() => handleInsightRequest('discrepancy_pie', { discrepancyPie })}
+              >
+                Insight
+              </Button>
               <Pie
                 data={{
                   labels: discrepancyPie.map((d) => d.name),
@@ -450,6 +593,28 @@ export default function CustomerReportsPage() {
               />
             </div>
           </div>
+          {insightsByKey.discrepancy_bar && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('discrepancy_bar')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.discrepancy_bar} />
+            </div>
+          )}
+          {insightsByKey.discrepancy_pie && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('discrepancy_pie')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.discrepancy_pie} />
+            </div>
+          )}
         </section>
       )}
 
@@ -457,7 +622,17 @@ export default function CustomerReportsPage() {
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Request Status Overview</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'request_status_pie'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status_pie'}
+                onClick={() => handleInsightRequest('request_status_pie', { requestStatusSummary })}
+              >
+                Insight
+              </Button>
               <Pie
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
@@ -474,7 +649,17 @@ export default function CustomerReportsPage() {
                 }}
               />
             </div>
-            <div className="h-72">
+            <div className="h-72 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'request_status_bar'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status_bar'}
+                onClick={() => handleInsightRequest('request_status_bar', { requestStatusSummary })}
+              >
+                Insight
+              </Button>
               <Bar
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
@@ -494,13 +679,45 @@ export default function CustomerReportsPage() {
               />
             </div>
           </div>
+          {insightsByKey.request_status_pie && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('request_status_pie')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.request_status_pie} />
+            </div>
+          )}
+          {insightsByKey.request_status_bar && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('request_status_bar')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.request_status_bar} />
+            </div>
+          )}
         </section>
       )}
 
       {tab === 'top_products' && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <h2 className="text-lg font-black text-slate-900 mb-4">Top Products by Quantity</h2>
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'top_products'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'top_products'}
+              onClick={() => handleInsightRequest('top_products', { topProductsByQuantity })}
+            >
+              Insight
+            </Button>
             <Bar
               data={{
                 labels: topProductsByQuantity.map((d) => d.item),
@@ -527,6 +744,17 @@ export default function CustomerReportsPage() {
               }}
             />
           </div>
+          {insightsByKey.top_products && (
+            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('top_products')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.top_products} />
+            </div>
+          )}
         </section>
       )}
     </div>

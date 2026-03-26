@@ -8,6 +8,8 @@ import {
   type ChatTableSpec,
 } from '../lib/ai-chat.api';
 import { useToastHelpers } from '../lib/toast';
+import { getAuthState } from '../lib/auth';
+import { getChatFaqsByRole, type ChatFaqRole, type ChatFaqItem } from '../lib/chat-faq.api';
 import { Button } from './ui/Button';
 import { ChatMarkdown } from './ChatMarkdown';
 
@@ -29,50 +31,65 @@ function buildHrefFromTemplate(hrefTemplate: string, row: Record<string, unknown
 
 function ChatTable({ table }: { table: ChatTableSpec }) {
   return (
-    <div className="overflow-x-auto my-2 rounded-lg border border-slate-200 bg-white">
-      <table className="min-w-full text-xs border-collapse">
-        <thead className="bg-slate-100">
-          <tr>
-            {table.columns.map((c) => (
-              <th key={c.key} className="border-b border-slate-200 px-3 py-2 text-left font-bold text-slate-700">
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, idx) => (
-            <tr key={idx} className="hover:bg-slate-50">
-              {table.columns.map((c) => {
-                const raw = row[c.key];
-                const displayKey = c.textKey ?? c.key;
-                const displayRaw = (row as any)[displayKey];
-                const display = formatTableCellValue(displayRaw);
+    <div className="my-2 rounded-lg border border-slate-200 bg-white overflow-hidden">
+      {table.contextHref && (
+        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <p className="text-[11px] font-bold text-slate-600">
+            {table.contextLabel || 'Open in app'}
+          </p>
+          <Link
+            href={table.contextHref}
+            className="text-[11px] font-bold text-primary underline underline-offset-2 hover:text-primary-dark"
+          >
+            View details
+          </Link>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-xs border-collapse">
+          <thead className="bg-slate-100">
+            <tr>
+              {table.columns.map((c) => (
+                <th key={c.key} className="border-b border-slate-200 px-3 py-2 text-left font-bold text-slate-700">
+                  {c.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, idx) => (
+              <tr key={idx} className="hover:bg-slate-50">
+                {table.columns.map((c) => {
+                  const raw = row[c.key];
+                  const displayKey = c.textKey ?? c.key;
+                  const displayRaw = (row as any)[displayKey];
+                  const display = formatTableCellValue(displayRaw);
 
-                if (c.hrefTemplate) {
-                  const href = buildHrefFromTemplate(c.hrefTemplate, row);
+                  if (c.hrefTemplate) {
+                    const href = buildHrefFromTemplate(c.hrefTemplate, row);
+                    return (
+                      <td key={c.key} className="border-b border-slate-100 px-3 py-2 text-slate-700">
+                        <Link
+                          href={href}
+                          className="text-primary font-bold underline underline-offset-2 hover:text-primary-dark break-all"
+                        >
+                          {display}
+                        </Link>
+                      </td>
+                    );
+                  }
+
                   return (
                     <td key={c.key} className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                      <Link
-                        href={href}
-                        className="text-primary font-bold underline underline-offset-2 hover:text-primary-dark break-all"
-                      >
-                        {display}
-                      </Link>
+                      {formatTableCellValue(raw)}
                     </td>
                   );
-                }
-
-                return (
-                  <td key={c.key} className="border-b border-slate-100 px-3 py-2 text-slate-700">
-                    {formatTableCellValue(raw)}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -86,15 +103,40 @@ export function AiChatWidget() {
   const [size, setSize] = useState<'compact' | 'expanded'>('compact');
   const [messages, setMessages] = useState<AiChatMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [faqPrompts, setFaqPrompts] = useState<ChatFaqItem[]>([]);
+  const [faqLoading, setFaqLoading] = useState(false);
+  const [faqError, setFaqError] = useState<string | null>(null);
+  const [faqRole, setFaqRole] = useState<ChatFaqRole>('customer');
 
-  const FAQ_PROMPTS: Array<{ label: string; prompt: string }> = [
-    { label: 'Tôi có mấy hợp đồng?', prompt: 'Tôi có mấy hợp đồng hiện tại?' },
-    { label: 'Liệt kê hợp đồng', prompt: 'Liệt kê các hợp đồng của tôi và trạng thái của từng hợp đồng.' },
-    { label: 'Hợp đồng hết hạn', prompt: 'Hợp đồng của tôi sắp hết hạn là những hợp đồng nào? Khi nào hết hạn?' },
-    { label: 'Tồn kho bao nhiêu?', prompt: 'Hiện tôi đang có bao nhiêu sản phẩm tồn kho? Liệt kê theo SKU.' },
-    { label: 'Yêu cầu dịch vụ', prompt: 'Tôi có những yêu cầu dịch vụ nào? Trạng thái và thời gian tạo.' },
-    { label: 'Cần trợ giúp hợp đồng', prompt: 'Tôi cần biết cách xem chi tiết hợp đồng của mình ở đâu trong hệ thống.' },
-  ];
+  function normalizeRole(role: string | null): ChatFaqRole | null {
+    if (!role) return null;
+    const r = role.toUpperCase();
+    if (r === 'CUSTOMER') return 'customer';
+    if (r === 'MANAGER') return 'manager';
+    if (r === 'STAFF') return 'staff';
+    if (r === 'ADMIN') return 'admin';
+    return null;
+  }
+
+  useEffect(() => {
+    const role = normalizeRole(getAuthState().role);
+    if (!role) return;
+    setFaqRole(role);
+
+    setFaqLoading(true);
+    setFaqError(null);
+    // DB-only: do not show any FAQ until loaded from backend.
+    setFaqPrompts([]);
+
+    getChatFaqsByRole(role)
+      .then((res) => setFaqPrompts(res.items ?? []))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : 'Failed to load FAQs';
+        setFaqError(msg);
+      })
+      .finally(() => setFaqLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     try {
@@ -284,19 +326,28 @@ export function AiChatWidget() {
                   <span className="font-bold text-slate-700">service requests</span>.
                 </p>
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-600">Frequently asked</p>
-                  <div className="flex flex-wrap gap-2">
-                    {FAQ_PROMPTS.map((f) => (
-                      <button
-                        key={f.label}
-                        type="button"
-                        className="px-3 py-1.5 bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-full hover:bg-slate-50 active:scale-[0.99] transition"
-                        onClick={() => handleSend(f.prompt)}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
+                  {!faqLoading && faqPrompts.length > 0 && (
+                    <>
+                      <p className="text-xs font-bold text-slate-600">Frequently asked</p>
+                      <div className="flex flex-wrap gap-2">
+                        {faqPrompts.map((f: ChatFaqItem) => (
+                          <button
+                            key={f.label}
+                            type="button"
+                            className="px-3 py-1.5 bg-white border border-slate-200 text-xs font-bold text-slate-700 rounded-full hover:bg-slate-50 active:scale-[0.99] transition"
+                            onClick={() => handleSend(f.prompt)}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {faqError && (
+                    <p className="text-[11px] text-red-600 mt-2">
+                      {faqError}
+                    </p>
+                  )}
                 </div>
               </div>
             )}

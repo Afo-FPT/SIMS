@@ -180,6 +180,12 @@ export default function ContractDetailPage() {
                 {contract.warehouseName || contract.warehouseId || '—'}
               </dd>
             </div>
+            {contract.warehouseAddress && (
+              <div>
+                <dt className="text-slate-500">Warehouse address</dt>
+                <dd className="font-bold text-slate-900">{contract.warehouseAddress}</dd>
+              </div>
+            )}
           </dl>
         </section>
 

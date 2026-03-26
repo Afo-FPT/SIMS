@@ -543,9 +543,42 @@ export async function getContractById(
   if (!contract) {
     throw new Error("Contract not found");
   }
-  if (userRole === "customer" && contract.customerId.toString() !== userId) {
+  const contractCustomerId =
+    ((contract.customerId as any)?._id?.toString?.() as string | undefined) ||
+    (contract.customerId as any)?.toString?.();
+  if (userRole === "customer" && contractCustomerId !== userId) {
     throw new Error("Access denied. You can only view your own contracts.");
   }
+  return mapContractToResponse(contract);
+}
+
+export async function getContractByCode(
+  contractCode: string,
+  userId: string,
+  userRole: string
+): Promise<ContractResponse> {
+  const normalized = String(contractCode || "").trim().toUpperCase();
+  if (!normalized) throw new Error("contractCode is required");
+
+  const contract = await Contract.findOne({ contractCode: normalized })
+    .populate("customerId", "name email")
+    .populate("warehouseId", "name address")
+    .populate("createdBy", "name email")
+    .populate("rentedZones.zoneId", "zoneCode name")
+    .populate("requestedZoneId", "zoneCode name");
+
+  if (!contract) {
+    throw new Error("Contract not found");
+  }
+
+  const contractCustomerId =
+    ((contract.customerId as any)?._id?.toString?.() as string | undefined) ||
+    (contract.customerId as any)?.toString?.();
+
+  if (userRole === "customer" && contractCustomerId !== userId) {
+    throw new Error("Access denied. You can only view your own contracts.");
+  }
+
   return mapContractToResponse(contract);
 }
 

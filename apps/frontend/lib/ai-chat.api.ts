@@ -23,6 +23,8 @@ export interface ChatTableColumn {
 }
 
 export interface ChatTableSpec {
+  contextHref?: string;
+  contextLabel?: string;
   columns: ChatTableColumn[];
   rows: Array<Record<string, unknown>>;
 }

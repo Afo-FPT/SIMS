@@ -22,11 +22,13 @@ import {
   getProcessingTime,
   type ReportGranularity,
 } from '../../../lib/reports.api';
+import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import type {
   ManagerReportTrendPoint,
   ManagerReportAnomaly,
@@ -65,6 +67,10 @@ export default function ManagerReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState('2026-01-01');
   const [endDate, setEndDate] = useState('2026-04-30');
+
+  const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
+  const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   const [stats, setStats] = useState({
     inbound: 0,
@@ -227,6 +233,9 @@ export default function ManagerReportsPage() {
   }, []);
 
   useEffect(() => {
+    setInsightsByKey({});
+    setInsightLoadingKey(null);
+    setInsightError(null);
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
 
@@ -303,6 +312,28 @@ export default function ManagerReportsPage() {
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [startDate, endDate, granularity, processingTimeGranularity, hasLoaded, toast]);
+
+  async function handleInsightRequest(chartKey: string, data: unknown) {
+    try {
+      setInsightError(null);
+      setInsightLoadingKey(chartKey);
+      const res = await requestReportInsight({ chartKey, startDate, endDate, data });
+      setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
+    } catch (e) {
+      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
+    } finally {
+      setInsightLoadingKey(null);
+    }
+  }
+
+  function clearInsight(chartKey: string) {
+    setInsightsByKey((prev) => {
+      if (!prev[chartKey]) return prev;
+      const next = { ...prev };
+      delete next[chartKey];
+      return next;
+    });
+  }
 
   // ====================== EXPORT CSV ======================
   const handleExportCSV = () => {
@@ -506,6 +537,11 @@ export default function ManagerReportsPage() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
         <p className="text-slate-500 mt-1">Operational analytics, approvals, outbound products, processing time, and anomalies</p>
       </div>
+      {insightError && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
+          {insightError}
+        </div>
+      )}
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-4">
@@ -604,7 +640,23 @@ export default function ManagerReportsPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
-              <div className="h-72">
+              <div className="h-72 relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute -top-10 right-0 z-10"
+                  isLoading={insightLoadingKey === 'manager_space_utilization'}
+                  disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_space_utilization'}
+                  onClick={() =>
+                    handleInsightRequest('manager_space_utilization', {
+                      capacityData,
+                      startDate,
+                      endDate,
+                    })
+                  }
+                >
+                  Insight
+                </Button>
                 <Pie
                   data={{
                     labels: capacityData.map((d) => d.name),
@@ -621,18 +673,56 @@ export default function ManagerReportsPage() {
                   }}
                 />
               </div>
+              {insightsByKey.manager_space_utilization && (
+                <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                    <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_space_utilization')}>
+                      Clear
+                    </Button>
+                  </div>
+                  <ChatMarkdown role="model" content={insightsByKey.manager_space_utilization} />
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
               <div className="max-h-[28rem] overflow-y-auto pr-1">
-                <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }}>
+                <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }} className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute -top-10 right-0 z-10"
+                    isLoading={insightLoadingKey === 'manager_stock_by_category'}
+                    disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_stock_by_category'}
+                    onClick={() =>
+                      handleInsightRequest('manager_stock_by_category', {
+                        inventoryData,
+                        startDate,
+                        endDate,
+                      })
+                    }
+                  >
+                    Insight
+                  </Button>
                   <Bar
                     data={stockByCategoryData}
                     options={stockByCategoryOptions}
                   />
                 </div>
               </div>
+              {insightsByKey.manager_stock_by_category && (
+                <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                    <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_stock_by_category')}>
+                      Clear
+                    </Button>
+                  </div>
+                  <ChatMarkdown role="model" content={insightsByKey.manager_stock_by_category} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -640,7 +730,25 @@ export default function ManagerReportsPage() {
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
               Inbound / Outbound Trend {granularity === 'week' ? '(by week)' : '(by day)'}
             </h3>
-            <div className="h-80">
+            <div className="h-80 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'manager_inbound_outbound_trend'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_inbound_outbound_trend'}
+                onClick={() =>
+                  handleInsightRequest('manager_inbound_outbound_trend', {
+                    granularity,
+                    trendData,
+                    anomalies,
+                    startDate,
+                    endDate,
+                  })
+                }
+              >
+                Insight
+              </Button>
               {trendData.length > 0 ? (
                 <Line
                   data={{
@@ -677,6 +785,17 @@ export default function ManagerReportsPage() {
                 </div>
               )}
             </div>
+            {insightsByKey.manager_inbound_outbound_trend && (
+              <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_inbound_outbound_trend')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_inbound_outbound_trend} />
+              </div>
+            )}
           </div>
         </>
       )}
@@ -726,7 +845,23 @@ export default function ManagerReportsPage() {
             </div>
 
             {/* Horizontal Bar Chart - by Manager */}
-            <div className="h-[400px] min-h-[200px]">
+            <div className="h-[400px] min-h-[200px] relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'manager_approval_by_manager'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_approval_by_manager'}
+                onClick={() =>
+                  handleInsightRequest('manager_approval_by_manager', {
+                    approvalByManager,
+                    startDate,
+                    endDate,
+                  })
+                }
+              >
+                Insight
+              </Button>
               <Bar
                 data={{
                   labels: approvalByManager.map((d) => d.managerName),
@@ -756,6 +891,18 @@ export default function ManagerReportsPage() {
                 }}
               />
             </div>
+
+            {insightsByKey.manager_approval_by_manager && (
+              <div className="mt-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_approval_by_manager')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_approval_by_manager} />
+              </div>
+            )}
 
             {/* Summary table */}
             <div className="mt-6 pt-6 border-t border-slate-100">
@@ -808,7 +955,23 @@ export default function ManagerReportsPage() {
         {topOutboundProducts.length > 0 ? (
           <>
             {/* Horizontal Bar Chart */}
-            <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+            <div className="mb-8 rounded-2xl border border-slate-200 bg-slate-50/50 p-3 relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute -top-10 right-0 z-10"
+                isLoading={insightLoadingKey === 'manager_top_outbound_products'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_top_outbound_products'}
+                onClick={() =>
+                  handleInsightRequest('manager_top_outbound_products', {
+                    topOutboundProducts,
+                    startDate,
+                    endDate,
+                  })
+                }
+              >
+                Insight
+              </Button>
               <div style={{ height: `${outboundChartHeight}px` }}>
                 <Bar
                   data={topOutboundProductsBarData}
@@ -816,6 +979,18 @@ export default function ManagerReportsPage() {
                 />
               </div>
             </div>
+
+            {insightsByKey.manager_top_outbound_products && (
+              <div className="mb-8 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_top_outbound_products')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_top_outbound_products} />
+              </div>
+            )}
 
             {/* Detail Table */}
             <div>
@@ -906,7 +1081,24 @@ export default function ManagerReportsPage() {
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
                   Trend {processingTimeGranularity === 'month' ? '(by month)' : '(by week)'}
                 </h4>
-                <div className="h-72">
+                <div className="h-72 relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute -top-10 right-0 z-10"
+                    isLoading={insightLoadingKey === 'manager_processing_time_trend'}
+                    disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_processing_time_trend'}
+                    onClick={() =>
+                      handleInsightRequest('manager_processing_time_trend', {
+                        processingTimeGranularity,
+                        processingTimeTrend,
+                        startDate,
+                        endDate,
+                      })
+                    }
+                  >
+                    Insight
+                  </Button>
                   {processingTimeTrend.length > 0 ? (
                     <Line
                       data={{
@@ -940,6 +1132,17 @@ export default function ManagerReportsPage() {
                     </div>
                   )}
                 </div>
+                {insightsByKey.manager_processing_time_trend && (
+                  <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                      <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_processing_time_trend')}>
+                        Clear
+                      </Button>
+                    </div>
+                    <ChatMarkdown role="model" content={insightsByKey.manager_processing_time_trend} />
+                  </div>
+                )}
               </div>
 
               {/* Box Plot */}
@@ -982,13 +1185,42 @@ export default function ManagerReportsPage() {
           <div>
             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Timeline (next 90 days)</h4>
             {expiringAndCapacity.ganttContracts.length > 0 ? (
-              <GanttChart contracts={expiringAndCapacity.ganttContracts} />
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute -top-10 right-0 z-10"
+                  isLoading={insightLoadingKey === 'manager_expiring_contracts'}
+                  disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_expiring_contracts'}
+                  onClick={() =>
+                    handleInsightRequest('manager_expiring_contracts', {
+                      expiringAndCapacity,
+                      startDate,
+                      endDate,
+                    })
+                  }
+                >
+                  Insight
+                </Button>
+                <GanttChart contracts={expiringAndCapacity.ganttContracts} />
+              </div>
             ) : (
               <div className="py-8 text-center text-slate-400 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
                 No contracts expiring in the next 90 days
               </div>
             )}
           </div>
+          {insightsByKey.manager_expiring_contracts && (
+            <div className="mt-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_expiring_contracts')}>
+                  Clear
+                </Button>
+              </div>
+              <ChatMarkdown role="model" content={insightsByKey.manager_expiring_contracts} />
+            </div>
+          )}
         </div>
       )}
 

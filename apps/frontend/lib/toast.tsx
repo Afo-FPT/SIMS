@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -52,12 +52,23 @@ export function useToast() {
 export function useToastHelpers() {
   const { showToast } = useToast();
 
-  return {
-    success: (message: string, duration?: number) => showToast('success', message, duration),
-    error: (message: string, duration?: number) => showToast('error', message, duration),
-    warning: (message: string, duration?: number) => showToast('warning', message, duration),
-    info: (message: string, duration?: number) => showToast('info', message, duration),
-  };
+  const success = useCallback((message: string, duration?: number) => {
+    showToast('success', message, duration);
+  }, [showToast]);
+
+  const error = useCallback((message: string, duration?: number) => {
+    showToast('error', message, duration);
+  }, [showToast]);
+
+  const warning = useCallback((message: string, duration?: number) => {
+    showToast('warning', message, duration);
+  }, [showToast]);
+
+  const info = useCallback((message: string, duration?: number) => {
+    showToast('info', message, duration);
+  }, [showToast]);
+
+  return useMemo(() => ({ success, error, warning, info }), [success, error, warning, info]);
 }
 
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {

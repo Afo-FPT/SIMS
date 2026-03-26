@@ -199,7 +199,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
       </nav>
 
       {user && (
-        <div className={`${collapsed ? 'px-3 pb-4 pt-4' : 'px-5 pb-5 pt-4'} border-t border-slate-50`}>
+        <div className={`${collapsed ? 'px-3 pb-6 pt-4' : 'px-5 pb-6 pt-4'} border-t border-slate-50`}>
           <div className="bg-primary text-white rounded-2xl px-4 py-3 shadow-lg shadow-primary/30 relative overflow-hidden group">
             <div className="relative z-10 flex items-center gap-3">
               <div className="relative shrink-0">

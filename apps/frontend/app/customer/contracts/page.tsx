@@ -172,9 +172,6 @@ export default function ContractsPage() {
                       {c.warehouseName || c.warehouseAddress ? (
                         <>
                           <span className="font-semibold">{c.warehouseName || '—'}</span>
-                          {c.warehouseAddress && (
-                            <span className="text-slate-500 text-xs"> — {c.warehouseAddress}</span>
-                          )}
                         </>
                       ) : (
                         <span className="text-slate-400 text-sm">—</span>

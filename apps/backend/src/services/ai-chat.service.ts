@@ -2,10 +2,11 @@ import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { getContracts, getContractById } from "./contract.service";
+import { getContracts, getContractById, getContractByCode } from "./contract.service";
 import {
   getMyStoredProducts,
   getMyStoredProductShelves,
+  getMyStoredProductsInZoneOrWarehouse,
 } from "./stored-item.service";
 import {
   getStorageRequestById,
@@ -16,6 +17,10 @@ import {
   getUnreadCount,
   listMyNotifications,
 } from "./notification.service";
+import { getCycleCounts, getCycleCountById } from "./cycle-count.service";
+import { searchAndFilterWarehouses } from "./warehouse.service";
+import { getManagerReport } from "./reports.service";
+import { getAllUsers } from "./user.service";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,6 +45,10 @@ export interface ChatTableColumn {
 }
 
 export interface ChatTableSpec {
+  /** Optional link to the relevant app page (list/detail) */
+  contextHref?: string;
+  /** Optional label for the context link */
+  contextLabel?: string;
   columns: ChatTableColumn[];
   rows: Array<Record<string, unknown>>;
 }
@@ -71,13 +80,22 @@ Use the knowledge base below for general flows, menus, and concepts. When the us
 When you list multiple items (contracts, inventory, storage/service requests, rent requests, notifications), call the appropriate tools and keep the narrative short.
 The UI will render the detailed list as a structured table (no Markdown pipe tables).
 
-For **managers/admins**, if the user needs to open a specific row, tell them to open **Manager → Contracts** / **Manager → Service Requests** (UI routing).
+Access control:
+- Contract data tools (get_contracts_summary, get_contract_by_id) are customer-only in chat.
+- Inventory data tools are customer-only in chat.
+- If a non-customer asks for contract/inventory data, politely refuse and direct them to the manager/staff UI pages.
 
-When the user asks for contract details, call get_contract_by_id(contractId).
+For managers/admins, if they need to inspect contract rows, tell them to open **Manager → Contracts** in the app UI.
+
+When the user asks for contract details, prefer get_contract_by_code(contractCode) if the user provides a contract code (e.g. CT-XXXX). Otherwise, call get_contracts_summary first and ask them which contractCode they mean, then call get_contract_by_code.
 When the user asks where a SKU is located, call get_inventory_product_shelves(sku, contractId?).
+When the user asks to list products currently stored in a specific zone or warehouse they are renting, call get_zone_inventory_products(zoneCode?, warehouseId?, contractCode?).
 When the user asks for a storage/service request detail, call get_storage_request_by_id(requestId).
 When the user asks about rent requests, call get_rent_requests_summary.
 When the user asks about notifications, call get_unread_notification_count and/or list_my_notifications.
+For staff, use get_cycle_counts_summary and get_cycle_count_by_id to review assigned cycle count work.
+For managers/admins, use get_manager_report_summary for operational reports and list_warehouses for warehouse overview.
+For admins, use list_users_summary to view user list in chat.
 
 Knowledge base:
 ---
@@ -89,7 +107,8 @@ Rules:
 - Be concise. Use bullet lists when listing steps.
 - If tools return no data, say so clearly.
 - Do NOT output Markdown tables using pipe syntax. Let the UI render lists as tables.
-- When a structured table is rendered by the UI, do not repeat every row in the text reply; keep reply to 1-2 sentences like "Dưới đây là bảng...".
+- When a structured table is rendered by the UI, do not repeat every row in the text reply.
+- Keep text natural and conversational. Avoid rigid "summary template" phrasing.
 - Do not execute payments or change data; only explain how to do it in the UI.`;
 }
 
@@ -102,8 +121,21 @@ async function runTool(
 
   switch (name) {
     case "get_contracts_summary": {
+      if (ctx.role !== "customer") {
+        return { error: "Contract lookup in chat is only available for customers." };
+      }
+      const statusFilter = (args.status as string | undefined) || undefined;
+      const codeFilter = (args.contractCode as string | undefined) || undefined;
       const rows = await getContracts(ctx.userId, ctx.role);
-      return rows.slice(0, limit).map((c) => ({
+      const filtered = rows.filter((c) => {
+        if (statusFilter && String(c.status) !== String(statusFilter)) return false;
+        if (codeFilter) {
+          const q = String(codeFilter).trim().toUpperCase();
+          if (!String(c.contract_code || "").toUpperCase().includes(q)) return false;
+        }
+        return true;
+      });
+      return filtered.slice(0, limit).map((c) => ({
         contractId: c.contract_id,
         contractCode: c.contract_code,
         status: c.status,
@@ -116,12 +148,20 @@ async function runTool(
       if (ctx.role !== "customer") {
         return { error: "Inventory lookup is only available for customers." };
       }
+      const skuFilter = (args.sku as string | undefined) || undefined;
       const products = await getMyStoredProducts(ctx.userId);
-      return products.slice(0, limit).map((p) => ({
+      const filtered = skuFilter
+        ? products.filter((p) =>
+            String(p.sku || "")
+              .toLowerCase()
+              .includes(String(skuFilter).trim().toLowerCase())
+          )
+        : products;
+      return filtered.slice(0, limit).map((p) => ({
+        productName: p.sku,
         sku: p.sku,
         productId: p.product_id,
         contractId: (p as any).contract_id,
-        contractCode: p.contract_code,
         totalQuantity: p.total_quantity,
         unit: p.unit,
         lastUpdated: p.last_updated,
@@ -151,9 +191,20 @@ async function runTool(
       }));
     }
     case "get_contract_by_id": {
+      if (ctx.role !== "customer") {
+        return { error: "Contract detail lookup in chat is only available for customers." };
+      }
       const contractId = args.contractId as string | undefined;
       if (!contractId) return { error: "contractId is required" };
       return await getContractById(contractId, ctx.userId, ctx.role);
+    }
+    case "get_contract_by_code": {
+      if (ctx.role !== "customer") {
+        return { error: "Contract detail lookup in chat is only available for customers." };
+      }
+      const contractCode = args.contractCode as string | undefined;
+      if (!contractCode) return { error: "contractCode is required" };
+      return await getContractByCode(contractCode, ctx.userId, ctx.role);
     }
     case "get_inventory_product_shelves": {
       if (ctx.role !== "customer") {
@@ -165,14 +216,131 @@ async function runTool(
       const rows = await getMyStoredProductShelves(ctx.userId, sku, contractId);
       return rows.slice(0, limit);
     }
+    case "get_zone_inventory_products": {
+      if (ctx.role !== "customer") {
+        return { error: "Zone/warehouse inventory lookup is only available for customers." };
+      }
+      const zoneCode =
+        (args.zoneCode as string | undefined) ||
+        ((args as any).zone as string | undefined) ||
+        ((args as any).zone_code as string | undefined) ||
+        undefined;
+      const warehouseId = (args.warehouseId as string | undefined) || undefined;
+      const contractCode =
+        (args.contractCode as string | undefined) ||
+        ((args as any).contract_code as string | undefined) ||
+        undefined;
+      const rows = await getMyStoredProductsInZoneOrWarehouse({
+        customerId: ctx.userId,
+        zoneCode,
+        warehouseId,
+        contractCode,
+      });
+      return rows.slice(0, limit).map((r) => ({
+        productId: r.product_id,
+        productName: r.product_name,
+        sku: r.product_name,
+        totalQuantity: r.total_quantity,
+        unit: r.unit,
+        zoneCodes: r.zone_codes,
+        shelfCount: r.shelf_count,
+        lastUpdated: r.last_updated,
+      }));
+    }
     case "get_storage_request_by_id": {
       const requestId = args.requestId as string | undefined;
       if (!requestId) return { error: "requestId is required" };
       return await getStorageRequestById(requestId, ctx.userId, ctx.role);
     }
     case "get_rent_requests_summary": {
+      const statusFilter = (args.status as string | undefined) || undefined;
       const rows = await getRentRequests(ctx.userId, ctx.role);
-      return rows.slice(0, limit);
+      const filtered = statusFilter
+        ? rows.filter((r: any) => String(r.status) === String(statusFilter))
+        : rows;
+      return filtered.slice(0, limit);
+    }
+    case "get_cycle_counts_summary": {
+      // customer/staff/manager/admin are handled inside cycle-count.service
+      const statusFilter = (args.status as string | undefined) || undefined;
+      const codeFilter = (args.contractCode as string | undefined) || undefined;
+      const rows = await getCycleCounts(ctx.userId, ctx.role);
+      const filtered = rows.filter((c) => {
+        if (statusFilter && String(c.status) !== String(statusFilter)) return false;
+        if (codeFilter) {
+          const q = String(codeFilter).trim().toUpperCase();
+          if (!String(c.contract_code || "").toUpperCase().includes(q)) return false;
+        }
+        return true;
+      });
+      return filtered.slice(0, limit).map((c) => ({
+        cycleCountId: c.cycle_count_id,
+        contractCode: c.contract_code,
+        warehouse: c.warehouse_name,
+        status: c.status,
+        requestedAt: c.requested_at,
+        countingDeadline: c.counting_deadline,
+        updatedAt: c.updated_at,
+      }));
+    }
+    case "get_cycle_count_by_id": {
+      const cycleCountId = args.cycleCountId as string | undefined;
+      if (!cycleCountId) return { error: "cycleCountId is required" };
+      return await getCycleCountById(cycleCountId, ctx.userId, ctx.role);
+    }
+    case "list_warehouses": {
+      if (ctx.role !== "manager" && ctx.role !== "admin" && ctx.role !== "staff") {
+        return { error: "Warehouse listing is not available for this role in chat." };
+      }
+      const search = (args.search as string | undefined) || undefined;
+      const status = (args.status as "ACTIVE" | "INACTIVE" | undefined) || undefined;
+      const page = Math.max(1, Number(args.page) || 1);
+      const res = await searchAndFilterWarehouses({
+        search,
+        status,
+        page,
+        limit,
+      } as any);
+      return {
+        items: res.warehouses,
+        pagination: res.pagination,
+      };
+    }
+    case "get_manager_report_summary": {
+      if (ctx.role !== "manager" && ctx.role !== "admin") {
+        return { error: "Manager report is only available for manager/admin in chat." };
+      }
+      const startDate = args.startDate as string | undefined;
+      const endDate = args.endDate as string | undefined;
+      const granularity = ((args.granularity as string) || "day") === "week" ? "week" : "day";
+      if (!startDate || !endDate) return { error: "startDate and endDate are required (YYYY-MM-DD)" };
+      return await getManagerReport(startDate, endDate, granularity as any);
+    }
+    case "list_users_summary": {
+      if (ctx.role !== "admin") {
+        return { error: "User listing is only available for admin in chat." };
+      }
+      const roleFilter = (args.role as string | undefined) || undefined;
+      const emailFilter = (args.email as string | undefined) || undefined;
+      const activeOnly = Boolean(args.activeOnly);
+      const users = await getAllUsers();
+      const filtered = users.filter((u: any) => {
+        if (roleFilter && String(u.role) !== String(roleFilter)) return false;
+        if (activeOnly && !u.isActive) return false;
+        if (emailFilter) {
+          const q = String(emailFilter).trim().toLowerCase();
+          if (!String(u.email || "").toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+      return filtered.slice(0, limit).map((u: any) => ({
+        userId: u._id?.toString?.() ?? String(u._id),
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        isActive: Boolean(u.isActive),
+        createdAt: u.createdAt,
+      }));
     }
     case "get_unread_notification_count": {
       return await getUnreadCount({ userId: ctx.userId });
@@ -191,6 +359,53 @@ async function runTool(
     default:
       return { error: `Unknown tool: ${name}` };
   }
+}
+
+type ToolErrorPayload = {
+  error: {
+    message: string;
+    reason?: string;
+    fix?: string;
+    tool?: string;
+  };
+};
+
+function toToolErrorPayload(toolName: string, err: unknown): ToolErrorPayload {
+  const raw = err instanceof Error ? err.message : String(err || "Tool failed");
+  const message = raw || "Tool failed";
+  const lower = message.toLowerCase();
+
+  let reason: string | undefined;
+  let fix: string | undefined;
+
+  if (lower.includes("unauthorized") || lower.includes("forbidden") || lower.includes("access denied")) {
+    reason = "Unauthorized access for your role or account.";
+    fix = "Make sure you are logged in with the correct role/account. If you are a non-customer, use the UI pages (e.g., Manager → Contracts) instead of chat for contract/inventory data.";
+  } else if (lower.includes("not found")) {
+    reason = "The requested item does not exist or is not visible to your account.";
+    fix = "Double-check the identifier (e.g., contract code) and try again. You can also ask me to list your contracts/requests first, then pick one from the list.";
+  } else if (lower.includes("invalid")) {
+    reason = "Invalid input format.";
+    fix = "Please provide a valid identifier (e.g., contractCode like CT-XXXX) or ask me to list items first.";
+  } else if (lower.includes("pending_payment") || lower.includes("no active contract") || lower.includes("active contract")) {
+    reason = "Your account is in a state that prevents this action.";
+    fix = "Check your contracts and ensure you have an active contract (or complete pending payment) before using this feature.";
+  } else if (lower.includes("zone is not in your rented area") || lower.includes("does not belong")) {
+    reason = "The target zone/contract is not part of your rented area.";
+    fix = "Use a zone that appears in your active contract. Ask me to list your contracts first, then choose the correct contract/zone.";
+  } else {
+    reason = "The system could not complete the request.";
+    fix = "Try again with a shorter/more specific query, or ask me to list the related items first to avoid using the wrong identifier.";
+  }
+
+  return {
+    error: {
+      tool: toolName,
+      message,
+      reason,
+      fix,
+    },
+  };
 }
 
 function toFunctionResponsePayload(out: unknown): Record<string, unknown> {
@@ -234,7 +449,8 @@ function buildHrefFromTemplate(
 }
 
 function buildChatTableSpec(
-  toolOutputs: Array<{ name: string; out: unknown }>
+  toolOutputs: Array<{ name: string; out: unknown }>,
+  ctx: AiChatContext
 ): ChatTableSpec | undefined {
   const lastOf = (names: string[]) => {
     for (let i = toolOutputs.length - 1; i >= 0; i--) {
@@ -252,6 +468,8 @@ function buildChatTableSpec(
       endDate: formatTableCellValue(r.endDate),
     }));
     return {
+      contextHref: "/customer/contracts",
+      contextLabel: "Open Contracts",
       columns: [
         {
           key: "contractCode",
@@ -275,6 +493,8 @@ function buildChatTableSpec(
       last_updated: formatTableCellValue(r.last_updated),
     }));
     return {
+      contextHref: "/customer/inventory",
+      contextLabel: "Open Inventory",
       columns: [
         { key: "shelf", label: "Shelf" },
         { key: "quantity", label: "Quantity" },
@@ -295,18 +515,46 @@ function buildChatTableSpec(
       lastUpdated: formatTableCellValue(r.lastUpdated),
     }));
     return {
+      contextHref: "/customer/inventory",
+      contextLabel: "Open Inventory",
       columns: [
         {
-          key: "sku",
-          label: "SKU",
+          key: "productName",
+          label: "Product name",
+          textKey: "productName",
+          hrefTemplate: "/customer/inventory/{productId}?contractId={contractId}",
         },
-        {
-          key: "contractCode",
-          label: "Contract",
-          hrefTemplate: "/customer/contracts/{contractId}",
-        },
+        { key: "sku", label: "SKU" },
         { key: "totalQuantity", label: "Quantity" },
         { key: "unit", label: "Unit" },
+        { key: "lastUpdated", label: "Updated" },
+      ],
+      rows,
+    };
+  }
+
+  // 2c) Inventory in a rented zone/warehouse (customer)
+  const invZone = lastOf(["get_zone_inventory_products"]);
+  if (invZone?.out && Array.isArray(invZone.out)) {
+    const rows = invZone.out.map((r: any) => ({
+      ...r,
+      lastUpdated: formatTableCellValue(r.lastUpdated),
+    }));
+    return {
+      contextHref: "/customer/inventory",
+      contextLabel: "Open Inventory",
+      columns: [
+        {
+          key: "productName",
+          label: "Product name",
+          textKey: "productName",
+          hrefTemplate: "/customer/inventory/{productId}",
+        },
+        { key: "sku", label: "SKU" },
+        { key: "totalQuantity", label: "Quantity" },
+        { key: "unit", label: "Unit" },
+        { key: "zoneCodes", label: "Zone(s)" },
+        { key: "shelfCount", label: "Shelves" },
         { key: "lastUpdated", label: "Updated" },
       ],
       rows,
@@ -343,12 +591,18 @@ function buildChatTableSpec(
   const serviceSumm = lastOf(["get_service_requests_summary"]);
   if (serviceSumm?.out && Array.isArray(serviceSumm.out)) {
     return {
+      contextHref: "/customer/service-requests",
+      contextLabel: "Open Service Requests",
       columns: [
-        { key: "requestId", label: "Request" },
         { key: "type", label: "Type" },
         { key: "status", label: "Status" },
         { key: "contractCode", label: "Contract" },
-        { key: "reference", label: "Reference" },
+        {
+          key: "reference",
+          label: "Reference",
+          hrefTemplate: "/customer/service-requests/{requestId}",
+          textKey: "reference",
+        },
         { key: "createdAt", label: "Created" },
         { key: "itemCount", label: "Items" },
       ],
@@ -363,6 +617,8 @@ function buildChatTableSpec(
   const rentSumm = lastOf(["get_rent_requests_summary"]);
   if (rentSumm?.out && Array.isArray(rentSumm.out)) {
     return {
+      contextHref: "/customer/rent-requests",
+      contextLabel: "Open Rent Requests",
       columns: [
         { key: "id", label: "Rent request" },
         { key: "status", label: "Status" },
@@ -381,6 +637,78 @@ function buildChatTableSpec(
     };
   }
 
+  // 5b) Cycle counts list (summary)
+  const ccSumm = lastOf(["get_cycle_counts_summary"]);
+  if (ccSumm?.out && Array.isArray(ccSumm.out)) {
+    const cycleHref =
+      ctx.role === "staff"
+        ? "/staff/cycle-count"
+        : ctx.role === "manager"
+          ? "/manager/cycle-count"
+          : ctx.role === "customer"
+            ? "/customer/inventory-checking"
+            : "/manager/cycle-count";
+    return {
+      contextHref: cycleHref,
+      contextLabel: "Open Cycle Counts",
+      columns: [
+        { key: "contractCode", label: "Contract" },
+        { key: "warehouse", label: "Warehouse" },
+        { key: "status", label: "Status" },
+        { key: "requestedAt", label: "Requested" },
+        { key: "countingDeadline", label: "Deadline" },
+        { key: "updatedAt", label: "Updated" },
+      ],
+      rows: ccSumm.out.map((r: any) => ({
+        ...r,
+        requestedAt: formatTableCellValue(r.requestedAt),
+        countingDeadline: formatTableCellValue(r.countingDeadline),
+        updatedAt: formatTableCellValue(r.updatedAt),
+      })),
+    };
+  }
+
+  // 5c) Warehouses list
+  const wh = lastOf(["list_warehouses"]);
+  if (wh?.out && typeof wh.out === "object" && wh.out && Array.isArray((wh.out as any).items)) {
+    const items = (wh.out as any).items as any[];
+    return {
+      contextHref: "/manager/warehouses",
+      contextLabel: "Open Warehouses",
+      columns: [
+        { key: "name", label: "Warehouse name" },
+        { key: "address", label: "Address" },
+        { key: "area", label: "Area" },
+        { key: "status", label: "Status" },
+        { key: "updated_at", label: "Updated" },
+      ],
+      rows: items.map((w: any) => ({
+        ...w,
+        updated_at: formatTableCellValue(w.updated_at),
+      })),
+    };
+  }
+
+  // 5d) Users list (admin)
+  const users = lastOf(["list_users_summary"]);
+  if (users?.out && Array.isArray(users.out)) {
+    return {
+      contextHref: "/admin/users",
+      contextLabel: "Open Users",
+      columns: [
+        { key: "name", label: "Name" },
+        { key: "email", label: "Email" },
+        { key: "role", label: "Role" },
+        { key: "isActive", label: "Active" },
+        { key: "createdAt", label: "Created" },
+      ],
+      rows: users.out.map((u: any) => ({
+        ...u,
+        createdAt: formatTableCellValue(u.createdAt),
+      })),
+    };
+  }
+
   // 6) Notifications list
   const notifList = lastOf(["list_my_notifications"]);
   if (
@@ -392,6 +720,15 @@ function buildChatTableSpec(
   ) {
     const notifications = (notifList.out as any).notifications as any[];
     return {
+      contextHref:
+        ctx.role === "staff"
+          ? "/staff/notifications"
+          : ctx.role === "customer"
+            ? "/customer/dashboard"
+            : ctx.role === "manager"
+              ? "/manager/dashboard"
+              : "/admin/dashboard",
+      contextLabel: "Open Notifications",
       columns: [
         { key: "title", label: "Title" },
         { key: "type", label: "Type" },
@@ -421,30 +758,213 @@ function buildChatTableSpec(
   return undefined;
 }
 
-function buildTableSummary(toolOutputs: Array<{ name: string; out: unknown }>): string {
+type FollowUpIntent =
+  | "list"
+  | "detail"
+  | "status"
+  | "report"
+  | "help"
+  | "unknown";
+
+type FollowUpLanguage = "vi" | "en";
+
+function detectLanguage(text: string, fallback: FollowUpLanguage = "vi"): FollowUpLanguage {
+  const t = (text || "").trim();
+  if (!t) return fallback;
+
+  const hasVietnameseDiacritics =
+    /[àáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(
+      t
+    );
+  if (hasVietnameseDiacritics) return "vi";
+
+  const viHits = (t.match(/\b(mình|bạn|vui lòng|hợp đồng|tồn kho|yêu cầu|báo cáo|thông báo)\b/gi) || [])
+    .length;
+  const enHits = (t.match(/\b(you|your|please|contract|inventory|request|report|notification|would|can)\b/gi) || [])
+    .length;
+
+  if (viHits === 0 && enHits === 0) return fallback;
+  return viHits >= enHits ? "vi" : "en";
+}
+
+function inferFollowUpIntent(
+  userQuery: string,
+  toolOutputs: Array<{ name: string; out: unknown }>
+): FollowUpIntent {
+  const q = (userQuery || "").toLowerCase();
+  const toolNames = toolOutputs.map((t) => t.name);
+
+  const looksLikeList =
+    /\b(list|show|all|summary|overview)\b/.test(q) ||
+    /liệt kê|danh sách|tổng hợp|bao nhiêu/.test(q) ||
+    toolNames.some((n) =>
+      [
+        "get_contracts_summary",
+        "get_inventory_products_summary",
+        "get_service_requests_summary",
+        "get_rent_requests_summary",
+        "get_cycle_counts_summary",
+        "list_users_summary",
+        "list_warehouses",
+        "list_my_notifications",
+      ].includes(n)
+    );
+
+  const looksLikeStatus =
+    /\b(status|state|pending|approved|rejected|completed|active|expired)\b/.test(q) ||
+    /trạng thái|đang|chờ|hoàn thành|đã duyệt|từ chối/.test(q);
+
+  const looksLikeReport =
+    /\b(report|chart|trend|anomal|insight|metric|granularity)\b/.test(q) ||
+    /báo cáo|biểu đồ|xu hướng|insight|thống kê/.test(q) ||
+    toolNames.includes("get_manager_report_summary");
+
+  const looksLikeHelp =
+    /\b(how|where|what|guide|steps)\b/.test(q) ||
+    /cách|ở đâu|hướng dẫn|làm sao/.test(q);
+
+  if (looksLikeReport) return "report";
+  if (looksLikeList) return "list";
+  if (
+    toolNames.some((n) =>
+      ["get_contract_by_id", "get_contract_by_code", "get_storage_request_by_id", "get_cycle_count_by_id"].includes(n)
+    )
+  ) {
+    return "detail";
+  }
+  if (looksLikeStatus) return "status";
+  if (looksLikeHelp) return "help";
+  return "unknown";
+}
+
+function stablePick<T>(items: T[], seed: string): T {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return items[h % items.length];
+}
+
+function generateFollowUp(
+  intent: FollowUpIntent,
+  language: FollowUpLanguage,
+  context: { userQuery: string; toolNames: string[] }
+): string {
+  const seed = `${intent}::${language}::${context.userQuery}::${context.toolNames.join(",")}`;
+
+  const vi: Record<FollowUpIntent, string[]> = {
+    list: [
+      "Bạn muốn xem chi tiết mục nào không?",
+      "Bạn muốn mình thu hẹp theo trạng thái hoặc mốc thời gian nào không?",
+      "Bạn muốn lọc lại theo tiêu chí nào (ví dụ trạng thái hoặc mã) không?",
+    ],
+    status: [
+      "Bạn có muốn mình phân tích sâu hơn theo trạng thái hoặc timeline không?",
+      "Bạn muốn mình làm rõ nguyên nhân/điểm nghẽn (nếu có) không?",
+    ],
+    detail: [
+      "Bạn muốn kiểm tra thêm dữ liệu liên quan (tồn kho, yêu cầu dịch vụ, hoặc thông báo) không?",
+      "Bạn muốn mình đối chiếu thêm thông tin liên quan để bạn dễ theo dõi không?",
+    ],
+    report: [
+      "Bạn có muốn mình rút ra insight ngắn gọn và gợi ý bước tiếp theo không?",
+      "Bạn muốn mình tập trung vào xu hướng, bất thường hay khuyến nghị vận hành?",
+    ],
+    help: [
+      "Bạn muốn mình hướng dẫn theo luồng nào trước, và bạn đang ở role nào?",
+      "Bạn muốn mình chỉ đúng menu/path trên UI để thao tác nhanh không?",
+    ],
+    unknown: [
+      "Bạn muốn mình hỗ trợ thêm theo hướng nào?",
+      "Bạn muốn xem chi tiết hay tóm tắt theo một tiêu chí cụ thể?",
+    ],
+  };
+
+  const en: Record<FollowUpIntent, string[]> = {
+    list: [
+      "Would you like to view details for any item?",
+      "Do you want me to narrow this down by status or time range?",
+      "Would you like a filtered view (e.g., by status or code)?",
+    ],
+    status: [
+      "Would you like a deeper breakdown by status or timeline?",
+      "Do you want me to highlight potential blockers or anomalies?",
+    ],
+    detail: [
+      "Would you like to check related data (inventory, service requests, or notifications)?",
+      "Do you want me to cross-check anything else related to this item?",
+    ],
+    report: [
+      "Would you like a short insight and next-step recommendations?",
+      "Should I focus on trends, anomalies, or operational recommendations?",
+    ],
+    help: [
+      "Which flow should we walk through first, and what role are you using?",
+      "Do you want the exact UI navigation steps for this task?",
+    ],
+    unknown: [
+      "How would you like me to help next?",
+      "Do you want a detailed view or a quick summary with a specific filter?",
+    ],
+  };
+
+  const bank = language === "vi" ? vi[intent] : en[intent];
+  return stablePick(bank, seed);
+}
+
+function ensureDynamicFollowUp(
+  reply: string,
+  userQuery: string,
+  toolOutputs: Array<{ name: string; out: unknown }>
+): string {
+  const normalized = (reply || "").trim();
+  if (!normalized) return normalized;
+  if (/[?？]\s*$/.test(normalized)) return normalized;
+
+  const language = detectLanguage(normalized, detectLanguage(userQuery || "", "vi"));
+  const intent = inferFollowUpIntent(userQuery, toolOutputs);
+  const toolNames = toolOutputs.map((t) => t.name);
+  const followUp = generateFollowUp(intent, language, { userQuery, toolNames });
+  return `${normalized}\n\n${followUp}`;
+}
+
+function sanitizeReplyWhenTableExists(reply: string): string {
+  if (!reply) return reply;
+  const lines = reply.split(/\r?\n/);
+  const out: string[] = [];
+  for (const line of lines) {
+    // Stop when model starts listing rows in bullets/numbering.
+    if (/^\s*([-*•]|\d+[.)])\s+/.test(line)) break;
+    out.push(line);
+  }
+  const cleaned = out.join("\n").trim();
+  return cleaned || reply.trim();
+}
+
+function shouldAttachTable(
+  table: ChatTableSpec | undefined,
+  toolOutputs: Array<{ name: string; out: unknown }>,
+  userText: string
+): boolean {
+  if (!table) return false;
   const names = toolOutputs.map((t) => t.name);
-  if (names.includes("get_contracts_summary")) {
-    return "Dưới đây là bảng các hợp đồng kèm trạng thái của bạn.";
-  }
-  if (names.includes("get_inventory_products_summary")) {
-    return "Dưới đây là bảng tồn kho theo SKU của bạn (kèm cập nhật gần nhất).";
-  }
-  if (names.includes("get_service_requests_summary")) {
-    return "Dưới đây là bảng các service requests (yêu cầu dịch vụ) của bạn.";
-  }
-  if (names.includes("get_storage_request_by_id")) {
-    return "Dưới đây là bảng chi tiết các items trong request bạn yêu cầu.";
-  }
-  if (names.includes("get_rent_requests_summary")) {
-    return "Dưới đây là bảng các rent requests của bạn.";
-  }
-  if (names.includes("list_my_notifications")) {
-    return "Dưới đây là danh sách thông báo của bạn.";
-  }
-  if (names.includes("get_unread_notification_count")) {
-    return "Dưới đây là số lượng thông báo chưa đọc của bạn.";
-  }
-  return "Dưới đây là bảng tóm tắt theo yêu cầu.";
+  // Unread count is better as plain text, not a one-cell table.
+  if (names.includes("get_unread_notification_count")) return false;
+  if (table.rows.length === 0) return false;
+
+  const q = (userText || "").toLowerCase();
+  const listIntent =
+    /liệt kê|danh sách|list|show|hiển thị|toàn bộ|tất cả|all|bao nhiêu hợp đồng|các hợp đồng|các sản phẩm|các yêu cầu/.test(
+      q
+    );
+  const singleAnswerIntent =
+    /nhiều nhất|ít nhất|lớn nhất|nhỏ nhất|max|min|top\s*1|cao nhất|thấp nhất|đầu tiên|gần nhất|mới nhất|cũ nhất|so sánh|best|worst/.test(
+      q
+    );
+
+  // Prefer concise natural text for "single best/worst/top-1" style questions.
+  if (singleAnswerIntent && !listIntent) return false;
+  return table.rows.length > 0;
 }
 
 const functionDeclarations = [
@@ -455,6 +975,14 @@ const functionDeclarations = [
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        status: {
+          type: SchemaType.STRING,
+          description: "Optional status filter (e.g., active, pending_payment, expired)",
+        },
+        contractCode: {
+          type: SchemaType.STRING,
+          description: "Optional contract code filter (substring match, case-insensitive)",
+        },
         limit: {
           type: SchemaType.NUMBER,
           description: "Max number of contracts to return (default 12, max 25)",
@@ -465,10 +993,14 @@ const functionDeclarations = [
   {
     name: "get_inventory_products_summary",
     description:
-      "Get customer's inventory products grouped by SKU (totals per product). Only for customers. Use for stock, SKU, quantity questions.",
+      "Get customer's inventory products grouped by SKU (totals per product). Only for customers. Use for stock, SKU, quantity questions. Optionally filter by sku.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        sku: {
+          type: SchemaType.STRING,
+          description: "Optional SKU filter (substring match, case-insensitive)",
+        },
         limit: {
           type: SchemaType.NUMBER,
           description: "Max products (default 12, max 25)",
@@ -516,6 +1048,21 @@ const functionDeclarations = [
     },
   },
   {
+    name: "get_contract_by_code",
+    description:
+      "Get full details of a specific contract by contractCode (e.g., CT-XXXX). Prefer this when user provides a contract code.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        contractCode: {
+          type: SchemaType.STRING,
+          description: "Contract code (e.g., CT-ABC-123). Case-insensitive.",
+        },
+      },
+      required: ["contractCode"],
+    },
+  },
+  {
     name: "get_inventory_product_shelves",
     description:
       "Get shelf distribution for a customer's SKU (where the items are stored). Optionally scope to a specific contractId. Use when user asks 'SKU X is located on which shelves and quantities per shelf'.",
@@ -536,6 +1083,32 @@ const functionDeclarations = [
         },
       },
       required: ["sku"],
+    },
+  },
+  {
+    name: "get_zone_inventory_products",
+    description:
+      "List products currently stored inside a rented zone or a rented warehouse scope for the authenticated customer. Provide zoneCode (recommended) or warehouseId. Optionally provide contractCode to scope to one contract.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        zoneCode: {
+          type: SchemaType.STRING,
+          description: "Zone code (e.g., ZONE-A). Case-insensitive.",
+        },
+        warehouseId: {
+          type: SchemaType.STRING,
+          description: "Warehouse id (Mongo ObjectId string). Optional alternative to zoneCode.",
+        },
+        contractCode: {
+          type: SchemaType.STRING,
+          description: "Optional contract code to scope zones to one contract (e.g., CT-XXXX).",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max rows (default 12, max 25)",
+        },
+      },
     },
   },
   {
@@ -560,10 +1133,90 @@ const functionDeclarations = [
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        status: {
+          type: SchemaType.STRING,
+          description: "Optional status filter",
+        },
         limit: {
           type: SchemaType.NUMBER,
           description: "Max rows (default 12, max 25)",
         },
+      },
+    },
+  },
+  {
+    name: "get_cycle_counts_summary",
+    description:
+      "List cycle counts visible to this user. Staff: only assigned cycle counts; customer: only their own; manager/admin: all. Use for 'my cycle counts', 'inventory checking tasks', 'cycle count status'.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        status: { type: SchemaType.STRING, description: "Optional status filter" },
+        contractCode: {
+          type: SchemaType.STRING,
+          description: "Optional contract code filter (substring match, case-insensitive)",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max rows (default 12, max 25)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_cycle_count_by_id",
+    description:
+      "Get full detail of a single cycle count by id. Staff can only view assigned cycle counts. Use for 'show cycle count detail' or discrepancy review.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        cycleCountId: {
+          type: SchemaType.STRING,
+          description: "Cycle count id (Mongo ObjectId string)",
+        },
+      },
+      required: ["cycleCountId"],
+    },
+  },
+  {
+    name: "list_warehouses",
+    description:
+      "List warehouses with optional search/status filter. Intended for manager/admin/staff to quickly locate warehouses in chat.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        search: { type: SchemaType.STRING, description: "Search by name/address (optional)" },
+        status: { type: SchemaType.STRING, enum: ["ACTIVE", "INACTIVE"], description: "Filter by status (optional)" },
+        page: { type: SchemaType.NUMBER, description: "Page number (default 1)" },
+        limit: { type: SchemaType.NUMBER, description: "Rows per page (default 12, max 25)" },
+      },
+    },
+  },
+  {
+    name: "get_manager_report_summary",
+    description:
+      "Get operational report data for manager/admin. Requires startDate/endDate and optional granularity (day|week). Use when user asks about manager reports, trend, anomalies, expiring contracts.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        startDate: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
+        endDate: { type: SchemaType.STRING, description: "YYYY-MM-DD" },
+        granularity: { type: SchemaType.STRING, enum: ["day", "week"], description: "day (default) or week" },
+      },
+      required: ["startDate", "endDate"],
+    },
+  },
+  {
+    name: "list_users_summary",
+    description:
+      "Admin-only: list users (manager/staff/customer) for quick overview in chat.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        role: { type: SchemaType.STRING, enum: ["manager", "staff", "customer"], description: "Optional role filter" },
+        email: { type: SchemaType.STRING, description: "Optional email filter (substring match)" },
+        activeOnly: { type: SchemaType.BOOLEAN, description: "If true, only return active users" },
+        limit: { type: SchemaType.NUMBER, description: "Max rows (default 12, max 25)" },
       },
     },
   },
@@ -650,19 +1303,19 @@ export async function runAiChat(
     const calls = response.functionCalls?.();
     if (!calls || calls.length === 0) {
       const text = safeText();
-      const table = buildChatTableSpec(toolOutputs);
-      if (table) {
-        return { reply: buildTableSummary(toolOutputs), model: modelName, table };
-      }
-      return { reply: text || "I could not generate a reply.", model: modelName, table };
+      const table = buildChatTableSpec(toolOutputs, ctx);
+      const attachTable = shouldAttachTable(table, toolOutputs, lastUser.content);
+      const baseReply = attachTable
+        ? sanitizeReplyWhenTableExists(text || "")
+        : text || "I could not generate a reply.";
+      const reply = ensureDynamicFollowUp(baseReply, lastUser.content, toolOutputs);
+      return { reply, model: modelName, table: attachTable ? table : undefined };
     }
 
     const toolResults = await Promise.all(
       calls.map(async (call) => {
-        const out = await runTool(
-          call.name,
-          (call.args as Record<string, unknown>) || {},
-          ctx
+        const out = await runTool(call.name, (call.args as Record<string, unknown>) || {}, ctx).catch(
+          (e) => toToolErrorPayload(call.name, e)
         );
         return {
           name: call.name,
@@ -686,20 +1339,14 @@ export async function runAiChat(
     response = result.response;
   }
 
-  const table = buildChatTableSpec(toolOutputs);
-  if (table) {
-    return {
-      reply: buildTableSummary(toolOutputs),
-      model: modelName,
-      table,
-    };
-  }
+  const table = buildChatTableSpec(toolOutputs, ctx);
+  const attachTable = shouldAttachTable(table, toolOutputs, lastUser.content);
+  const natural = safeText() || "Sorry, the response was cut off. Please try a shorter question.";
+  const baseReply = attachTable ? sanitizeReplyWhenTableExists(natural) : natural;
 
   return {
-    reply:
-      safeText() ||
-      "Sorry, the response was cut off. Please try a shorter question.",
+    reply: ensureDynamicFollowUp(baseReply, lastUser.content, toolOutputs),
     model: modelName,
-    table,
+    table: attachTable ? table : undefined,
   };
 }

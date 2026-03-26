@@ -16,9 +16,12 @@ import {
 import { Pie, Line, Bar } from 'react-chartjs-2';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
+import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { Input } from '../../../components/ui/Input';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
+import { Button } from '../../../components/ui/Button';
+import { ChatMarkdown } from '../../../components/ChatMarkdown';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 ChartJSCore.register(
@@ -55,6 +58,38 @@ export default function StaffReportsPage() {
   const [tab, setTab] = useState<ReportTab>('performance');
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
+  const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
+  const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
+  const [insightError, setInsightError] = useState<string | null>(null);
+
+  const aiStartDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  const aiEndDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  async function handleInsightRequest(chartKey: string, data: unknown) {
+    try {
+      setInsightError(null);
+      setInsightLoadingKey(chartKey);
+      const res = await requestReportInsight({ chartKey, startDate: aiStartDate, endDate: aiEndDate, data });
+      setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
+    } catch (e) {
+      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
+    } finally {
+      setInsightLoadingKey(null);
+    }
+  }
+
+  function clearInsight(chartKey: string) {
+    setInsightsByKey((prev) => {
+      if (!prev[chartKey]) return prev;
+      const next = { ...prev };
+      delete next[chartKey];
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -292,6 +327,11 @@ export default function StaffReportsPage() {
       {tab === 'performance' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Personal Daily Performance Report</h2>
+        {insightError && (
+          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
+            {insightError}
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <KpiCard title="Completed today" value={completion.completed} />
           <KpiCard title="In progress" value={completion.inProgress} />
@@ -299,7 +339,22 @@ export default function StaffReportsPage() {
           <KpiCard title="Completion rate" value={`${completion.ratio}%`} />
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'staff_daily_performance'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_daily_performance'}
+              onClick={() =>
+                handleInsightRequest('staff_daily_performance', {
+                  completion,
+                  inOutPerDay,
+                })
+              }
+            >
+              Insight
+            </Button>
             <Bar
               data={{
                 labels: inOutPerDay.map((d) => d.day),
@@ -333,6 +388,17 @@ export default function StaffReportsPage() {
             </div>
           </div>
         </div>
+        {insightsByKey.staff_daily_performance && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_daily_performance')}>
+                Clear
+              </Button>
+            </div>
+            <ChatMarkdown role="model" content={insightsByKey.staff_daily_performance} />
+          </div>
+        )}
       </section>
       )}
 
@@ -340,7 +406,21 @@ export default function StaffReportsPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Personal Operation History Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'staff_operation_history_line'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_line'}
+              onClick={() =>
+                handleInsightRequest('staff_operation_history_line', {
+                  operationHistory,
+                })
+              }
+            >
+              Insight
+            </Button>
             <Line
               data={{
                 labels: operationHistory.map((d) => d.day),
@@ -361,7 +441,21 @@ export default function StaffReportsPage() {
               }}
             />
           </div>
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'staff_operation_history_bar'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_bar'}
+              onClick={() =>
+                handleInsightRequest('staff_operation_history_bar', {
+                  operationHistory,
+                })
+              }
+            >
+              Insight
+            </Button>
             <Bar
               data={{
                 labels: operationHistory.map((d) => d.day),
@@ -395,8 +489,35 @@ export default function StaffReportsPage() {
                 },
               }}
             />
+ 
           </div>
         </div>
+        {(insightsByKey.staff_operation_history_line || insightsByKey.staff_operation_history_bar) && (
+          <div className="mt-4 space-y-3">
+            {insightsByKey.staff_operation_history_line && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_operation_history_line')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.staff_operation_history_line} />
+              </div>
+            )}
+            {insightsByKey.staff_operation_history_bar && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_operation_history_bar')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.staff_operation_history_bar} />
+              </div>
+            )}
+          </div>
+        )}
       </section>
       )}
 
@@ -441,6 +562,32 @@ export default function StaffReportsPage() {
             />
           </div>
         </div>
+        {(insightsByKey.staff_discrepancy_pie || insightsByKey.staff_discrepancy_bar) && (
+          <div className="mt-4 space-y-3">
+            {insightsByKey.staff_discrepancy_pie && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_pie')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_pie} />
+              </div>
+            )}
+            {insightsByKey.staff_discrepancy_bar && (
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_bar')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_bar} />
+              </div>
+            )}
+          </div>
+        )}
       </section>
       )}
 
@@ -448,7 +595,21 @@ export default function StaffReportsPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Cycle Count Execution Report</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'staff_cycle_count_execution'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_cycle_count_execution'}
+              onClick={() =>
+                handleInsightRequest('staff_cycle_count_execution', {
+                  cycleAccuracy,
+                })
+              }
+            >
+              Insight
+            </Button>
             <Bar
               data={{
                 labels: cycleAccuracy.map((d) => d.id),
@@ -486,6 +647,17 @@ export default function StaffReportsPage() {
             ))}
           </div>
         </div>
+        {insightsByKey.staff_cycle_count_execution && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_cycle_count_execution')}>
+                Clear
+              </Button>
+            </div>
+            <ChatMarkdown role="model" content={insightsByKey.staff_cycle_count_execution} />
+          </div>
+        )}
       </section>
       )}
 
@@ -493,7 +665,22 @@ export default function StaffReportsPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h2 className="text-lg font-black text-slate-900 mb-4">Task Workload Overview</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
+          <div className="h-72 relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 z-10"
+              isLoading={insightLoadingKey === 'staff_warehouse_health'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_warehouse_health'}
+              onClick={() =>
+                handleInsightRequest('staff_warehouse_health', {
+                  taskTypeDistribution,
+                  completion,
+                })
+              }
+            >
+              Insight
+            </Button>
             <Pie
               data={{
                 labels: taskTypeDistribution.map((d) => d.name),
@@ -535,6 +722,17 @@ export default function StaffReportsPage() {
             />
           </div>
         </div>
+        {insightsByKey.staff_warehouse_health && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_warehouse_health')}>
+                Clear
+              </Button>
+            </div>
+            <ChatMarkdown role="model" content={insightsByKey.staff_warehouse_health} />
+          </div>
+        )}
       </section>
       )}
     </div>
