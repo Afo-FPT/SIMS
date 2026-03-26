@@ -777,7 +777,7 @@ export default function ServiceRequestsPage() {
                 <table className="w-full text-left">
                   <thead>
                     <tr className="border-b border-slate-200">
-                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Request ID</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Reference</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Type</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Created</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
@@ -787,7 +787,7 @@ export default function ServiceRequestsPage() {
                   <tbody>
                     {trackingPaged.map((r) => (
                       <tr key={r.request_id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                        <td className="px-6 py-4 font-bold text-slate-900">{r.request_id}</td>
+                        <td className="px-6 py-4 font-bold text-slate-900">{r.reference ?? r.request_id}</td>
                         <td className="px-6 py-4 text-slate-700">
                           {r.request_type === 'IN' ? 'Inbound' : 'Outbound'}
                         </td>
@@ -1399,8 +1399,8 @@ export default function ServiceRequestsPage() {
             {/* Summary */}
             <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
               <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-                <span className="text-slate-500">Request ID:</span>
-                <span className="font-bold text-slate-900">{detailRequest.request_id}</span>
+                <span className="text-slate-500">Reference:</span>
+                <span className="font-bold text-slate-900">{detailRequest.reference ?? detailRequest.request_id}</span>
                 <span className="text-slate-400">|</span>
                 <span className="text-slate-500">Type:</span>
                 <span className="font-medium text-slate-800">
