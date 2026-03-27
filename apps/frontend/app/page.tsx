@@ -314,11 +314,11 @@ export default function LandingPage() {
                     <div className="mt-auto pt-6">
                       <div className="rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3 mb-4">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          Price per zone
+                          Pricing basis
                         </p>
-                        <p className="text-2xl md:text-3xl font-black text-primary tracking-tight tabular-nums">
-                          {Number(p.price).toLocaleString('vi-VN')}{' '}
-                          <span className="text-base font-black text-slate-400">VND</span>
+                        <p className="text-lg md:text-xl font-black text-primary tracking-tight tabular-nums">
+                          {Number(p.pricePerM2 ?? 0).toLocaleString('vi-VN')}/m² +{' '}
+                          {Number(p.pricePerDay ?? 0).toLocaleString('vi-VN')}/day
                         </p>
                       </div>
 
