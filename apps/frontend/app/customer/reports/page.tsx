@@ -37,6 +37,22 @@ ChartJSCore.register(
   ChartTooltip,
 );
 
+ChartJSCore.defaults.animation = {
+  duration: 1200,
+  easing: 'easeOutCubic',
+};
+ChartJSCore.defaults.animations = {
+  x: { duration: 900, from: 0 },
+  y: { duration: 900, from: 0 },
+  radius: { duration: 900, from: 0 },
+} as any;
+ChartJSCore.defaults.transitions.show = {
+  animations: {
+    x: { from: 0 },
+    y: { from: 0 },
+  },
+} as any;
+
 type ReportTab =
   | 'io_history'
   | 'turnover'
@@ -44,9 +60,37 @@ type ReportTab =
   | 'request_status'
   | 'top_products';
 
+type HistoryGranularity = 'day' | 'week' | 'month';
+
 function monthKey(ts: string): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function dayKey(ts: string): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function weekKey(ts: string): string {
+  const d = new Date(ts);
+  const day = d.getDay() || 7;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - day + 1);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${date}`;
+}
+
+function toWeekLabel(weekStart: string): string {
+  const start = new Date(`${weekStart}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return `${start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} - ${end.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+  })}`;
 }
 
 export default function CustomerReportsPage() {
@@ -54,6 +98,7 @@ export default function CustomerReportsPage() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<ReportTab>('io_history');
+  const [historyGranularity, setHistoryGranularity] = useState<HistoryGranularity>('day');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -145,17 +190,20 @@ export default function CustomerReportsPage() {
   }, [cycleCounts, startDate, endDate]);
 
   const ioTrend = useMemo(() => {
-    const map = new Map<string, { month: string; inbound: number; outbound: number }>();
+    const map = new Map<string, { key: string; periodLabel: string; inbound: number; outbound: number }>();
     filteredRequests.forEach((r) => {
-      const key = monthKey(r.updated_at || r.created_at);
-      if (!map.has(key)) map.set(key, { month: key, inbound: 0, outbound: 0 });
+      const ts = r.updated_at || r.created_at;
+      const key = historyGranularity === 'day' ? dayKey(ts) : historyGranularity === 'week' ? weekKey(ts) : monthKey(ts);
+      const periodLabel = historyGranularity === 'week' ? toWeekLabel(key) : key;
+      if (!map.has(key)) map.set(key, { key, periodLabel, inbound: 0, outbound: 0 });
       const row = map.get(key)!;
       const qty = r.items.reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
       if (r.request_type === 'IN') row.inbound += qty;
       else row.outbound += qty;
     });
-    return [...map.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
-  }, [filteredRequests]);
+    const maxPoints = historyGranularity === 'day' ? 14 : 12;
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key)).slice(-maxPoints);
+  }, [filteredRequests, historyGranularity]);
 
   const turnoverByProduct = useMemo(() => {
     const inMap = new Map<string, number>();
@@ -234,6 +282,23 @@ export default function CustomerReportsPage() {
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
   }, [filteredRequests]);
+
+  const pieAnimatedOptions = useMemo(
+    () => ({
+      maintainAspectRatio: false,
+      animation: {
+        duration: 1400,
+        easing: 'easeOutCubic' as const,
+        animateRotate: true,
+        animateScale: true,
+      },
+      animations: {
+        numbers: { duration: 1200, easing: 'easeOutCubic' as const },
+      },
+      plugins: { legend: { position: 'bottom' as const } },
+    }),
+    [],
+  );
 
   async function handleInsightRequest(chartKey: string, data: unknown) {
     try {
@@ -352,7 +417,21 @@ export default function CustomerReportsPage() {
 
       {tab === 'io_history' && (
         <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Inbound/Outbound History Report</h2>
+          <div className="mb-4">
+            <h2 className="text-lg font-black text-slate-900">Inbound/Outbound History Report</h2>
+            <div className="mt-2 flex items-center gap-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Granularity</p>
+              <select
+                value={historyGranularity}
+                onChange={(e) => setHistoryGranularity(e.target.value as HistoryGranularity)}
+                className="h-9 rounded-lg border border-slate-200 px-3 text-sm bg-white"
+              >
+                <option value="day">By day</option>
+                <option value="week">By week</option>
+                <option value="month">By month</option>
+              </select>
+            </div>
+          </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72 relative">
               <Button
@@ -361,13 +440,13 @@ export default function CustomerReportsPage() {
                 className="absolute -top-10 right-0 z-10"
                 isLoading={insightLoadingKey === 'io_history_line'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_line'}
-                onClick={() => handleInsightRequest('io_history_line', { ioTrend })}
+                onClick={() => handleInsightRequest('io_history_line', { ioTrend, historyGranularity })}
               >
                 Insight
               </Button>
               <Line
                 data={{
-                  labels: ioTrend.map((d) => d.month),
+                  labels: ioTrend.map((d) => d.periodLabel),
                   datasets: [
                     { label: 'Inbound', data: ioTrend.map((d) => d.inbound), borderColor: '#0ea5e9', backgroundColor: '#0ea5e9', tension: 0.3 },
                     { label: 'Outbound', data: ioTrend.map((d) => d.outbound), borderColor: '#6366f1', backgroundColor: '#6366f1', tension: 0.3 },
@@ -387,13 +466,13 @@ export default function CustomerReportsPage() {
                 className="absolute -top-10 right-0 z-10"
                 isLoading={insightLoadingKey === 'io_history_bar'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_bar'}
-                onClick={() => handleInsightRequest('io_history_bar', { ioTrend })}
+                onClick={() => handleInsightRequest('io_history_bar', { ioTrend, historyGranularity })}
               >
                 Insight
               </Button>
               <Bar
                 data={{
-                  labels: ioTrend.map((d) => d.month),
+                  labels: ioTrend.map((d) => d.periodLabel),
                   datasets: [
                     { label: 'Inbound', data: ioTrend.map((d) => d.inbound), backgroundColor: '#0ea5e9' },
                     { label: 'Outbound', data: ioTrend.map((d) => d.outbound), backgroundColor: '#6366f1' },
@@ -586,10 +665,7 @@ export default function CustomerReportsPage() {
                     },
                   ],
                 }}
-                options={{
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                }}
+                options={pieAnimatedOptions}
               />
             </div>
           </div>
@@ -643,10 +719,7 @@ export default function CustomerReportsPage() {
                     },
                   ],
                 }}
-                options={{
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                }}
+                options={pieAnimatedOptions}
               />
             </div>
             <div className="h-72 relative">

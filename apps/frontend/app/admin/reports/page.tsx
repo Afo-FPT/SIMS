@@ -36,6 +36,22 @@ ChartJSCore.register(
   ChartTooltip,
 );
 
+ChartJSCore.defaults.animation = {
+  duration: 1200,
+  easing: 'easeOutCubic',
+};
+ChartJSCore.defaults.animations = {
+  x: { duration: 900, from: 0 },
+  y: { duration: 900, from: 0 },
+  radius: { duration: 900, from: 0 },
+} as any;
+ChartJSCore.defaults.transitions.show = {
+  animations: {
+    x: { from: 0 },
+    y: { from: 0 },
+  },
+} as any;
+
 function toIsoLocalDate(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
