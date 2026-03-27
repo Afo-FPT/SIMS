@@ -1,0 +1,586 @@
+{
+  "info": {
+    "name": "SIMS - New Features",
+    "description": "Collection for testing new features: Warehouse Search/Filter, Rack Utilization, Stock History",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "warehouse_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "shelf_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "contract_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (Manager)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.token) {",
+                  "        pm.collectionVariables.set('token', jsonData.data.token);",
+                  "        console.log('Token saved:', jsonData.data.token);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"manager@example.com\",\n  \"password\": \"your_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Warehouse",
+      "item": [
+        {
+          "name": "Search & Filter Warehouses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/warehouses?search=&status=&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "warehouses"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by name or address"
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "ACTIVE or INACTIVE"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search Warehouses by Name",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/warehouses?search=Hanoi",
+              "host": ["{{base_url}}"],
+              "path": ["api", "warehouses"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "Hanoi"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filter Warehouses by Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/warehouses?status=ACTIVE",
+              "host": ["{{base_url}}"],
+              "path": ["api", "warehouses"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ACTIVE"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Warehouse Status to INACTIVE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.data && jsonData.data.warehouse_id) {",
+                  "        pm.collectionVariables.set('warehouse_id', jsonData.data.warehouse_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"INACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/warehouses/{{warehouse_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "warehouses", "{{warehouse_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Warehouse Status to ACTIVE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/warehouses/{{warehouse_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "warehouses", "{{warehouse_id}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shelf (Rack)",
+      "item": [
+        {
+          "name": "View Rack Utilization",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/shelves/{{shelf_id}}/utilization",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shelves", "{{shelf_id}}", "utilization"]
+            }
+          }
+        },
+        {
+          "name": "Update Rack Status to MAINTENANCE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shelves/{{shelf_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shelves", "{{shelf_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Rack Status to AVAILABLE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shelves/{{shelf_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shelves", "{{shelf_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Update Rack Status to RENTED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RENTED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/shelves/{{shelf_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "shelves", "{{shelf_id}}", "status"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stock History",
+      "item": [
+        {
+          "name": "View Stock-in History (All)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/inbound?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "inbound"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-in History (Filter by Status)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/inbound?status=COMPLETED&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "inbound"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "COMPLETED",
+                  "description": "PENDING, APPROVED, DONE_BY_STAFF, COMPLETED, REJECTED"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-in History (Filter by Contract)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/inbound?contractId={{contract_id}}&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "inbound"],
+              "query": [
+                {
+                  "key": "contractId",
+                  "value": "{{contract_id}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-in History (Filter by Date Range)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/inbound?startDate=2024-01-01&endDate=2024-12-31&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "inbound"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01",
+                  "description": "ISO format: YYYY-MM-DD"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31",
+                  "description": "ISO format: YYYY-MM-DD"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-out History (All)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/outbound?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "outbound"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-out History (Filter by Status)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/outbound?status=COMPLETED&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "outbound"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "COMPLETED"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-out History (Filter by Contract)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/outbound?contractId={{contract_id}}&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "outbound"],
+              "query": [
+                {
+                  "key": "contractId",
+                  "value": "{{contract_id}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "View Stock-out History (Filter by Date Range)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/stock-history/outbound?startDate=2024-01-01&endDate=2024-12-31&page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stock-history", "outbound"],
+              "query": [
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
