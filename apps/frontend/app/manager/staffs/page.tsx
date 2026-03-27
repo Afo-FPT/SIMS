@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { useToastHelpers } from '../../../lib/toast';
-import { listWarehouses } from '../../../lib/mockApi/manager.api';
+import { listWarehouses } from '../../../lib/manager.api';
 import { listStaffWithWarehouse, transferStaffWarehouse, type StaffWithWarehouse } from '../../../lib/staff-warehouses.api';
 
 type WarehouseOption = { id: string; name: string; status?: string };

@@ -23,7 +23,7 @@ const AiSettingSchema = new Schema<IAiSetting>(
   { timestamps: true }
 );
 
-AiSettingSchema.index({ key: 1 }, { unique: true });
+// key already has `unique: true` above.
 
 const AiSetting = mongoose.model<IAiSetting>("AiSetting", AiSettingSchema);
 

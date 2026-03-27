@@ -14,7 +14,7 @@ import {
   Tooltip as ChartTooltip,
 } from 'chart.js';
 import { Pie, Line, Bar } from 'react-chartjs-2';
-import { listUsers } from '../../../lib/mockApi/admin.api';
+import { listUsers } from '../../../lib/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';

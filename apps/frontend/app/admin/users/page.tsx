@@ -10,7 +10,7 @@ import {
   updateUser,
   toggleUserStatus,
   resetUserPassword,
-} from '../../../lib/mockApi/admin.api';
+} from '../../../lib/admin.api';
 import { useToast } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';

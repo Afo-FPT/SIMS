@@ -1,17 +1,8 @@
-import type { Contract, ServiceRequest, CustomerInventoryItem, AdjustmentRequest } from '../customer-types';
-import type { StaffTask, TaskItem } from '../../types/staff';
-import type { CreateContractPayload, CreateTaskFromServiceRequestPayload, ManagerDashboardStats, Shelf, ManagerWarehouse } from '../../types/manager';
-import {
-  MOCK_CONTRACTS,
-  MOCK_SERVICE_REQUESTS,
-  MOCK_INVENTORY,
-  MOCK_ADJUSTMENTS,
-} from '../customer-mock';
-import { mockStaffTasks } from '../mock/staff.mock';
-import { MOCK_SHELVES, MOCK_STAFF_USERS } from '../mock/manager.mock';
-import { apiFetchRaw, apiJson } from '../api-client';
+import type { Contract } from './customer-types';
+import type { CreateContractPayload, Shelf, ManagerWarehouse } from '../types/manager';
+import { apiFetchRaw, apiJson } from './api-client';
 
-export type { ManagerWarehouse } from '../../types/manager';
+export type { ManagerWarehouse } from '../types/manager';
 
 async function fetchWithAuth(path: string, options: RequestInit = {}): Promise<Response> {
   return apiFetchRaw(path, options);
@@ -111,7 +102,7 @@ export async function updateWarehouse(
     {
       method: 'PATCH',
       body: JSON.stringify(payload),
-    },
+    }
   );
   const backend = (res as any).warehouse_id ? (res as any) : (res as any).data;
   if (!backend) {
@@ -120,16 +111,13 @@ export async function updateWarehouse(
   return mapBackendWarehouseToManagerWarehouse(backend as BackendWarehouseResponse);
 }
 
-export async function updateWarehouseStatus(
-  warehouseId: string,
-  status: 'ACTIVE' | 'INACTIVE',
-): Promise<ManagerWarehouse> {
+export async function updateWarehouseStatus(warehouseId: string, status: 'ACTIVE' | 'INACTIVE'): Promise<ManagerWarehouse> {
   const res = await apiJson<{ message?: string; data?: BackendWarehouseResponse } | BackendWarehouseResponse>(
     `/warehouses/${warehouseId}/status`,
     {
       method: 'PATCH',
       body: JSON.stringify({ status }),
-    },
+    }
   );
   const backend = (res as any).warehouse_id ? (res as any) : (res as any).data;
   if (!backend) {
@@ -215,7 +203,7 @@ export async function updateZoneByWarehouse(
     {
       method: 'PATCH',
       body: JSON.stringify(payload),
-    },
+    }
   );
   const z = (res as any).zone_id ? (res as any) : (res as any).data;
   if (!z) {
@@ -286,7 +274,7 @@ export async function createShelvesForWarehouse(
     tierCount: number;
     tierDimensions: Array<{ height: number; width: number; depth: number }>;
   }[],
-  zoneDisplay?: string,
+  zoneDisplay?: string
 ): Promise<Shelf[]> {
   const payload: CreateShelvesPayload = { zoneId, shelves };
 
@@ -304,17 +292,11 @@ export async function createShelvesForWarehouse(
   return response.data.map((s) => mapBackendShelfToShelf(s, zoneDisplay));
 }
 
-export async function updateShelfStatus(
-  shelfId: string,
-  status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE',
-): Promise<Shelf> {
-  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(
-    `/shelves/${shelfId}/status`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    },
-  );
+export async function updateShelfStatus(shelfId: string, status: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE'): Promise<Shelf> {
+  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(`/shelves/${shelfId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
   const backend = (res as any).shelf_id ? (res as any) : (res as any).data;
   if (!backend) {
     throw new Error('Invalid response while updating shelf status');
@@ -329,7 +311,7 @@ export async function updateShelfInfo(
     tierCount: number;
     tierDimensions: Array<{ height: number; width: number; depth: number }>;
     status?: 'AVAILABLE' | 'RENTED' | 'MAINTENANCE';
-  },
+  }
 ): Promise<Shelf> {
   const body: any = {
     shelfCode: payload.shelfCode,
@@ -338,13 +320,10 @@ export async function updateShelfInfo(
   };
   if (payload.status) body.status = payload.status;
 
-  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(
-    `/shelves/${shelfId}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    },
-  );
+  const res = await apiJson<{ message?: string; data?: BackendShelfResponse } | BackendShelfResponse>(`/shelves/${shelfId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
 
   const backend = (res as any).shelf_id ? (res as any) : (res as any).data;
   if (!backend) {
@@ -354,9 +333,8 @@ export async function updateShelfInfo(
   return mapBackendShelfToShelf(backend as BackendShelfResponse);
 }
 
-/**
- * Backend Contract Response interface (snake_case) - matches backend ContractResponse
- */
+// --- Contracts ---
+
 interface BackendContractResponse {
   contract_id: string;
   contract_code: string;
@@ -405,14 +383,14 @@ function mapBackendContractToContract(c: BackendContractResponse): Contract {
     rentedZones,
     requestedZoneId: anyContract.requested_zone_id ?? anyContract.requestedZoneId,
     requestedStartDate: anyContract.requested_start_date
-      ? (typeof anyContract.requested_start_date === 'string'
-          ? anyContract.requested_start_date
-          : new Date(anyContract.requested_start_date).toISOString())
+      ? typeof anyContract.requested_start_date === 'string'
+        ? anyContract.requested_start_date
+        : new Date(anyContract.requested_start_date).toISOString()
       : undefined,
     requestedEndDate: anyContract.requested_end_date
-      ? (typeof anyContract.requested_end_date === 'string'
-          ? anyContract.requested_end_date
-          : new Date(anyContract.requested_end_date).toISOString())
+      ? typeof anyContract.requested_end_date === 'string'
+        ? anyContract.requested_end_date
+        : new Date(anyContract.requested_end_date).toISOString()
       : undefined,
     status: c.status,
     createdBy: c.created_by,
@@ -421,40 +399,11 @@ function mapBackendContractToContract(c: BackendContractResponse): Contract {
   };
 }
 
-/**
- * Status display mapping for UI
- */
-function getStatusDisplay(status: Contract['status']): string {
-  const statusMap: Record<string, string> = {
-    draft: 'Draft',
-    pending_payment: 'Pending payment',
-    active: 'Active',
-    expired: 'Expired',
-    terminated: 'Terminated',
-  };
-  return statusMap[status] || status;
-}
-
-/**
- * Format date for display
- */
-function formatDateForDisplay(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('vi-VN');
-}
-
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-function shouldError() {
-  return Math.random() < 0.1;
-}
-
 export async function createContract(payload: CreateContractPayload): Promise<Contract> {
   const backendPayload = {
     customerId: payload.customerId,
     warehouseId: payload.warehouseId,
-    rentedZones: payload.rentedZones.map(rz => ({
+    rentedZones: payload.rentedZones.map((rz) => ({
       zoneId: rz.zoneId,
       startDate: rz.startDate,
       endDate: rz.endDate,
@@ -511,10 +460,7 @@ export async function getContractById(contractId: string): Promise<Contract | nu
   return mapBackendContractToContract(contract);
 }
 
-export async function updateContractStatus(
-  id: string,
-  status: Contract['status']
-): Promise<Contract> {
+export async function updateContractStatus(id: string, status: Contract['status']): Promise<Contract> {
   const res = await fetchWithAuth(`/contracts/${id}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
@@ -529,152 +475,6 @@ export async function updateContractStatus(
   return mapBackendContractToContract(contract);
 }
 
-export async function listServiceRequests(): Promise<ServiceRequest[]> {
-  await delay(400 + Math.random() * 300);
-  if (shouldError()) throw new Error('Failed to fetch service requests');
-  return [...MOCK_SERVICE_REQUESTS];
-}
-
-export async function approveServiceRequest(id: string): Promise<ServiceRequest> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to approve service request');
-  const i = MOCK_SERVICE_REQUESTS.findIndex((r) => r.id === id);
-  if (i === -1) throw new Error('Service request not found');
-  MOCK_SERVICE_REQUESTS[i].status = 'Processing';
-  return MOCK_SERVICE_REQUESTS[i];
-}
-
-export async function rejectServiceRequest(id: string, _reason?: string): Promise<ServiceRequest> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to reject service request');
-  const i = MOCK_SERVICE_REQUESTS.findIndex((r) => r.id === id);
-  if (i === -1) throw new Error('Service request not found');
-  MOCK_SERVICE_REQUESTS[i].status = 'Rejected';
-  return MOCK_SERVICE_REQUESTS[i];
-}
-
-function toTaskItems(
-  items: { sku: string; productName?: string; expectedQty?: number; requiredQty?: number; currentQty?: number }[],
-  type: ServiceRequest['type']
-): TaskItem[] {
-  return items.map((it) => {
-    const t: TaskItem = {
-      sku: it.sku,
-      productName: it.productName ?? '',
-      notes: undefined,
-    };
-    if (type === 'Inbound') {
-      t.expectedQty = it.expectedQty ?? 0;
-      t.countedQty = 0;
-    } else if (type === 'Outbound') {
-      t.requiredQty = it.requiredQty ?? it.expectedQty ?? 0;
-      t.pickedQty = 0;
-    } else {
-      t.currentQty = it.currentQty ?? 0;
-      t.countedQty = 0;
-    }
-    return t;
-  });
-}
-
-export async function createTaskFromServiceRequest(
-  payload: CreateTaskFromServiceRequestPayload
-): Promise<StaffTask> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to create task');
-  const taskCode = `TASK-2025-${String(mockStaffTasks.length + 1).padStart(3, '0')}`;
-  const items = toTaskItems(payload.items, payload.type);
-  // Get contract code asynchronously
-  const contract = await getContractById(payload.contractId);
-  const task: StaffTask = {
-    id: `task-${Date.now()}`,
-    taskCode,
-    type: payload.type,
-    status: 'ASSIGNED',
-    priority: 'Medium',
-    contractCode: contract?.code ?? payload.contractId,
-    customerName: payload.customerName,
-    assignedBy: 'Sarah Miller',
-    assignedAt: new Date().toISOString(),
-    preferredExecutionTime: payload.preferredExecutionTime,
-    dueDate: payload.dueDate,
-    inboundRef: payload.inboundRef,
-    outboundRef: payload.outboundRef,
-    items,
-    fullCheckRequired: payload.fullCheckRequired,
-    serviceRequestId: payload.serviceRequestId,
-  };
-  mockStaffTasks.push(task);
-  const si = MOCK_SERVICE_REQUESTS.findIndex((r) => r.id === payload.serviceRequestId);
-  if (si >= 0) MOCK_SERVICE_REQUESTS[si].status = 'Processing';
-  return task;
-}
-
-export async function listTasks(): Promise<StaffTask[]> {
-  await delay(400 + Math.random() * 300);
-  if (shouldError()) throw new Error('Failed to fetch tasks');
-  return [...mockStaffTasks];
-}
-
-export async function assignStaffToTask(taskId: string, staffId: string): Promise<StaffTask> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to assign staff');
-  const ti = mockStaffTasks.findIndex((t) => t.id === taskId);
-  if (ti === -1) throw new Error('Task not found');
-  const staff = MOCK_STAFF_USERS.find((s) => s.id === staffId);
-  if (!staff) throw new Error('Staff not found');
-  mockStaffTasks[ti].assignedToStaffId = staffId;
-  mockStaffTasks[ti].assignedToStaffName = staff.name;
-  return mockStaffTasks[ti];
-}
-
-export async function cancelTask(taskId: string): Promise<StaffTask> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to cancel task');
-  const ti = mockStaffTasks.findIndex((t) => t.id === taskId);
-  if (ti === -1) throw new Error('Task not found');
-  mockStaffTasks[ti].status = 'CANCELLED';
-  return mockStaffTasks[ti];
-}
-
-export async function listInventory(): Promise<CustomerInventoryItem[]> {
-  await delay(400 + Math.random() * 300);
-  if (shouldError()) throw new Error('Failed to fetch inventory');
-  return [...MOCK_INVENTORY];
-}
-
-export async function listPendingAdjustments(): Promise<AdjustmentRequest[]> {
-  await delay(300 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to fetch adjustments');
-  return MOCK_ADJUSTMENTS.filter((a) => a.status === 'Pending');
-}
-
-export async function approveInventoryAdjustment(id: string): Promise<AdjustmentRequest> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to approve adjustment');
-  const adj = MOCK_ADJUSTMENTS.find((a) => a.id === id);
-  if (!adj) throw new Error('Adjustment not found');
-  if (adj.fullCheckRequired && adj.fullCheckTaskId) {
-    const t = mockStaffTasks.find((x) => x.id === adj.fullCheckTaskId);
-    if (!t || t.status !== 'COMPLETED') {
-      throw new Error('Full inventory check must be completed before approving this adjustment');
-    }
-  }
-  adj.status = 'Approved';
-  const inv = MOCK_INVENTORY.find((i) => i.sku === adj.sku);
-  if (inv) inv.quantity = adj.requestedQty;
-  return adj;
-}
-
-export async function rejectInventoryAdjustment(id: string): Promise<AdjustmentRequest> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to reject adjustment');
-  const adj = MOCK_ADJUSTMENTS.find((a) => a.id === id);
-  if (!adj) throw new Error('Adjustment not found');
-  adj.status = 'Rejected';
-  return adj;
-}
-
 export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf[]> {
   const res = await fetchWithAuth(`/warehouses/${warehouseId}/shelves`, { method: 'GET' });
   const data = await res.json();
@@ -686,7 +486,7 @@ export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf
     id: s.shelf_id ?? s.id,
     code: s.shelf_code ?? s.code ?? '',
     zone: s.zone_code ?? s.zone ?? '',
-    status: s.contract_code ? 'Occupied' : (s.status === 'RENTED' ? 'Occupied' : 'Available'),
+    status: s.contract_code ? 'Occupied' : s.status === 'RENTED' ? 'Occupied' : 'Available',
     contractId: s.contract_id ?? undefined,
     contractCode: s.contract_code ?? undefined,
     tierCount: s.tier_count ?? s.tierCount ?? undefined,
@@ -697,50 +497,3 @@ export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf
   })) as Shelf[];
 }
 
-export async function assignShelf(contractId: string, shelfId: string): Promise<Shelf> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to assign shelf');
-  const c = await getContractById(contractId);
-  if (!c) throw new Error('Contract not found');
-  const si = MOCK_SHELVES.findIndex((s) => s.id === shelfId);
-  if (si === -1) throw new Error('Shelf not found');
-  if (MOCK_SHELVES[si].status === 'Occupied') throw new Error('Shelf is already occupied');
-  MOCK_SHELVES[si].status = 'Occupied';
-  MOCK_SHELVES[si].contractId = contractId;
-  MOCK_SHELVES[si].contractCode = c.code;
-  return MOCK_SHELVES[si];
-}
-
-export async function releaseShelf(shelfId: string): Promise<Shelf> {
-  await delay(500 + Math.random() * 200);
-  if (shouldError()) throw new Error('Failed to release shelf');
-  const si = MOCK_SHELVES.findIndex((s) => s.id === shelfId);
-  if (si === -1) throw new Error('Shelf not found');
-  MOCK_SHELVES[si].status = 'Available';
-  MOCK_SHELVES[si].contractId = undefined;
-  MOCK_SHELVES[si].contractCode = undefined;
-  return MOCK_SHELVES[si];
-}
-
-export async function getManagerDashboardStats(): Promise<ManagerDashboardStats> {
-  await delay(400 + Math.random() * 300);
-  if (shouldError()) throw new Error('Failed to fetch dashboard stats');
-  const contractsActive = MOCK_CONTRACTS.filter((c) => c.status === 'active').length;
-  const occupied = MOCK_SHELVES.filter((s) => s.status === 'Occupied').length;
-  const available = MOCK_SHELVES.filter((s) => s.status === 'Available').length;
-  const servicePending = MOCK_SERVICE_REQUESTS.filter((r) => r.status === 'Pending').length;
-  const tasksInProgress = mockStaffTasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const discrepanciesPending = MOCK_ADJUSTMENTS.filter((a) => a.status === 'Pending').length;
-  return {
-    contractsActive,
-    shelvesOccupied: occupied,
-    shelvesAvailable: available,
-    serviceRequestsPending: servicePending,
-    tasksInProgress,
-    discrepanciesPendingApproval: discrepanciesPending,
-  };
-}
-
-export function getStaffUsers() {
-  return MOCK_STAFF_USERS;
-}

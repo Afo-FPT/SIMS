@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getCustomerContractById } from '../../../../lib/mockApi/customer.api';
+import { getCustomerContractById } from '../../../../lib/customer.api';
 import type { Contract } from '../../../../lib/customer-types';
 
 function formatDate(dateStr: string): string {

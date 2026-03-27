@@ -17,7 +17,7 @@ const SystemSettingSchema = new Schema<ISystemSetting>(
   { timestamps: true }
 );
 
-SystemSettingSchema.index({ key: 1 }, { unique: true });
+// key already has `unique: true` above.
 
 const SystemSetting = mongoose.model<ISystemSetting>("SystemSetting", SystemSettingSchema);
 

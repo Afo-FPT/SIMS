@@ -17,8 +17,7 @@ import {
   getStorageRequestById,
   type StorageRequestView,
 } from '../../../lib/storage-requests.api';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
-import { MOCK_SERVICE_REQUESTS } from '../../../lib/customer-mock';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
 import { Modal } from '../../../components/ui/Modal';
@@ -65,7 +64,6 @@ export default function ServiceRequestsPage() {
     return () => { cancelled = true; };
   }, []);
 
-  const [requests, setRequests] = useState<ServiceRequest[]>(MOCK_SERVICE_REQUESTS);
   const [contractId, setContractId] = useState('');
   const [selectedZoneKey, setSelectedZoneKey] = useState('');
 
@@ -573,7 +571,7 @@ export default function ServiceRequestsPage() {
       return;
     }
     const base = {
-      id: `SR-${String(requests.length + 1).padStart(3, '0')}`,
+      id: `SR-${Date.now()}`,
       contractId,
       type,
       preferredDate,
@@ -598,14 +596,6 @@ export default function ServiceRequestsPage() {
       })
         .then(() => {
           toast.success('Inbound request submitted successfully!', 5000);
-          setRequests((prev) => [
-            ...prev,
-            {
-              ...base,
-              inboundRef: inboundRef || undefined,
-            items,
-            } as ServiceRequest,
-          ]);
           setInboundItems([]);
           setInboundRef('');
           loadTrackingRequests();
@@ -633,14 +623,6 @@ export default function ServiceRequestsPage() {
       })
         .then(() => {
           toast.success('Outbound request submitted successfully!', 5000);
-          setRequests((prev) => [
-            ...prev,
-            {
-              ...base,
-              outboundRef: outboundRef || undefined,
-            items: outboundItems,
-            } as ServiceRequest,
-          ]);
           setOutboundItems([]);
           setOutboundRef('');
           loadTrackingRequests();

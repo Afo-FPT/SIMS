@@ -1,5 +1,4 @@
 import type { Contract, RentRequest, ServiceRequest, CustomerInventoryItem, AdjustmentRequest } from '../lib/customer-types';
-import type { StaffTask } from './staff';
 
 export type ShelfStatus = 'Available' | 'Occupied';
 

@@ -15,7 +15,7 @@ import {
   updateWarehouseStatus,
   updateShelfInfo,
   updateShelfStatus,
-} from '../../../../lib/mockApi/manager.api';
+} from '../../../../lib/manager.api';
 import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
 import { getSpaceLimits, type SpaceLimits } from '../../../../lib/system-settings.api';
 import { useToastHelpers } from '../../../../lib/toast';

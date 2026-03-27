@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { listContractPackages } from '../../../lib/contract-packages.api';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';

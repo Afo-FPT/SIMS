@@ -30,8 +30,7 @@ const ChatFaqSchema = new Schema<IChatFaq>(
   { timestamps: true }
 );
 
-// Ensure stable ordering by label/prompt; no additional constraints needed.
-ChatFaqSchema.index({ role: 1 });
+// role already has `index: true` (and `unique: true`) above.
 
 export const ChatFaq = mongoose.model<IChatFaq>("ChatFaq", ChatFaqSchema);
 

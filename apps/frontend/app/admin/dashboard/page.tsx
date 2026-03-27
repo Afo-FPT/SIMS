@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { listUsers } from '../../../lib/mockApi/admin.api';
+import { listUsers } from '../../../lib/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';

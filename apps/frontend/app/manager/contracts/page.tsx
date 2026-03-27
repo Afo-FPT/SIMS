@@ -10,7 +10,7 @@ import {
   listZonesByWarehouse,
   type ManagerZoneOption,
   type ManagerWarehouse,
-} from '../../../lib/mockApi/manager.api';
+} from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { listManagerPayments, type ManagerPayment } from '../../../lib/payment.api';
 import { Badge } from '../../../components/ui/Badge';

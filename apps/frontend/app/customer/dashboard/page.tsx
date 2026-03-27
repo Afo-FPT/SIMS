@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';

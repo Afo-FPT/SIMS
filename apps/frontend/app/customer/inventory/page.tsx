@@ -6,7 +6,7 @@ import { listMyStoredProducts, type StoredProductOverview } from '../../../lib/s
 import { useToast } from '../../../lib/toast';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { Pagination } from '../../../components/ui/Pagination';
 
 type ProductRow = StoredProductOverview & {

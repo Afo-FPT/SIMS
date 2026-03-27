@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getCustomerContractById } from '../../../../../lib/mockApi/customer.api';
+import { getCustomerContractById } from '../../../../../lib/customer.api';
 import type { Contract } from '../../../../../lib/customer-types';
 import { startContractVNPayPayment } from '../../../../../lib/payment.api';
 import { useToastHelpers } from '../../../../../lib/toast';

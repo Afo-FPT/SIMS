@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ManagerWarehouse } from '../../../types/manager';
 import Link from 'next/link';
-import { listWarehouses, createWarehouse } from '../../../lib/mockApi/manager.api';
+import { listWarehouses, createWarehouse } from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';

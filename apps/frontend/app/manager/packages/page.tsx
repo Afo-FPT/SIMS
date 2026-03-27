@@ -12,7 +12,7 @@ import {
   listContractPackages,
   updateContractPackage,
 } from '../../../lib/contract-packages.api';
-import { listWarehouses, type ManagerWarehouse } from '../../../lib/mockApi/manager.api';
+import { listWarehouses, type ManagerWarehouse } from '../../../lib/manager.api';
 
 type FormState = {
   name: string;

@@ -1,6 +1,6 @@
-import type { AdminStats, AdminUser, AdminLog, ListUsersParams, ListLogsParams } from '../../types/admin';
-import type { Role, UserStatus } from '../../types/auth';
-import { apiFetchRaw, getApiUrl } from '../api-client';
+import type { AdminStats, AdminUser, AdminLog, ListUsersParams, ListLogsParams } from '../types/admin';
+import type { Role, UserStatus } from '../types/auth';
+import { apiFetchRaw, getApiUrl } from './api-client';
 
 interface BackendUser {
   _id: string;
@@ -10,7 +10,6 @@ interface BackendUser {
   isActive: boolean;
   createdAt?: string;
   lastLoginAt?: string;
-  // other fields are ignored
 }
 
 interface BackendUsersResponse {
@@ -102,27 +101,21 @@ export async function getAdminStats(): Promise<AdminStats> {
 export async function listUsers(params: ListUsersParams = {}): Promise<{ items: AdminUser[]; total: number }> {
   let users = await fetchAllBackendUsers();
 
-  // Search
   if (params.search) {
     const q = params.search.toLowerCase();
-    users = users.filter(
-      (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
-    );
+    users = users.filter((u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
   }
 
-  // Filter by role
   if (params.role) {
     users = users.filter((u) => u.role === params.role);
   }
 
-  // Filter by status
   if (params.status) {
     users = users.filter((u) => u.status === params.status);
   }
 
   const total = users.length;
 
-  // Pagination
   const page = params.page || 1;
   const limit = params.limit || 10;
   const start = (page - 1) * limit;
@@ -133,11 +126,10 @@ export async function listUsers(params: ListUsersParams = {}): Promise<{ items: 
 }
 
 export async function createUser(payload: Omit<AdminUser, 'id' | 'createdAt'>): Promise<AdminUser> {
-  // Use auth/register to create user with specified role
   const body = {
     name: payload.name,
     email: payload.email,
-    password: 'Password@123', // default password, should be changed by user via reset flow
+    password: 'Password@123',
     role: mapFrontendRoleToBackend(payload.role),
   };
 
@@ -152,12 +144,9 @@ export async function createUser(payload: Omit<AdminUser, 'id' | 'createdAt'>): 
     throw new Error(data.message || 'Failed to create user');
   }
 
-  // Backend register returns { message, user }
   const backendUser = data.user as BackendUser;
-
   const adminUser = mapBackendUserToAdminUser(backendUser);
 
-  // Respect initial status: if LOCKED, immediately deactivate
   if (payload.status === 'LOCKED') {
     await toggleUserStatus(adminUser.id);
     adminUser.status = 'LOCKED';
@@ -193,7 +182,6 @@ export async function updateUser(id: string, payload: Partial<AdminUser>): Promi
 }
 
 export async function toggleUserStatus(id: string): Promise<AdminUser> {
-  // First fetch the user to know current status
   const resGet = await fetchWithAuth(`/users/${id}`, {
     method: 'GET',
   });
@@ -221,7 +209,6 @@ export async function toggleUserStatus(id: string): Promise<AdminUser> {
 }
 
 export async function resetUserPassword(id: string): Promise<boolean> {
-  // Need email to send reset link: fetch user first
   const resGet = await fetchWithAuth(`/users/${id}`, {
     method: 'GET',
   });
@@ -248,10 +235,10 @@ export async function resetUserPassword(id: string): Promise<boolean> {
   return true;
 }
 
-export async function listLogs(params: ListLogsParams = {}): Promise<{ items: AdminLog[]; total: number }> {
-  // Logs are not yet implemented on backend; return empty list with filters applied
+export async function listLogs(_params: ListLogsParams = {}): Promise<{ items: AdminLog[]; total: number }> {
   return {
     items: [],
     total: 0,
   };
 }
+
