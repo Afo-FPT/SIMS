@@ -6,7 +6,7 @@ import {
   assignStorageRequest,
   type StorageRequestView,
 } from '../../../lib/storage-requests.api';
-import { listStaffUsers, type StaffUserOption } from '../../../lib/staff-users.api';
+import { listStaffWithWarehouse, type StaffWithWarehouse } from '../../../lib/staff-warehouses.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
 import {
@@ -32,8 +32,9 @@ export default function ManagerOutboundRequestsPage() {
   const [error, setError] = useState<string | null>(null);
   const [assigning, setAssigning] = useState<StorageRequestView | null>(null);
   const [assignStaffIds, setAssignStaffIds] = useState<string[]>([]);
-  const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffWithWarehouse[]>([]);
   const [staffError, setStaffError] = useState<string | null>(null);
+  const [staffLoading, setStaffLoading] = useState(false);
   const [openStaffDropdown, setOpenStaffDropdown] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -56,22 +57,57 @@ export default function ManagerOutboundRequestsPage() {
   const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const paged = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const loadStaff = async () => {
-    try {
-      setStaffError(null);
-      const users = await listStaffUsers();
-      setStaffUsers(users);
-    } catch (err) {
-      setStaffError(err instanceof Error ? err.message : 'Failed to load staff');
-      toast.error('Failed to load staff list');
-    }
-  };
+  
+  useEffect(() => {
+    void load();
+  }, []);
 
   useEffect(() => {
-    load();
-    loadStaff();
-  }, []);
+    let cancelled = false;
+
+    async function loadStaffForAssigning() {
+      if (!assigning) {
+        setStaffUsers([]);
+        setStaffError(null);
+        setStaffLoading(false);
+        setOpenStaffDropdown(false);
+        return;
+      }
+
+      const warehouseId = assigning.warehouse_id;
+      if (!warehouseId) {
+        setStaffUsers([]);
+        setStaffError('Missing warehouse for this request');
+        setStaffLoading(false);
+        setOpenStaffDropdown(false);
+        return;
+      }
+
+      try {
+        setStaffLoading(true);
+        setStaffError(null);
+        setStaffUsers([]);
+        setOpenStaffDropdown(false);
+
+        const users = await listStaffWithWarehouse({ warehouseId });
+        if (cancelled) return;
+        setStaffUsers(users);
+      } catch (err) {
+        if (cancelled) return;
+        setStaffError(err instanceof Error ? err.message : 'Failed to load staff for warehouse');
+        setStaffUsers([]);
+      } finally {
+        if (cancelled) return;
+        setStaffLoading(false);
+      }
+    }
+
+    void loadStaffForAssigning();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assigning?.request_id]);
 
   const handleAssign = async () => {
     if (!assigning) return;
@@ -117,7 +153,8 @@ export default function ManagerOutboundRequestsPage() {
           <Table>
             <TableHead>
               <TableHeader>Outbound reference</TableHeader>
-              <TableHeader>Contract code</TableHeader>
+              <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Zone</TableHeader>
               <TableHeader>Items</TableHeader>
               <TableHeader>Created</TableHeader>
               <TableHeader>Action</TableHeader>
@@ -128,7 +165,14 @@ export default function ManagerOutboundRequestsPage() {
                   <TableCell className="font-bold text-slate-900">
                     {r.reference ?? r.request_id}
                   </TableCell>
-                  <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
+                  <TableCell className="text-slate-700">
+                    {r.warehouse_name ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-slate-700">
+                    {r.requested_zone_code ??
+                      r.items.find((it) => it.zone_code)?.zone_code ??
+                      '—'}
+                  </TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell className="text-slate-600 text-sm">
                     {new Date(r.created_at).toLocaleString('vi-VN', {
@@ -202,9 +246,17 @@ export default function ManagerOutboundRequestsPage() {
                     </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <dt className="text-slate-500">Contract</dt>
+                    <dt className="text-slate-500">Warehouse</dt>
                     <dd className="font-medium text-slate-900 text-right">
-                      {assigning.contract_code ?? assigning.contract_id}
+                      {assigning.warehouse_name ?? '—'}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Zone</dt>
+                    <dd className="font-medium text-slate-900 text-right">
+                      {assigning.requested_zone_code ??
+                        assigning.items.find((it) => it.zone_code)?.zone_code ??
+                        '—'}
                     </dd>
                   </div>
                   <div className="flex items-center justify-between gap-4">
@@ -220,6 +272,12 @@ export default function ManagerOutboundRequestsPage() {
                         dateStyle: 'short',
                         timeStyle: 'short',
                       })}
+                    </dd>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <dt className="text-slate-500">Requested by</dt>
+                    <dd className="text-slate-800 text-right">
+                      {assigning.customer_name ?? assigning.customer_id}
                     </dd>
                   </div>
                 </dl>
@@ -247,10 +305,12 @@ export default function ManagerOutboundRequestsPage() {
                 <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">
                   Assign to staff
                 </h3>
-                {staffError && <p className="text-xs text-red-500 mb-1">{staffError}</p>}
+                {staffLoading && <p className="text-xs text-slate-500 mb-1">Loading staff...</p>}
+                {!staffLoading && staffError && <p className="text-xs text-red-500 mb-1">{staffError}</p>}
                 <button
                   type="button"
                   onClick={() => setOpenStaffDropdown(!openStaffDropdown)}
+                  disabled={staffLoading}
                   className="w-full px-3 py-2.5 rounded-2xl border border-slate-200 text-sm text-left bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 >
                   {assignStaffIds.length > 0

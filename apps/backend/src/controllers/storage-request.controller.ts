@@ -231,7 +231,8 @@ export async function assignStorageRequestController(req: Request, res: Response
       msg.includes("required") ||
       msg.includes("not found") ||
       msg.includes("Only PENDING") ||
-      msg.includes("not an active staff")
+      msg.includes("not an active staff") ||
+      msg.includes("not allowed")
     ) {
       return res.status(400).json({ message: msg });
     }

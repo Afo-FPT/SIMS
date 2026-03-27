@@ -55,7 +55,6 @@ export default function StaffCycleCountPage() {
   };
 
   const pending = list.filter((cc) => cc.status === 'ASSIGNED_TO_STAFF');
-  const others = list.filter((cc) => cc.status !== 'ASSIGNED_TO_STAFF');
 
   return (
     <div className="space-y-8">
@@ -78,6 +77,12 @@ export default function StaffCycleCountPage() {
           title="No cycle counts"
           message="Cycle counts assigned by manager will appear here"
         />
+      ) : pending.length === 0 ? (
+        <EmptyState
+          icon="fact_check"
+          title="No new assigned tasks"
+          message="You have no cycle counts assigned to you right now."
+        />
       ) : (
         <>
           <Table>
@@ -90,7 +95,7 @@ export default function StaffCycleCountPage() {
               <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
-              {[...pending, ...others].map((cc) => (
+              {pending.map((cc) => (
                 <TableRow key={cc.cycle_count_id}>
                   <TableCell className="font-bold text-slate-900">
                     {cc.contract_code}
@@ -127,7 +132,7 @@ export default function StaffCycleCountPage() {
                       href={`/staff/cycle-count/${cc.cycle_count_id}`}
                       className="text-sm font-bold text-primary hover:underline"
                     >
-                      {cc.status === 'ASSIGNED_TO_STAFF' ? 'Start' : 'View'}
+                      Start
                     </Link>
                   </TableCell>
                 </TableRow>

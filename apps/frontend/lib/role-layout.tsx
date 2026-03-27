@@ -81,10 +81,10 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'WAREHOUSE_SERVICES': 'warehouse-services',
       'TASKS': 'tasks',
       'WAREHOUSES': 'warehouses',
+      'STAFFS': 'staffs',
       'REPORTS': 'reports',
       'USERS': 'users',
       'LOGS': 'logs',
-      'SCANNER': 'scanner',
       'SHIPMENTS': 'shipments',
       'BILLING': 'billing',
       'DOCUMENTS': 'documents',
@@ -97,7 +97,6 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'INBOUND_REQUESTS': 'inbound-requests',
       'OUTBOUND_REQUESTS': 'outbound-requests',
       'CYCLE_COUNT': 'cycle-count',
-      'REPORT_ISSUE': 'report-issue',
       'NOTIFICATIONS': 'notifications',
     };
 
@@ -164,10 +163,10 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'cycle-count': 'CYCLE_COUNT',
     'tasks': 'TASKS',
     'warehouses': 'WAREHOUSES',
+    'staffs': 'STAFFS',
     'reports': 'REPORTS',
     'users': 'USERS',
     'logs': 'LOGS',
-    'scanner': 'SCANNER',
     'shipments': 'SHIPMENTS',
     'billing': 'BILLING',
     'documents': 'DOCUMENTS',
@@ -176,10 +175,10 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'performance': 'PERFORMANCE',
     'config': 'CONFIG',
     'settings': 'SETTINGS',
-    'history': 'HISTORY',
     'inbound-requests': 'INBOUND_REQUESTS',
     'outbound-requests': 'OUTBOUND_REQUESTS',
     'notifications': 'NOTIFICATIONS',
+    'history': 'HISTORY',
   };
 
   let activeView = reverseMap[lastPart] || 'DASHBOARD';

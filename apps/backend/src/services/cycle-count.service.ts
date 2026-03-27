@@ -8,6 +8,7 @@ import StoredItem from "../models/StoredItem";
 import User from "../models/User";
 import Shelf from "../models/Shelf";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
+import { getAllowedStaffIdsForWarehouse } from "./staff-warehouse.service";
 
 /**
  * DTOs for Cycle Count
@@ -421,6 +422,16 @@ export async function assignStaffToCycleCount(
 
     if (staffUsers.length !== dto.staffIds.length) {
       throw new Error("One or more staff IDs are invalid or not staff users");
+    }
+
+    // Enforce warehouse-scoped staffing (manager assignment must attach staff configured for
+    // the cycle count's contract warehouse).
+    const contract = await Contract.findById(cycleCount.contractId).select("warehouseId").lean();
+    if (!contract) throw new Error("Contract not found");
+    const allowed = await getAllowedStaffIdsForWarehouse(contract.warehouseId.toString(), dto.staffIds);
+    const missing = dto.staffIds.filter((id) => !allowed.has(id));
+    if (missing.length > 0) {
+      throw new Error("not allowed: One or more staff members are not permitted to handle tasks for this warehouse");
     }
 
     // Delete existing assignments

@@ -31,8 +31,16 @@ export async function aiInsightsController(req: Request, res: Response) {
       data: { insight }
     });
   } catch (error: any) {
+    const msg = error?.message || "Failed to generate insight";
+    if (
+      msg.includes("GEMINI_API_KEY") ||
+      msg.includes("not configured") ||
+      msg.includes("currently disabled")
+    ) {
+      return res.status(503).json({ message: msg });
+    }
     return res.status(500).json({
-      message: error?.message || "Failed to generate insight"
+      message: msg
     });
   }
 }

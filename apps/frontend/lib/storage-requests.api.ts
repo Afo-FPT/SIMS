@@ -46,11 +46,14 @@ export interface StorageRequestView {
   contract_id: string;
   /** Contract code for display (Contract code) */
   contract_code?: string;
+  warehouse_id?: string;
+  warehouse_name?: string;
   requested_zone_id?: string;
   requested_zone_code?: string;
   /** Customer-provided inbound/outbound reference */
   reference?: string;
   customer_id: string;
+  customer_name?: string;
   request_type: 'IN' | 'OUT';
   status: 'PENDING' | 'APPROVED' | 'DONE_BY_STAFF' | 'COMPLETED' | 'REJECTED';
   created_at: string;

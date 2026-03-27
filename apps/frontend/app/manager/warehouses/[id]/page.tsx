@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { ManagerWarehouse, Shelf } from '../../../../types/manager';
 import {
@@ -66,6 +65,7 @@ export default function ManagerWarehouseDetailPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [creatingZone, setCreatingZone] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [savingZoneId, setSavingZoneId] = useState<string | null>(null);
@@ -1194,6 +1194,7 @@ export default function ManagerWarehouseDetailPage() {
           )}
         </div>
       </section>
+
     </div>
   );
 }

@@ -504,11 +504,21 @@ export default function StaffInboundPutawayDetailPage() {
       )}
 
       {/* Actions */}
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>Cancel</Button>
-        <Button onClick={handleComplete} isLoading={saving} disabled={shelfVolumeWarnings.length > 0}>
-          Complete putaway
+      <div className="flex justify-end gap-2 items-center">
+        <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>
+          Cancel
         </Button>
+        {req.status === 'APPROVED' ? (
+          <Button
+            onClick={handleComplete}
+            isLoading={saving}
+            disabled={shelfVolumeWarnings.length > 0}
+          >
+            Complete putaway
+          </Button>
+        ) : (
+          <p className="text-sm text-slate-500">Read only</p>
+        )}
       </div>
     </div>
   );

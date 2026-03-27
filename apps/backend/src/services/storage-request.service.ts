@@ -4,6 +4,7 @@ import StorageRequestDetail from "../models/StorageRequestDetail";
 import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
 import { notifyStorageRequestEvent } from "./notification.service";
+import { getAllowedStaffIdsForWarehouse } from "./staff-warehouse.service";
 
 function normalizeObjectIdString(value: any): string | null {
   if (!value) return null;
@@ -468,6 +469,16 @@ export async function assignStorageRequest(
   const foundIds = new Set(staffUsers.map((u: any) => u._id.toString()));
   for (const id of staffIds) {
     if (!foundIds.has(id)) throw new Error("User is not an active staff: " + id);
+  }
+
+  // Enforce warehouse-scoped staffing: staff assigned by manager must be configured for
+  // the warehouse of this request's contract.
+  const contract = await Contract.findById(request.contractId).select("warehouseId").lean();
+  if (!contract) throw new Error("Contract not found");
+  const allowed = await getAllowedStaffIdsForWarehouse(contract.warehouseId.toString(), staffIds);
+  const missing = staffIds.filter((id) => !allowed.has(id));
+  if (missing.length > 0) {
+    throw new Error("not allowed: One or more staff members are not permitted to handle tasks for this warehouse");
   }
 
   request.status = "APPROVED";

@@ -52,6 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
               { id: 'TASKS', label: 'Tasks', icon: 'assignment_turned_in' },
               { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
               { id: 'WAREHOUSES', label: 'Warehouses', icon: 'warehouse' },
+              { id: 'STAFFS', label: 'Staffs', icon: 'group' },
             ]
           },
           {
@@ -74,23 +75,20 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           },
           {
             section: 'Work', items: [
-              { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
               { id: 'INBOUND_REQUESTS', label: 'Inbound Putaway', icon: 'inbox' },
               { id: 'OUTBOUND_REQUESTS', label: 'Outbound Picking', icon: 'outbox' },
               { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
-              { id: 'SCANNER', label: 'Scanner', icon: 'barcode_scanner' },
             ]
           },
           {
             section: 'Operations', items: [
+              { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
               { id: 'INVENTORY', label: 'Inventory Movement', icon: 'inventory_2' },
-              { id: 'REPORT_ISSUE', label: 'Report Issue', icon: 'report_problem' },
               { id: 'NOTIFICATIONS', label: 'Notifications', icon: 'notifications' },
             ]
           },
           {
             section: 'Insights', items: [
-              { id: 'HISTORY', label: 'History', icon: 'history' },
               { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
             ]
           },

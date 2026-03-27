@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAiRuntimeSettings } from "./ai-settings.service";
 
 type ReportInsightParams = {
   chartKey: string;
@@ -31,7 +32,12 @@ export async function getReportInsight(params: ReportInsightParams): Promise<str
     throw new Error("GEMINI_API_KEY is not set");
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const aiSettings = await getAiRuntimeSettings();
+  if (!aiSettings.enabled) {
+    throw new Error("AI is currently disabled by admin settings.");
+  }
+
+  const modelName = aiSettings.insightModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const startDate = params.startDate;
   const endDate = params.endDate;
   const chartKey = params.chartKey;
@@ -39,7 +45,11 @@ export async function getReportInsight(params: ReportInsightParams): Promise<str
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelName,
-    systemInstruction: buildSystemInstruction(chartKey, startDate, endDate)
+    systemInstruction: buildSystemInstruction(chartKey, startDate, endDate),
+    generationConfig: {
+      temperature: aiSettings.temperature,
+      maxOutputTokens: aiSettings.maxOutputTokens,
+    },
   });
 
   // Limit payload size to avoid exceeding model limits.

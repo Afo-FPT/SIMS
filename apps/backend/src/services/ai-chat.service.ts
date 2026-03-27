@@ -21,6 +21,7 @@ import { getCycleCounts, getCycleCountById } from "./cycle-count.service";
 import { searchAndFilterWarehouses } from "./warehouse.service";
 import { getManagerReport } from "./reports.service";
 import { getAllUsers } from "./user.service";
+import { getAiRuntimeSettings } from "./ai-settings.service";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1264,12 +1265,21 @@ export async function runAiChat(
     );
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const aiSettings = await getAiRuntimeSettings();
+  if (!aiSettings.enabled) {
+    throw new Error("AI is currently disabled by admin settings.");
+  }
+
+  const modelName = aiSettings.chatModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelName,
     systemInstruction: buildSystemInstruction(ctx),
     tools: [{ functionDeclarations: functionDeclarations as any }],
+    generationConfig: {
+      temperature: aiSettings.temperature,
+      maxOutputTokens: aiSettings.maxOutputTokens,
+    },
   });
 
   const history = messages.slice(0, -1).map((m) => ({

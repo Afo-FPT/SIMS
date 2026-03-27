@@ -259,7 +259,8 @@ export async function assignStaffToCycleCountController(
       error.message.includes("must be") ||
       error.message.includes("required") ||
       error.message.includes("Invalid") ||
-      error.message.includes("past")
+      error.message.includes("past") ||
+      error.message.includes("not allowed")
     ) {
       return res.status(400).json({ message: error.message });
     }
