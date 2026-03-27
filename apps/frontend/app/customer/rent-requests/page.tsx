@@ -45,7 +45,6 @@ export default function RentRequestsPage() {
   const [warehouseId, setWarehouseId] = useState('');
   const [startDate, setStartDate] = useState(minStartDate);
   const [endDate, setEndDate] = useState(() => defaultEndDate(minStartDate));
-  const [durationMode, setDurationMode] = useState<'package' | 'custom'>('package');
   const [packages, setPackages] = useState<ContractPackageOption[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(true);
   const [packagesError, setPackagesError] = useState<string | null>(null);
@@ -90,23 +89,27 @@ export default function RentRequestsPage() {
   useEffect(() => {
     let cancelled = false;
     const loadPackages = async () => {
+      if (!warehouseId) {
+        setPackages([]);
+        setSelectedPackageId(null);
+        return;
+      }
       try {
         setLoadingPackages(true);
         setPackagesError(null);
-        const list = await listContractPackages();
+        const list = await listContractPackages(warehouseId);
         if (cancelled) return;
         setPackages(list);
         if (list.length > 0) {
-          setSelectedPackageId(list[0].id);
+          setSelectedPackageId((prev) => (prev && list.some((p) => p.id === prev) ? prev : list[0].id));
         } else {
-          setDurationMode('custom');
+          setSelectedPackageId(null);
         }
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : 'Failed to load rental packages';
         setPackagesError(msg);
         toast.error(msg);
-        setDurationMode('custom');
       } finally {
         if (!cancelled) setLoadingPackages(false);
       }
@@ -115,20 +118,17 @@ export default function RentRequestsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [warehouseId]);
 
   const selectedPackage = useMemo(
-    () =>
-      durationMode === 'package'
-        ? packages.find((p) => p.id === selectedPackageId) ?? null
-        : null,
-    [packages, selectedPackageId, durationMode]
+    () => packages.find((p) => p.id === selectedPackageId) ?? null,
+    [packages, selectedPackageId]
   );
 
   useEffect(() => {
-    if (durationMode !== 'package' || !selectedPackage) return;
+    if (!selectedPackage) return;
     setEndDate(addDuration(startDate, selectedPackage));
-  }, [durationMode, selectedPackage, startDate]);
+  }, [selectedPackage, startDate]);
 
   // Load zones when warehouse changes
   useEffect(() => {
@@ -178,27 +178,25 @@ export default function RentRequestsPage() {
     [zones, selectedZoneIds],
   );
 
-  const BASE_DAILY_PRICE_PER_ZONE = 100000; // VND per day per zone
-
   const estimatedContractPrice = useMemo(() => {
     if (!rentalDays || !zoneCount) return 0;
-    // If using a package, treat package price as price per zone for the whole period
-    if (durationMode === 'package' && selectedPackage) {
-      const perZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
-      return perZone * zoneCount;
+    if (selectedPackage) {
+      const selectedZones = zones.filter((z) => z.status === 'ACTIVE' && selectedZoneIds.has(z.id));
+      return selectedZones.reduce((sum, z) => {
+        const area = Number(z.area ?? 0);
+        return sum + area * selectedPackage.pricePerM2 + rentalDays * selectedPackage.pricePerDay;
+      }, 0);
     }
-    // Custom duration: total = 100,000 VND * rentalDays (independent of zone count)
-    return BASE_DAILY_PRICE_PER_ZONE * rentalDays;
-  }, [rentalDays, zoneCount, selectedPackage]);
+    return 0;
+  }, [rentalDays, zoneCount, selectedPackage, zones, selectedZoneIds]);
 
   const estimatedPerZonePrice = useMemo(() => {
     if (!zoneCount) return 0;
-    if (durationMode === 'package' && selectedPackage) {
-      return typeof selectedPackage.price === 'number' ? selectedPackage.price : 0;
+    if (selectedPackage) {
+      return zoneCount > 0 ? estimatedContractPrice / zoneCount : 0;
     }
-    // For custom duration, distribute total price evenly per zone
-    return estimatedContractPrice / zoneCount;
-  }, [durationMode, selectedPackage, zoneCount, estimatedContractPrice]);
+    return 0;
+  }, [selectedPackage, zoneCount, estimatedContractPrice]);
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
@@ -212,6 +210,9 @@ export default function RentRequestsPage() {
       else if (end <= start) e.endDate = 'End date must be after start date';
     } else {
       e.endDate = 'End date is required';
+    }
+    if (!selectedPackage) {
+      e.package = 'Please select a package';
     }
     if (selectedZoneIds.size === 0) {
       e.zoneId = 'Please select at least one zone';
@@ -227,24 +228,13 @@ export default function RentRequestsPage() {
       toast.warning('Please fix the errors below');
       return;
     }
-    let pricePerZone: number | undefined;
-    if (durationMode === 'package' && selectedPackage) {
-      pricePerZone = typeof selectedPackage.price === 'number' ? selectedPackage.price : undefined;
-    } else if (rentalDays > 0 && zoneCount > 0) {
-      // Custom: total = 100,000 VND * rentalDays
-      // Distribute equally per zone so that sum(pricePerZone * zoneCount) = total
-      const total = BASE_DAILY_PRICE_PER_ZONE * rentalDays;
-      pricePerZone = total / zoneCount;
-    }
-
     const payload: CreateDraftContractPayload = {
       warehouseId,
       startDate,
       endDate: endDate!,
+      packageId: selectedPackage ? selectedPackage.id : undefined,
       // Send all selected zones so backend can save as rented_zones
       zoneIds: Array.from(selectedZoneIds),
-      // pricePerZone: for package or custom duration
-      pricePerZone,
     };
     try {
       setLoading(true);
@@ -379,104 +369,66 @@ export default function RentRequestsPage() {
           <div className="space-y-5">
             <h3 className="text-sm font-bold text-slate-700 uppercase">Rental period</h3>
 
-            <div className="flex items-center gap-3">
-              <div className="flex w-full p-1 rounded-2xl border border-slate-200 bg-slate-100">
-                <button
-                  type="button"
-                  className={`flex-1 px-4 py-3 rounded-2xl text-sm font-bold transition-colors ${
-                    durationMode === 'package'
-                      ? 'bg-primary text-white'
-                      : 'bg-transparent text-slate-700 hover:bg-white/60'
-                  } ${packages.length === 0 && durationMode !== 'package' ? 'opacity-60' : ''}`}
-                  onClick={() => setDurationMode('package')}
-                  disabled={packages.length === 0}
-                >
-                  Predefined package
-                  {loadingPackages && durationMode !== 'package' && (
-                    <span className="block text-xs font-bold text-white/90 mt-0.5">Loading...</span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className={`flex-1 px-4 py-3 rounded-2xl text-sm font-bold transition-colors ${
-                    durationMode === 'custom'
-                      ? 'bg-primary text-white'
-                      : 'bg-transparent text-slate-700 hover:bg-white/60'
-                  }`}
-                  onClick={() => {
-                    setDurationMode('custom');
-                    setSelectedPackageId(null);
-                  }}
-                >
-                  Custom
-                </button>
-              </div>
+            {packagesError && <p className="text-xs text-red-500">{packagesError}</p>}
+            {errors.package && <p className="text-xs text-red-500">{errors.package}</p>}
+
+            <div className="space-y-3">
+              {loadingPackages ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-200" />
+                  ))}
+                </div>
+              ) : packages.length === 0 ? (
+                <p className="text-xs text-amber-600">
+                  No rental packages are configured for this warehouse.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {packages.map((pkg) => {
+                    const active = selectedPackageId === pkg.id;
+                    return (
+                      <button
+                        key={pkg.id}
+                        type="button"
+                        onClick={() => setSelectedPackageId(pkg.id)}
+                        className={`rounded-2xl border p-4 text-left transition-colors ${
+                          active
+                            ? 'border-primary bg-primary/5'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        }`}
+                        aria-pressed={active}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-black text-slate-900 truncate">
+                              {pkg.name || 'Rental package'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Duration: <span className="font-bold text-slate-700">{pkg.duration} {pkg.unit}{pkg.duration > 1 ? 's' : ''}</span>
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pricing</p>
+                            <p className="text-sm font-black text-primary">
+                              {pkg.pricePerM2.toLocaleString('vi-VN')}/m² + {pkg.pricePerDay.toLocaleString('vi-VN')}/day
+                            </p>
+                          </div>
+                        </div>
+                        {pkg.description && (
+                          <p className="text-xs text-slate-500 mt-3 leading-relaxed line-clamp-3">
+                            {pkg.description}
+                          </p>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            {packagesError && <p className="text-xs text-red-500">{packagesError}</p>}
-
-            {durationMode === 'package' && (
-              <div className="space-y-3">
-                {loadingPackages ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-200" />
-                    ))}
-                  </div>
-                ) : packages.length === 0 ? (
-                  <p className="text-xs text-amber-600">
-                    No predefined packages are configured yet. Please use <span className="font-bold">Custom</span>.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {packages.map((pkg) => {
-                      const active = selectedPackageId === pkg.id;
-                      return (
-                        <button
-                          key={pkg.id}
-                          type="button"
-                          onClick={() => setSelectedPackageId(pkg.id)}
-                          className={`rounded-2xl border p-4 text-left transition-colors ${
-                            active
-                              ? 'border-primary bg-primary/5'
-                              : 'border-slate-200 bg-white hover:bg-slate-50'
-                          }`}
-                          aria-pressed={active}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-black text-slate-900 truncate">
-                                {pkg.name || 'Rental package'}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Duration: <span className="font-bold text-slate-700">{pkg.duration} {pkg.unit}{pkg.duration > 1 ? 's' : ''}</span>
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Price / zone</p>
-                              <p className="text-lg font-black text-primary">
-                                {typeof pkg.price === 'number' ? pkg.price.toLocaleString('vi-VN') : '—'} VND
-                              </p>
-                            </div>
-                          </div>
-                          {pkg.description && (
-                            <p className="text-xs text-slate-500 mt-3 leading-relaxed line-clamp-3">
-                              {pkg.description}
-                            </p>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
             <p className="text-xs text-slate-500">
-              At least 1 day from today.{' '}
-              {durationMode === 'package'
-                ? 'End date is set automatically from the selected package.'
-                : 'Pick an end date to define your rental duration.'}
+              At least 1 day from today. End date is set automatically from the selected package.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -492,9 +444,6 @@ export default function RentRequestsPage() {
                   onChange={(e) => {
                     const v = e.target.value;
                     setStartDate(v);
-                    if (durationMode === 'custom' && endDate && new Date(v) >= new Date(endDate)) {
-                      setEndDate(defaultEndDate(v));
-                    }
                   }}
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
@@ -509,8 +458,8 @@ export default function RentRequestsPage() {
                   type="date"
                   min={startDate || today}
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  disabled={durationMode === 'package'}
+                  readOnly
+                  disabled
                   className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 {errors.endDate && <p className="text-xs text-red-500 mt-1">{errors.endDate}</p>}
@@ -528,7 +477,7 @@ export default function RentRequestsPage() {
                     Rental days: <span className="font-bold text-primary">{rentalDays || 0}</span>
                   </p>
                   <p>
-                    {durationMode === 'package' ? 'Price per zone:' : 'Est. per-zone price:'}{' '}
+                    Est. per-zone price:{' '}
                     <span className="font-bold text-primary">
                       {estimatedPerZonePrice > 0 ? estimatedPerZonePrice.toLocaleString('vi-VN') : '—'} VND
                     </span>

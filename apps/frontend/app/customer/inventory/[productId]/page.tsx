@@ -186,6 +186,7 @@ export default function CustomerInventoryProductPage() {
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Shelf</th>
+                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Zone</th>
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Quantity</th>
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">QTY / Unit</th>
                   <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Last Updated</th>
@@ -194,7 +195,7 @@ export default function CustomerInventoryProductPage() {
               <tbody>
                 {shelves.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
                       No shelf records found for this product.
                     </td>
                   </tr>
@@ -202,6 +203,7 @@ export default function CustomerInventoryProductPage() {
                   shelves.map((s, idx) => (
                     <tr key={`${s.contract_id}-${s.shelf}-${idx}`} className="border-b border-slate-100">
                       <td className="px-6 py-4 text-slate-700 font-medium">{s.shelf || '—'}</td>
+                      <td className="px-6 py-4 text-slate-700">{s.zone_code || '—'}</td>
                       <td className="px-6 py-4 text-slate-700">
                         <span className="font-medium">{s.quantity}</span>{' '}
                         <span className="text-slate-400">{s.unit}</span>

@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/Input';
 import { ChangePasswordForm } from '../../../components/ChangePasswordForm';
 import { ProfileSettingsCard } from '../../../components/ProfileSettingsCard';
 import { getChatFaqsByRole, updateChatFaqsByRole, type ChatFaqItem, type ChatFaqRole } from '../../../lib/chat-faq.api';
+import { getSpaceLimits, updateSpaceLimits } from '../../../lib/system-settings.api';
 
 export default function AdminSettingsPage() {
   const [faqRole, setFaqRole] = useState<ChatFaqRole>('customer');
@@ -14,6 +15,11 @@ export default function AdminSettingsPage() {
   const [faqSaving, setFaqSaving] = useState(false);
   const [faqError, setFaqError] = useState<string | null>(null);
   const [faqSuccess, setFaqSuccess] = useState<string | null>(null);
+  const [spaceZonePercent, setSpaceZonePercent] = useState('80');
+  const [spaceShelfPercent, setSpaceShelfPercent] = useState('80');
+  const [spaceLoading, setSpaceLoading] = useState(false);
+  const [spaceSaving, setSpaceSaving] = useState(false);
+  const [spaceMessage, setSpaceMessage] = useState<string | null>(null);
 
   const roleTabs: Array<{ role: ChatFaqRole; label: string }> = useMemo(
     () => [
@@ -52,6 +58,28 @@ export default function AdminSettingsPage() {
     };
   }, [faqRole]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSpace() {
+      try {
+        setSpaceLoading(true);
+        const data = await getSpaceLimits();
+        if (cancelled) return;
+        setSpaceZonePercent(String(data.zone_area_percent_of_warehouse));
+        setSpaceShelfPercent(String(data.shelf_area_percent_of_zone));
+      } catch (e) {
+        if (cancelled) return;
+        setSpaceMessage(e instanceof Error ? e.message : 'Failed to load space limits');
+      } finally {
+        if (!cancelled) setSpaceLoading(false);
+      }
+    }
+    loadSpace();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function updateItem(idx: number, patch: Partial<ChatFaqItem>) {
     setFaqItems((prev) => {
       const next = [...prev];
@@ -88,6 +116,29 @@ export default function AdminSettingsPage() {
     }
   }
 
+  async function saveSpaceLimits() {
+    try {
+      setSpaceSaving(true);
+      setSpaceMessage(null);
+      const zone = Number(spaceZonePercent);
+      const shelf = Number(spaceShelfPercent);
+      if (!Number.isFinite(zone) || zone <= 0 || zone > 100 || !Number.isFinite(shelf) || shelf <= 0 || shelf > 100) {
+        throw new Error('Percent values must be > 0 and <= 100');
+      }
+      const data = await updateSpaceLimits({
+        zone_area_percent_of_warehouse: zone,
+        shelf_area_percent_of_zone: shelf,
+      });
+      setSpaceZonePercent(String(data.zone_area_percent_of_warehouse));
+      setSpaceShelfPercent(String(data.shelf_area_percent_of_zone));
+      setSpaceMessage('Space limits saved successfully.');
+    } catch (e) {
+      setSpaceMessage(e instanceof Error ? e.message : 'Failed to save space limits');
+    } finally {
+      setSpaceSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -104,6 +155,45 @@ export default function AdminSettingsPage() {
       </div>
 
       <section className="space-y-4">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 space-y-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Space Limit Rules</h2>
+            <p className="text-sm text-slate-500 mt-1">
+              Configure maximum usable area for zones and shelves.
+            </p>
+          </div>
+          {spaceMessage && (
+            <p className="text-sm text-slate-700 bg-slate-50 border border-slate-200 p-3 rounded-xl">{spaceMessage}</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              label="Max total zone area (% of warehouse area)"
+              type="number"
+              min={1}
+              max={100}
+              step="0.01"
+              value={spaceZonePercent}
+              onChange={(e) => setSpaceZonePercent(e.target.value)}
+              disabled={spaceLoading || spaceSaving}
+            />
+            <Input
+              label="Max total shelf area (% of zone area)"
+              type="number"
+              min={1}
+              max={100}
+              step="0.01"
+              value={spaceShelfPercent}
+              onChange={(e) => setSpaceShelfPercent(e.target.value)}
+              disabled={spaceLoading || spaceSaving}
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={saveSpaceLimits} disabled={spaceLoading || spaceSaving}>
+              {spaceSaving ? 'Saving...' : 'Save space limits'}
+            </Button>
+          </div>
+        </div>
+
         <div>
           <h2 className="text-xl font-black text-slate-900">Chatbot FAQs</h2>
           <p className="text-sm text-slate-500 mt-1">

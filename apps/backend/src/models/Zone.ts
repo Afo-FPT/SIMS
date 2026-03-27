@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Types } from "mongoose";
 export interface IZone extends Document {
   zoneCode: string;
   name: string;
+  area: number;
   warehouseId: Types.ObjectId;
   description?: string;
   status: "ACTIVE" | "INACTIVE";
@@ -23,6 +24,11 @@ const ZoneSchema = new Schema<IZone>(
       type: String,
       required: true,
       trim: true
+    },
+    area: {
+      type: Number,
+      required: true,
+      min: 0
     },
     warehouseId: {
       type: Schema.Types.ObjectId,

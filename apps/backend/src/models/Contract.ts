@@ -24,6 +24,7 @@ export interface IContract extends Document {
   requestedZoneId?: Types.ObjectId;
   requestedStartDate?: Date;
   requestedEndDate?: Date;
+  pricingPackageId?: Types.ObjectId;
   status: "draft" | "pending_payment" | "active" | "expired" | "terminated";
   createdBy: Types.ObjectId;
   createdAt: Date;
@@ -86,6 +87,7 @@ const ContractSchema = new Schema<IContract>(
     requestedZoneId: { type: Schema.Types.ObjectId, ref: "Zone" },
     requestedStartDate: { type: Date },
     requestedEndDate: { type: Date },
+    pricingPackageId: { type: Schema.Types.ObjectId, ref: "ContractPackage" },
     status: {
       type: String,
     enum: ["draft", "pending_payment", "active", "expired", "terminated"],

@@ -3,6 +3,7 @@ import Zone from "../models/Zone";
 import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
 import User from "../models/User";
+import { ContractPackage } from "../models/ContractPackage";
 import { Types } from "mongoose";
 
 /**
@@ -333,11 +334,43 @@ export interface RequestDraftContractRequest {
   warehouseId: string;
   startDate: string | Date;
   endDate: string | Date;
+  packageId?: string;
   pricePerZone?: number;
   /** Optional preferred zone selected by customer when requesting draft */
   requestedZoneId?: string;
   /** Optional list of zones selected by customer when requesting draft */
   zoneIds?: string[];
+}
+
+async function computeZoneRentalPrice(params: {
+  zoneId: string;
+  rentalDays: number;
+  warehouseId: string;
+  packageId?: string;
+  fallbackPricePerZone?: number;
+}): Promise<number> {
+  const { zoneId, rentalDays, warehouseId, packageId, fallbackPricePerZone } = params;
+  const zone = await Zone.findById(zoneId).select("area warehouseId");
+  if (!zone) throw new Error("Zone not found");
+  if (zone.warehouseId.toString() !== warehouseId) {
+    throw new Error("Zone does not belong to selected warehouse");
+  }
+
+  if (packageId && Types.ObjectId.isValid(packageId)) {
+    const pkg = await ContractPackage.findById(packageId).select("warehouseId pricePerM2 pricePerDay isActive");
+    if (!pkg) throw new Error("Selected package not found");
+    if ((pkg as any).isActive === false) throw new Error("Selected package is disabled");
+    if (pkg.warehouseId.toString() !== warehouseId) {
+      throw new Error("Selected package does not belong to selected warehouse");
+    }
+    // Formula: total = (zoneArea * pricePerM2) + (rentalDays * pricePerDay)
+    return Math.round((zone.area * (pkg as any).pricePerM2 + rentalDays * (pkg as any).pricePerDay) * 100) / 100;
+  }
+
+  if (fallbackPricePerZone && fallbackPricePerZone > 0) {
+    return fallbackPricePerZone;
+  }
+  return DEFAULT_PRICE_PER_ZONE * rentalDays;
 }
 
 export async function createDraftContractFromRequest(
@@ -428,21 +461,25 @@ async function createDraftContractWithRequestOnly(
       endDate
     });
 
-    // Compute fallback pricePerZone based on duration if not provided
+    // Compute price by selected package and zone area (or fallback rules)
     const diffMs = endDate.getTime() - startDate.getTime();
     const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-    const fallbackPricePerZone = DEFAULT_PRICE_PER_ZONE * rentalDays;
 
     const uniqueZoneIds = Array.from(new Set(data.zoneIds));
-    const draftRentedZones = uniqueZoneIds.map((zid) => ({
-      zoneId: zid,
-      startDate,
-      endDate,
-      price:
-        data.pricePerZone && data.pricePerZone > 0
-          ? data.pricePerZone
-          : fallbackPricePerZone
-    }));
+    const draftRentedZones = await Promise.all(
+      uniqueZoneIds.map(async (zid) => ({
+        zoneId: zid,
+        startDate,
+        endDate,
+        price: await computeZoneRentalPrice({
+          zoneId: zid,
+          rentalDays,
+          warehouseId: data.warehouseId,
+          packageId: data.packageId,
+          fallbackPricePerZone: data.pricePerZone
+        })
+      }))
+    );
     // Validate against overlaps and zone/warehouse consistency
     await validateRentedZones(
       data.warehouseId,
@@ -486,6 +523,9 @@ async function createDraftContractWithRequestOnly(
           requestedZoneId: rentedZonesDocs.length === 0 ? requestedZoneObjectId : undefined,
           requestedStartDate: startDate,
           requestedEndDate: endDate,
+          pricingPackageId: data.packageId && Types.ObjectId.isValid(data.packageId)
+            ? new Types.ObjectId(data.packageId)
+            : undefined,
           status: "draft",
           createdBy: new Types.ObjectId(customerId)
         }
@@ -498,7 +538,8 @@ async function createDraftContractWithRequestOnly(
       .populate("customerId", "name email")
       .populate("warehouseId", "name address")
       .populate("createdBy", "name email")
-      .populate("requestedZoneId", "zoneCode name");
+      .populate("requestedZoneId", "zoneCode name")
+      .populate("pricingPackageId", "name");
     return mapContractToResponse(populated!);
   } catch (e: any) {
     await session.abortTransaction();
@@ -652,7 +693,13 @@ export async function updateContractStatus(
 
         const diffMs = endDate.getTime() - startDate.getTime();
         const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-        const price = DEFAULT_PRICE_PER_ZONE * rentalDays;
+        const price = await computeZoneRentalPrice({
+          zoneId: zoneIdToAssign!.toString(),
+          rentalDays,
+          warehouseId,
+          packageId: contract.pricingPackageId?.toString(),
+          fallbackPricePerZone: undefined
+        });
 
         contract.rentedZones = [
           {
@@ -715,7 +762,13 @@ export async function updateContractStatus(
       // Price per zone = base daily price * rentalDays
       const diffMs = endDate.getTime() - startDate.getTime();
       const rentalDays = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-      const price = DEFAULT_PRICE_PER_ZONE * rentalDays;
+      const price = await computeZoneRentalPrice({
+        zoneId: zoneIdToAssign!.toString(),
+        rentalDays,
+        warehouseId,
+        packageId: contract.pricingPackageId?.toString(),
+        fallbackPricePerZone: undefined
+      });
       contract.rentedZones = [
         {
           zoneId: zoneIdToAssign,

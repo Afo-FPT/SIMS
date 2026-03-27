@@ -7,11 +7,11 @@ export async function createZoneController(req: Request, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const { warehouseId } = req.params;
-    const { zoneCode, name, description } = req.body;
-    if (!zoneCode || !name) {
-      return res.status(400).json({ message: "zoneCode and name are required" });
+    const { zoneCode, name, area, description } = req.body;
+    if (!zoneCode || !name || area == null) {
+      return res.status(400).json({ message: "zoneCode, name and area are required" });
     }
-    const payload: CreateZoneRequest = { zoneCode, name, description };
+    const payload: CreateZoneRequest = { zoneCode, name, area: Number(area), description };
     const zone = await createZone(warehouseId, payload, req.user.userId);
     res.status(201).json({
       message: "Zone created successfully",
@@ -22,7 +22,8 @@ export async function createZoneController(req: Request, res: Response) {
       error.message.includes("required") ||
       error.message.includes("not found") ||
       error.message.includes("already exists") ||
-      error.message.includes("Invalid")
+      error.message.includes("Invalid") ||
+      error.message.includes("exceeds limit")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -55,8 +56,8 @@ export async function updateZoneController(req: Request, res: Response) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     const { warehouseId, zoneId } = req.params;
-    const { zoneCode, name, description, status } = req.body;
-    const payload: UpdateZoneRequest = { zoneCode, name, description, status };
+    const { zoneCode, name, area, description, status } = req.body;
+    const payload: UpdateZoneRequest = { zoneCode, name, area: area == null ? undefined : Number(area), description, status };
     const zone = await updateZone(warehouseId, zoneId, payload);
     res.json({
       message: "Zone updated successfully",
@@ -68,7 +69,8 @@ export async function updateZoneController(req: Request, res: Response) {
       error.message.includes("not found") ||
       error.message.includes("already exists") ||
       error.message.includes("Invalid") ||
-      error.message.includes("does not belong")
+      error.message.includes("does not belong") ||
+      error.message.includes("exceeds limit")
     ) {
       return res.status(400).json({ message: error.message });
     }

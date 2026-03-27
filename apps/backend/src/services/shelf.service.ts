@@ -4,6 +4,7 @@ import Zone from "../models/Zone";
 import StoredItem from "../models/StoredItem";
 import Contract from "../models/Contract";
 import { Types } from "mongoose";
+import { getOrCreateSpaceLimits } from "./system-setting.service";
 
 /**
  * DTO for creating a single shelf
@@ -241,6 +242,38 @@ async function validateZoneExists(zoneId: string, warehouseId: string): Promise<
   }
 }
 
+function getShelfFootprintArea(item: CreateShelfItem): number {
+  if (!Array.isArray(item.tierDimensions) || item.tierDimensions.length === 0) return 0;
+  const first = item.tierDimensions[0];
+  return Number(first.width) * Number(first.depth);
+}
+
+async function validateShelfAreaLimitInZone(zoneId: string, incomingArea: number, excludeShelfId?: string): Promise<void> {
+  const zone = await Zone.findById(zoneId).select("area");
+  if (!zone) {
+    throw new Error("Zone not found");
+  }
+  const limits = await getOrCreateSpaceLimits();
+  const maxAllowed = (zone.area * limits.shelf_area_percent_of_zone) / 100;
+
+  const match: any = { zoneId: new Types.ObjectId(zoneId) };
+  if (excludeShelfId && Types.ObjectId.isValid(excludeShelfId)) {
+    match._id = { $ne: new Types.ObjectId(excludeShelfId) };
+  }
+  const rows = await Shelf.aggregate([
+    { $match: match },
+    { $project: { footprint: { $multiply: ["$width", "$depth"] } } },
+    { $group: { _id: null, total: { $sum: "$footprint" } } }
+  ]);
+  const used = rows?.[0]?.total ?? 0;
+  const nextTotal = used + incomingArea;
+  if (nextTotal > maxAllowed) {
+    throw new Error(
+      `Shelf area exceeds limit: max ${maxAllowed.toFixed(2)} m2 (${limits.shelf_area_percent_of_zone}% zone), current ${used.toFixed(2)} m2, requested ${incomingArea.toFixed(2)} m2`
+    );
+  }
+}
+
 /**
  * Validate a single shelf item
  */
@@ -404,6 +437,8 @@ export async function createShelves(
   data.shelves.forEach((item, index) => {
     validateShelfItem(item, index);
   });
+  const incomingArea = data.shelves.reduce((sum, item) => sum + getShelfFootprintArea(item), 0);
+  await validateShelfAreaLimitInZone(zoneId, incomingArea);
   validateUniqueShelfCodesInRequest(data.shelves);
   const shelfCodes = data.shelves.map(s => s.shelfCode.trim());
   await validateShelfCodesNotExist(zoneId, shelfCodes);
@@ -598,6 +633,7 @@ export async function updateShelfInfo(
   const normalizedTierDimensions = normalizeTierDimensions(payload.tierDimensions);
   const { width, depth } = getRepresentativeWidthDepth(normalizedTierDimensions);
   const maxCapacity = calculateShelfMaxCapacity(normalizedTierDimensions);
+  await validateShelfAreaLimitInZone(shelf.zoneId.toString(), width * depth, shelfId);
 
   shelf.shelfCode = nextShelfCode;
   shelf.tierCount = payload.tierCount;

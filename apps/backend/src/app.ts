@@ -21,6 +21,7 @@ import warehouseIssueReportRoutes from "./routes/warehouse-issue-report.routes";
 import reportsRoutes from "./routes/reports.routes";
 import notificationRoutes from "./routes/notification.routes";
 import aiChatRoutes from "./routes/ai-chat.routes";
+import systemSettingRoutes from "./routes/system-setting.routes";
 
 
 const app = express();
@@ -48,6 +49,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/zones", zoneShelvesRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ai", aiChatRoutes);
+app.use("/api/system-settings", systemSettingRoutes);
 
 
 

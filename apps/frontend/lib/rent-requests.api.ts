@@ -145,18 +145,24 @@ export type ContractPackageUnit = 'day' | 'month' | 'year';
 export interface ContractPackageOption {
   id: string;
   name: string;
+  warehouseId: string;
   duration: number;
   unit: ContractPackageUnit;
-  price: number;
+  pricePerM2: number;
+  pricePerDay: number;
+  isActive?: boolean;
   description?: string;
 }
 
 interface BackendContractPackage {
   _id: string;
   name: string;
+  warehouseId: string;
   duration: number;
   unit: ContractPackageUnit;
-  price: number;
+  pricePerM2: number;
+  pricePerDay: number;
+  isActive?: boolean;
   description?: string;
 }
 
@@ -165,15 +171,19 @@ interface BackendContractPackage {
  * Customer uses these as suggested rental durations.
  * Note: apiJson unwraps { data } so we may receive the array directly.
  */
-export async function listContractPackages(): Promise<ContractPackageOption[]> {
-  const res = await apiJson<BackendContractPackage[] | { data: BackendContractPackage[] }>('/contract-packages', { method: 'GET' });
+export async function listContractPackages(warehouseId?: string): Promise<ContractPackageOption[]> {
+  const query = warehouseId ? `?warehouseId=${encodeURIComponent(warehouseId)}` : '';
+  const res = await apiJson<BackendContractPackage[] | { data: BackendContractPackage[] }>(`/contract-packages${query}`, { method: 'GET' });
   const list = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
   return list.map((p) => ({
     id: typeof p._id === 'string' ? p._id : String(p._id),
     name: p.name,
+    warehouseId: p.warehouseId,
     duration: p.duration,
     unit: p.unit,
-    price: p.price,
+    pricePerM2: Number((p as any).pricePerM2 ?? 0),
+    pricePerDay: Number((p as any).pricePerDay ?? 0),
+    isActive: Boolean((p as any).isActive ?? true),
     description: p.description,
   }));
 }
@@ -182,6 +192,7 @@ export interface ZoneOption {
   id: string;
   zoneCode: string;
   name: string;
+  area?: number;
   warehouseId: string;
   description?: string;
   status?: string;
@@ -211,6 +222,7 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneOpt
     })(),
     zoneCode: z.zone_code ?? z.zoneCode ?? '',
     name: z.name ?? '',
+    area: Number(z.area ?? 0),
     warehouseId: z.warehouse_id ?? z.warehouseId ?? warehouseId,
     description: z.description,
     status: z.status ?? z.zone_status ?? z.state,
@@ -299,6 +311,7 @@ export interface CreateDraftContractPayload {
   warehouseId: string;
   startDate: string;
   endDate: string;
+  packageId?: string;
   /** Optional preferred zone chosen by customer */
   zoneId?: string;
   /** Optional multiple zones chosen by customer */
@@ -315,6 +328,7 @@ export async function createDraftContractRequest(payload: CreateDraftContractPay
       warehouseId: payload.warehouseId,
       startDate: payload.startDate,
       endDate: payload.endDate,
+      packageId: payload.packageId,
       requestedZoneId: payload.zoneId,
       zoneIds: payload.zoneIds,
       pricePerZone: payload.pricePerZone,

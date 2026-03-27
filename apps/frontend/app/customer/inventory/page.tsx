@@ -10,7 +10,8 @@ import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
 import { Pagination } from '../../../components/ui/Pagination';
 
 type ProductRow = StoredProductOverview & {
-  contractCode?: string;
+  warehouseName?: string;
+  zoneCodes?: string[];
 };
 
 export default function CustomerInventoryPage() {
@@ -42,7 +43,8 @@ export default function CustomerInventoryPage() {
 
         const mapped: ProductRow[] = list.map((p) => ({
           ...p,
-          contractCode: p.contract_code,
+          warehouseName: p.warehouse_name,
+          zoneCodes: p.zone_codes ?? [],
         }));
 
         if (!cancelled) {
@@ -90,8 +92,6 @@ export default function CustomerInventoryPage() {
     const start = (p - 1) * PAGE_SIZE;
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page, totalPages]);
-
-  const showContractColumn = contractFilter === 'ALL';
 
   if (loading) {
     return <LoadingSkeleton className="h-64 w-full" />;
@@ -158,9 +158,8 @@ export default function CustomerInventoryPage() {
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">SKU / Item</th>
-                {showContractColumn && (
-                  <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Contract</th>
-                )}
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Warehouse</th>
+                <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Zone</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Total Quantity</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">QTY / Unit</th>
                 <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Last Updated</th>
@@ -170,7 +169,7 @@ export default function CustomerInventoryPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={showContractColumn ? 6 : 5} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                     {products.length === 0
                       ? 'No inventory yet. Items will appear after staff completes putaway (DONE_BY_STAFF).'
                       : 'No products match your filters.'}
@@ -187,11 +186,14 @@ export default function CustomerInventoryPage() {
                         <p className="font-bold text-slate-900">{i.sku}</p>
                       </div>
                     </td>
-                    {showContractColumn && (
-                      <td className="px-6 py-4 text-slate-700">
-                        <span className="font-medium">{i.contractCode || 'Unknown Contract'}</span>
-                      </td>
-                    )}
+                    <td className="px-6 py-4 text-slate-700">
+                      <span className="font-medium">{i.warehouseName || 'Unknown warehouse'}</span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-700">
+                      <span className="font-medium">
+                        {i.zoneCodes && i.zoneCodes.length > 0 ? i.zoneCodes.join(', ') : 'Unknown zone'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-slate-700">
                       <span className="font-medium">{i.total_quantity}</span>{' '}
                       <span className="text-slate-400">{i.unit}</span>

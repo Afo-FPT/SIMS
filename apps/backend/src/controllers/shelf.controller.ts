@@ -70,7 +70,8 @@ export async function createShelvesController(req: Request, res: Response) {
       error.message.includes("not found") ||
       error.message.includes("already exist") ||
       error.message.includes("Duplicate") ||
-      error.message.includes("Invalid")
+      error.message.includes("Invalid") ||
+      error.message.includes("exceeds limit")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -210,7 +211,7 @@ export async function updateShelfInfoController(req: Request, res: Response) {
     });
   } catch (error: any) {
     const msg = error?.message || "Internal server error";
-    if (msg.includes("Invalid") || msg.includes("required") || msg.includes("already exists") || msg.includes("not found") || msg.includes("must be")) {
+    if (msg.includes("Invalid") || msg.includes("required") || msg.includes("already exists") || msg.includes("not found") || msg.includes("must be") || msg.includes("exceeds limit")) {
       return res.status(400).json({ message: msg });
     }
     return res.status(500).json({ message: msg });

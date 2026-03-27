@@ -144,6 +144,7 @@ export interface ManagerZoneOption {
   id: string;
   zoneCode: string;
   name: string;
+  area: number;
   warehouseId: string;
   description?: string;
   status?: string;
@@ -153,6 +154,7 @@ interface BackendZoneResponse {
   zone_id: string;
   zone_code: string;
   name: string;
+  area: number;
   warehouse_id: string;
   description?: string;
   status: string;
@@ -172,6 +174,7 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<Manager
     id: z.zone_id ?? z.id,
     zoneCode: z.zone_code ?? z.zoneCode ?? '',
     name: z.name ?? '',
+    area: Number(z.area ?? 0),
     warehouseId: z.warehouse_id ?? z.warehouseId ?? warehouseId,
     description: z.description,
     status: z.status,
@@ -180,7 +183,7 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<Manager
 
 export async function createZone(
   warehouseId: string,
-  payload: { zoneCode: string; name: string; description?: string }
+  payload: { zoneCode: string; name: string; area: number; description?: string }
 ): Promise<ManagerZoneOption> {
   const res = await fetchWithAuth(`/warehouses/${warehouseId}/zones`, {
     method: 'POST',
@@ -195,6 +198,7 @@ export async function createZone(
     id: z.zone_id,
     zoneCode: z.zone_code,
     name: z.name,
+    area: Number(z.area ?? 0),
     warehouseId: z.warehouse_id,
     description: z.description,
     status: z.status,
@@ -204,7 +208,7 @@ export async function createZone(
 export async function updateZoneByWarehouse(
   warehouseId: string,
   zoneId: string,
-  payload: { zoneCode?: string; name?: string; description?: string; status?: 'ACTIVE' | 'INACTIVE' }
+  payload: { zoneCode?: string; name?: string; area?: number; description?: string; status?: 'ACTIVE' | 'INACTIVE' }
 ): Promise<ManagerZoneOption> {
   const res = await apiJson<{ message?: string; data?: BackendZoneResponse } | BackendZoneResponse>(
     `/warehouses/${warehouseId}/zones/${zoneId}`,
@@ -221,6 +225,7 @@ export async function updateZoneByWarehouse(
     id: z.zone_id,
     zoneCode: z.zone_code,
     name: z.name,
+    area: Number(z.area ?? 0),
     warehouseId: z.warehouse_id,
     description: z.description,
     status: z.status,

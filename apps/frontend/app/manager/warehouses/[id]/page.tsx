@@ -18,6 +18,7 @@ import {
   updateShelfStatus,
 } from '../../../../lib/mockApi/manager.api';
 import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
+import { getSpaceLimits, type SpaceLimits } from '../../../../lib/system-settings.api';
 import { useToastHelpers } from '../../../../lib/toast';
 import { Badge } from '../../../../components/ui/Badge';
 import { Button } from '../../../../components/ui/Button';
@@ -48,15 +49,21 @@ export default function ManagerWarehouseDetailPage() {
   const [zones, setZones] = useState<ManagerZoneOption[]>([]);
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [zoneForm, setZoneForm] = useState({ zoneCode: '', name: '', description: '' });
+  const [zoneAreaStr, setZoneAreaStr] = useState('');
   const [shelfForm, setShelfForm] = useState({
     shelfCode: '',
     tierCountStr: '',
-    /** One row per tier: height × width × depth (m) */
-    tierRows: [] as Array<{ height: string; width: string; depth: string }>,
+    heightStr: '',
+    widthStr: '',
+    depthStr: '',
   });
   const [utilByShelfId, setUtilByShelfId] = useState<Record<string, ShelfUtilization>>({});
   const [utilLoading, setUtilLoading] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
+  const [spaceLimits, setSpaceLimits] = useState<SpaceLimits>({
+    zone_area_percent_of_warehouse: 80,
+    shelf_area_percent_of_zone: 80,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creatingZone, setCreatingZone] = useState(false);
@@ -117,6 +124,11 @@ export default function ManagerWarehouseDetailPage() {
         if (cancelled) return;
         setZones(zonesForWarehouse);
         setShelves(shelvesForWarehouse);
+        const limits = await getSpaceLimits().catch(() => ({
+          zone_area_percent_of_warehouse: 80,
+          shelf_area_percent_of_zone: 80,
+        }));
+        if (!cancelled) setSpaceLimits(limits);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load warehouse');
@@ -288,19 +300,15 @@ export default function ManagerWarehouseDetailPage() {
   };
 
   const previewMaxM3 = useMemo(() => {
-    const n = shelfForm.tierRows.length;
-    if (n === 0) return 0;
-    let sum = 0;
-    for (const row of shelfForm.tierRows) {
-      const h = Number(row.height);
-      const w = Number(row.width);
-      const d = Number(row.depth);
-      if (!isNaN(h) && !isNaN(w) && !isNaN(d) && h > 0 && w > 0 && d > 0) {
-        sum += h * w * d;
-      }
-    }
-    return Math.round(sum * 1_000_000) / 1_000_000;
-  }, [shelfForm.tierRows]);
+    const tierCount = parseInt(shelfForm.tierCountStr, 10);
+    const h = Number(shelfForm.heightStr);
+    const w = Number(shelfForm.widthStr);
+    const d = Number(shelfForm.depthStr);
+    if (!Number.isFinite(tierCount) || tierCount < 1) return 0;
+    if (!Number.isFinite(h) || !Number.isFinite(w) || !Number.isFinite(d)) return 0;
+    if (h <= 0 || w <= 0 || d <= 0) return 0;
+    return Math.round(tierCount * h * w * d * 1_000_000) / 1_000_000;
+  }, [shelfForm.tierCountStr, shelfForm.heightStr, shelfForm.widthStr, shelfForm.depthStr]);
 
   useEffect(() => {
     if (warehouse && !editingInfo) {
@@ -319,8 +327,13 @@ export default function ManagerWarehouseDetailPage() {
     e.preventDefault();
     if (!warehouse) return;
     const { zoneCode, name, description } = zoneForm;
+    const area = Number(zoneAreaStr);
     if (!zoneCode?.trim() || !name?.trim()) {
       toast.warning('Zone code and name are required');
+      return;
+    }
+    if (!Number.isFinite(area) || area <= 0) {
+      toast.warning('Zone area must be > 0');
       return;
     }
     try {
@@ -328,36 +341,18 @@ export default function ManagerWarehouseDetailPage() {
       const newZone = await createZone(warehouse.id, {
         zoneCode: zoneCode.trim(),
         name: name.trim(),
+        area,
         description: description?.trim() || undefined,
       });
       toast.success('Zone created successfully');
       setZones((prev) => [newZone, ...prev]);
       setZoneForm({ zoneCode: '', name: '', description: '' });
+      setZoneAreaStr('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create zone');
     } finally {
       setCreatingZone(false);
     }
-  };
-
-  const setTierCountFromInput = (raw: string) => {
-    const n = parseInt(raw, 10);
-    setShelfForm((prev) => {
-      if (raw === '' || isNaN(n) || n < 1) {
-        return { ...prev, tierCountStr: raw, tierRows: [] };
-      }
-      const next = [...prev.tierRows];
-      while (next.length < n) next.push({ height: '', width: '', depth: '' });
-      while (next.length > n) next.pop();
-      return { ...prev, tierCountStr: raw, tierRows: next };
-    });
-  };
-
-  const updateTierRow = (idx: number, patch: Partial<{ height: string; width: string; depth: string }>) => {
-    setShelfForm((prev) => ({
-      ...prev,
-      tierRows: prev.tierRows.map((r, i) => (i === idx ? { ...r, ...patch } : r)),
-    }));
   };
 
   const handleCreateShelf = async (e: React.FormEvent) => {
@@ -371,30 +366,32 @@ export default function ManagerWarehouseDetailPage() {
       return;
     }
 
-    const { shelfCode, tierCountStr, tierRows } = shelfForm;
+    const { shelfCode, tierCountStr, heightStr, widthStr, depthStr } = shelfForm;
     const tierCountNum = parseInt(tierCountStr, 10);
+    const height = Number(heightStr);
+    const width = Number(widthStr);
+    const depth = Number(depthStr);
 
     if (!shelfCode?.trim() || !tierCountStr || isNaN(tierCountNum) || tierCountNum < 1) {
       toast.warning('Nhập mã kệ và số tầng hợp lệ');
       return;
     }
-    if (tierRows.length !== tierCountNum) {
-      toast.warning('Số dòng kích thước phải khớp số tầng');
+    if (
+      !Number.isFinite(height) ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(depth) ||
+      height <= 0 ||
+      width <= 0 ||
+      depth <= 0
+    ) {
+      toast.warning('Nhập cao / rộng / dài hợp lệ (> 0)');
       return;
     }
 
-    const tierDimensions: Array<{ height: number; width: number; depth: number }> = [];
-    for (let i = 0; i < tierRows.length; i++) {
-      const row = tierRows[i];
-      const height = Number(row.height);
-      const width = Number(row.width);
-      const depth = Number(row.depth);
-      if (isNaN(height) || height <= 0 || isNaN(width) || width <= 0 || isNaN(depth) || depth <= 0) {
-        toast.warning(`Tầng ${i + 1}: cao / rộng / sâu phải là số dương (m)`);
-        return;
-      }
-      tierDimensions.push({ height, width, depth });
-    }
+    const tierDimensions: Array<{ height: number; width: number; depth: number }> = Array.from(
+      { length: tierCountNum },
+      () => ({ height, width, depth })
+    );
 
     const zoneDisplay =
       zones.find((z) => z.id === selectedZoneId)?.zoneCode ??
@@ -420,7 +417,9 @@ export default function ManagerWarehouseDetailPage() {
       setShelfForm({
         shelfCode: '',
         tierCountStr: '',
-        tierRows: [],
+        heightStr: '',
+        widthStr: '',
+        depthStr: '',
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create shelf');
@@ -468,7 +467,9 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
-  const handleStartEditZone = (zone: ManagerZoneOption) => {
+  const [zoneEditAreaStr, setZoneEditAreaStr] = useState('');
+
+  const handleStartEditZoneWithArea = (zone: ManagerZoneOption) => {
     if (editingZoneId && editingZoneId !== zone.id) {
       toast.warning('Save or cancel the zone you are editing first');
       return;
@@ -480,6 +481,7 @@ export default function ManagerWarehouseDetailPage() {
       description: zone.description ?? '',
       status: zone.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
     });
+    setZoneEditAreaStr(String(zone.area ?? ''));
   };
 
   const handleCancelZoneEdit = (zone: ManagerZoneOption) => {
@@ -490,6 +492,7 @@ export default function ManagerWarehouseDetailPage() {
       description: zone.description ?? '',
       status: zone.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE',
     });
+    setZoneEditAreaStr('');
   };
 
   const handleSaveZone = async (zoneId: string) => {
@@ -498,16 +501,23 @@ export default function ManagerWarehouseDetailPage() {
       toast.warning('Zone code and name are required');
       return;
     }
+    const area = Number(zoneEditAreaStr);
+    if (!Number.isFinite(area) || area <= 0) {
+      toast.warning('Zone area must be > 0');
+      return;
+    }
     try {
       setSavingZoneId(zoneId);
       const updated = await updateZoneByWarehouse(warehouse.id, zoneId, {
         zoneCode: zoneEditForm.zoneCode.trim(),
         name: zoneEditForm.name.trim(),
+        area,
         description: zoneEditForm.description.trim(),
         status: zoneEditForm.status,
       });
       setZones((prev) => prev.map((z) => (z.id === zoneId ? updated : z)));
       setEditingZoneId(null);
+      setZoneEditAreaStr('');
       toast.success('Zone updated successfully');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update zone');
@@ -529,6 +539,20 @@ export default function ManagerWarehouseDetailPage() {
       />
     );
   }
+
+  const warehouseArea = Number(warehouse.area || 0);
+  const zoneMaxAllowed = (warehouseArea * spaceLimits.zone_area_percent_of_warehouse) / 100;
+  const usedZoneArea = zones.reduce((sum, z) => sum + Number(z.area || 0), 0);
+  const remainingZoneArea = Math.max(0, zoneMaxAllowed - usedZoneArea);
+  const selectedZone = zones.find((z) => z.id === selectedZoneId);
+  const zoneArea = Number(selectedZone?.area || 0);
+  const zoneShelfMaxAllowed = (zoneArea * spaceLimits.shelf_area_percent_of_zone) / 100;
+  const usedShelfAreaInZone = shelves
+    .filter((s) => s.zone === (selectedZone?.zoneCode ?? selectedZone?.name ?? ''))
+    .reduce((sum, s) => sum + Number((s.width ?? 0) * (s.depth ?? 0)), 0);
+  const remainingShelfAreaInZone = Math.max(0, zoneShelfMaxAllowed - usedShelfAreaInZone);
+  const zoneLimitReached = remainingZoneArea <= 0.000001;
+  const shelfLimitReached = selectedZoneId ? remainingShelfAreaInZone <= 0.000001 : false;
 
   return (
     <div className="space-y-8">
@@ -668,9 +692,13 @@ export default function ManagerWarehouseDetailPage() {
         <p className="text-sm text-slate-600">
           Zones group shelves for location tracking. Contracts are assigned to zones.
         </p>
+        <p className={`text-xs ${zoneLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+          Giới hạn zone: tối đa {spaceLimits.zone_area_percent_of_warehouse}% diện tích kho
+          ({zoneMaxAllowed.toFixed(2)} m²). Đang dùng {usedZoneArea.toFixed(2)} m², còn lại {remainingZoneArea.toFixed(2)} m².
+        </p>
         <form
           onSubmit={handleCreateZone}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 pb-4 border-b border-slate-100"
+          className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 pb-4 border-b border-slate-100"
         >
           <Input
             label="Zone code"
@@ -687,12 +715,22 @@ export default function ManagerWarehouseDetailPage() {
             required
           />
           <Input
+            label="Area (m²)"
+            type="number"
+            min={0}
+            step="0.01"
+            value={zoneAreaStr}
+            onChange={(e) => setZoneAreaStr(e.target.value)}
+            placeholder="120"
+            required
+          />
+          <Input
             label="Description (optional)"
             value={zoneForm.description}
             onChange={(e) => setZoneForm((p) => ({ ...p, description: e.target.value }))}
             placeholder="Short description"
           />
-          <div className="md:col-span-3 flex justify-end">
+          <div className="md:col-span-4 flex justify-end">
             <Button type="submit" isLoading={creatingZone}>
               Create zone
             </Button>
@@ -704,6 +742,7 @@ export default function ManagerWarehouseDetailPage() {
               <tr className="text-left text-slate-500 border-b border-slate-100">
                 <th className="py-2 pr-4">Zone code</th>
                 <th className="py-2 pr-4">Name</th>
+                <th className="py-2 pr-4">Area (m²)</th>
                 <th className="py-2 pr-4">Description</th>
                 <th className="py-2 pr-4">Status</th>
                 <th className="py-2 pr-4 text-right">Action</th>
@@ -712,7 +751,7 @@ export default function ManagerWarehouseDetailPage() {
             <tbody>
               {zones.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-4 text-slate-500">
+                  <td colSpan={6} className="py-4 text-slate-500">
                     No zones yet. Create one below.
                   </td>
                 </tr>
@@ -739,6 +778,20 @@ export default function ManagerWarehouseDetailPage() {
                         />
                       ) : (
                         z.name
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-700 align-top">
+                      {editingZoneId === z.id ? (
+                        <Input
+                          value={zoneEditAreaStr}
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          onChange={(e) => setZoneEditAreaStr(e.target.value)}
+                          className="!py-2 !px-3 !rounded-xl text-sm"
+                        />
+                      ) : (
+                        Number(z.area ?? 0).toFixed(2)
                       )}
                     </td>
                     <td className="py-2 pr-4 text-slate-700 align-top">
@@ -801,7 +854,7 @@ export default function ManagerWarehouseDetailPage() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleStartEditZone(z)}
+                          onClick={() => handleStartEditZoneWithArea(z)}
                           disabled={editingZoneId !== null && editingZoneId !== z.id}
                         >
                           Edit
@@ -841,6 +894,10 @@ export default function ManagerWarehouseDetailPage() {
         <p className="text-sm text-slate-600">
           Create shelves inside zones and see their current status.
         </p>
+        <p className={`text-xs ${shelfLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
+          Giới hạn shelf: tối đa {spaceLimits.shelf_area_percent_of_zone}% diện tích zone đã chọn
+          ({zoneShelfMaxAllowed.toFixed(2)} m²). Đang dùng {usedShelfAreaInZone.toFixed(2)} m², còn lại {remainingShelfAreaInZone.toFixed(2)} m².
+        </p>
 
         <form onSubmit={handleCreateShelf} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -865,60 +922,51 @@ export default function ManagerWarehouseDetailPage() {
               type="number"
               min={1}
               value={shelfForm.tierCountStr}
-              onChange={(e) => setTierCountFromInput(e.target.value)}
+              onChange={(e) => setShelfForm((p) => ({ ...p, tierCountStr: e.target.value }))}
               placeholder="VD: 3"
               required
             />
+            <Input
+              label="Cao (m)"
+              type="number"
+              step="0.01"
+              min={0}
+              value={shelfForm.heightStr}
+              onChange={(e) => setShelfForm((p) => ({ ...p, heightStr: e.target.value }))}
+              placeholder="1.2"
+              required
+            />
+            <Input
+              label="Rộng (m)"
+              type="number"
+              step="0.01"
+              min={0}
+              value={shelfForm.widthStr}
+              onChange={(e) => setShelfForm((p) => ({ ...p, widthStr: e.target.value }))}
+              placeholder="2.0"
+              required
+            />
+            <Input
+              label="Dài (m)"
+              type="number"
+              step="0.01"
+              min={0}
+              value={shelfForm.depthStr}
+              onChange={(e) => setShelfForm((p) => ({ ...p, depthStr: e.target.value }))}
+              placeholder="1.0"
+              required
+            />
           </div>
-          {shelfForm.tierRows.length > 0 && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-              <p className="text-sm font-bold text-slate-800">
-                Kích thước từng tầng (m) — cao × rộng × sâu
-              </p>
-              <div className="space-y-3">
-                {shelfForm.tierRows.map((row, idx) => (
-                  <div
-                    key={idx}
-                    className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end bg-white rounded-xl border border-slate-100 p-3"
-                  >
-                    <p className="text-xs font-bold text-slate-500 sm:col-span-1 pt-2">Tầng {idx + 1}</p>
-                    <Input
-                      label="Cao (m)"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={row.height}
-                      onChange={(e) => updateTierRow(idx, { height: e.target.value })}
-                      placeholder="1.2"
-                    />
-                    <Input
-                      label="Rộng (m)"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={row.width}
-                      onChange={(e) => updateTierRow(idx, { width: e.target.value })}
-                      placeholder="2.0"
-                    />
-                    <Input
-                      label="Sâu (m)"
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={row.depth}
-                      onChange={(e) => updateTierRow(idx, { depth: e.target.value })}
-                      placeholder="1.0"
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-slate-700">
-                <span className="font-bold">Dung tích tối đa ước tính:</span>{' '}
-                <span className="font-mono font-bold text-primary">{formatM3(previewMaxM3)}</span>
-                <span className="text-slate-500"> (tổng các tầng, lưu làm max capacity kệ)</span>
-              </p>
-            </div>
-          )}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+            <p className="text-sm text-slate-700">
+              <span className="font-bold">Dung tích tối đa ước tính:</span>{' '}
+              <span className="font-mono font-bold text-primary">{formatM3(previewMaxM3)}</span>
+              <span className="text-slate-500">
+                {' '}
+                (= số tầng × cao × rộng × dài, áp dụng cùng kích thước cho mọi tầng)
+              </span>
+            </p>
+          </div>
           <div className="flex justify-end">
             <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
               Create shelf

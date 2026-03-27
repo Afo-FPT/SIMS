@@ -1,16 +1,19 @@
 import Zone from "../models/Zone";
 import Warehouse from "../models/Warehouse";
 import { Types } from "mongoose";
+import { getOrCreateSpaceLimits } from "./system-setting.service";
 
 export interface CreateZoneRequest {
   zoneCode: string;
   name: string;
+  area: number;
   description?: string;
 }
 
 export interface UpdateZoneRequest {
   zoneCode?: string;
   name?: string;
+  area?: number;
   description?: string;
   status?: "ACTIVE" | "INACTIVE";
 }
@@ -19,6 +22,7 @@ export interface ZoneResponse {
   zone_id: string;
   zone_code: string;
   name: string;
+  area: number;
   warehouse_id: string;
   description?: string;
   status: "ACTIVE" | "INACTIVE";
@@ -37,6 +41,35 @@ async function validateWarehouse(warehouseId: string): Promise<void> {
   }
 }
 
+async function validateZoneAreaLimit(warehouseId: string, nextZoneArea: number, excludeZoneId?: string): Promise<void> {
+  if (!Number.isFinite(nextZoneArea) || nextZoneArea <= 0) {
+    throw new Error("Zone area must be a valid number > 0");
+  }
+  const warehouse = await Warehouse.findById(warehouseId).select("area");
+  if (!warehouse) {
+    throw new Error("Warehouse not found");
+  }
+  const limits = await getOrCreateSpaceLimits();
+  const maxAllowed = (warehouse.area * limits.zone_area_percent_of_warehouse) / 100;
+
+  const match: any = { warehouseId: new Types.ObjectId(warehouseId) };
+  if (excludeZoneId && Types.ObjectId.isValid(excludeZoneId)) {
+    match._id = { $ne: new Types.ObjectId(excludeZoneId) };
+  }
+  const rows = await Zone.aggregate([
+    { $match: match },
+    { $group: { _id: null, total: { $sum: "$area" } } }
+  ]);
+  const used = rows?.[0]?.total ?? 0;
+  const nextTotal = used + nextZoneArea;
+
+  if (nextTotal > maxAllowed) {
+    throw new Error(
+      `Zone area exceeds limit: max ${maxAllowed.toFixed(2)} m2 (${limits.zone_area_percent_of_warehouse}% warehouse), current ${used.toFixed(2)} m2, requested ${nextZoneArea.toFixed(2)} m2`
+    );
+  }
+}
+
 export async function createZone(
   warehouseId: string,
   data: CreateZoneRequest,
@@ -50,6 +83,7 @@ export async function createZone(
   if (!data.name || !data.name.trim()) {
     throw new Error("Zone name is required");
   }
+  await validateZoneAreaLimit(warehouseId, Number(data.area));
 
   const zoneCode = data.zoneCode.trim().toUpperCase();
   const existing = await Zone.findOne({
@@ -63,6 +97,7 @@ export async function createZone(
   const zone = await Zone.create({
     zoneCode,
     name: data.name.trim(),
+    area: Number(data.area),
     warehouseId: new Types.ObjectId(warehouseId),
     description: data.description?.trim(),
     status: "ACTIVE",
@@ -73,6 +108,7 @@ export async function createZone(
     zone_id: zone._id.toString(),
     zone_code: zone.zoneCode,
     name: zone.name,
+    area: zone.area,
     warehouse_id: zone.warehouseId.toString(),
     description: zone.description,
     status: zone.status,
@@ -93,6 +129,7 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneRes
     zone_id: z._id.toString(),
     zone_code: z.zoneCode,
     name: z.name,
+    area: z.area,
     warehouse_id: z.warehouseId.toString(),
     description: z.description,
     status: z.status,
@@ -113,6 +150,7 @@ export async function getZoneById(zoneId: string): Promise<ZoneResponse | null> 
     zone_id: z._id.toString(),
     zone_code: z.zoneCode,
     name: z.name,
+    area: z.area,
     warehouse_id: z.warehouseId.toString(),
     description: z.description,
     status: z.status,
@@ -156,6 +194,12 @@ export async function updateZone(
     zone.name = nextName;
   }
 
+  if (data.area != null) {
+    const nextArea = Number(data.area);
+    await validateZoneAreaLimit(warehouseId, nextArea, zoneId);
+    zone.area = nextArea;
+  }
+
   if (data.description != null) {
     const nextDescription = data.description.trim();
     zone.description = nextDescription || undefined;
@@ -174,6 +218,7 @@ export async function updateZone(
     zone_id: zone._id.toString(),
     zone_code: zone.zoneCode,
     name: zone.name,
+    area: zone.area,
     warehouse_id: zone.warehouseId.toString(),
     description: zone.description,
     status: zone.status,

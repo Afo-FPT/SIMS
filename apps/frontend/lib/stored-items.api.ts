@@ -29,6 +29,8 @@ export interface StoredProductOverview {
   sku: string;
   contract_id: string;
   contract_code?: string;
+  warehouse_name?: string;
+  zone_codes?: string[];
   total_quantity: number;
   unit: string;
   quantity_per_unit?: number;
@@ -37,6 +39,7 @@ export interface StoredProductOverview {
 
 export interface StoredProductShelfRow {
   shelf: string;
+  zone_code?: string;
   quantity: number;
   unit: string;
   quantity_per_unit?: number;

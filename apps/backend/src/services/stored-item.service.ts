@@ -10,6 +10,8 @@ export interface StoredItemViewDTO {
   contract_code?: string;
   shelf_id: string;
   shelf_code?: string;
+  zone_code?: string;
+  warehouse_name?: string;
   item_name: string;
   quantity: number;
   unit: string;
@@ -25,6 +27,8 @@ export interface StoredProductOverviewDTO {
   sku: string;
   contract_id: string;
   contract_code?: string;
+  warehouse_name?: string;
+  zone_codes?: string[];
   total_quantity: number;
   unit: string;
   quantity_per_unit?: number;
@@ -34,6 +38,7 @@ export interface StoredProductOverviewDTO {
 
 export interface StoredProductShelfDTO {
   shelf: string;
+  zone_code?: string;
   quantity: number;
   unit: string;
   quantity_per_unit?: number;
@@ -276,6 +281,31 @@ export async function getMyStoredItems(
     .populate("contractId", "contractCode")
     .sort({ updatedAt: -1 });
 
+  const shelfIds = items.map((it: any) => it.shelfId?._id ?? it.shelfId).filter(Boolean);
+  const shelves = await Shelf.find({ _id: { $in: shelfIds } })
+    .populate({
+      path: "zoneId",
+      select: "zoneCode warehouseId",
+      populate: { path: "warehouseId", select: "name" },
+    })
+    .select("_id zoneId")
+    .lean();
+
+  const shelfMetaById = new Map<
+    string,
+    {
+      zone_code?: string;
+      warehouse_name?: string;
+    }
+  >();
+  for (const s of shelves as any[]) {
+    const zone = s.zoneId;
+    shelfMetaById.set(String(s._id), {
+      zone_code: zone?.zoneCode,
+      warehouse_name: zone?.warehouseId?.name,
+    });
+  }
+
   return items.map((it) => ({
     stored_item_id: it._id.toString(),
     contract_id:
@@ -291,6 +321,8 @@ export async function getMyStoredItems(
       typeof (it as any).shelfId === "object" && "shelfCode" in (it as any).shelfId
         ? (it as any).shelfId.shelfCode
         : undefined,
+    zone_code: shelfMetaById.get(((it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString()))?.zone_code,
+    warehouse_name: shelfMetaById.get(((it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString()))?.warehouse_name,
     item_name: it.itemName,
     quantity: it.quantity,
     unit: it.unit,
@@ -325,6 +357,8 @@ export async function getMyStoredProducts(
         sku,
         contract_id: it.contract_id,
         contract_code: it.contract_code,
+        warehouse_name: it.warehouse_name,
+        zone_codes: it.zone_code ? [it.zone_code] : [],
         total_quantity: it.quantity || 0,
         unit: it.unit,
         quantity_per_unit: it.quantity_per_unit,
@@ -340,6 +374,14 @@ export async function getMyStoredProducts(
       // contract_code should be identical per contract; keep first non-empty
       if (!existing.contract_code && it.contract_code) {
         existing.contract_code = it.contract_code;
+      }
+      if (!existing.warehouse_name && it.warehouse_name) {
+        existing.warehouse_name = it.warehouse_name;
+      }
+      if (it.zone_code) {
+        const next = new Set(existing.zone_codes || []);
+        next.add(it.zone_code);
+        existing.zone_codes = Array.from(next).sort();
       }
       // prefer a known quantity_per_unit if missing
       if (existing.quantity_per_unit == null && it.quantity_per_unit != null) {
@@ -374,6 +416,7 @@ export async function getMyStoredProductShelves(
     if (normalizeSku(it.item_name).toLowerCase() !== target) continue;
     rows.push({
       shelf: it.shelf_code || it.shelf_id,
+      zone_code: it.zone_code,
       quantity: it.quantity,
       unit: it.unit,
       quantity_per_unit: it.quantity_per_unit,

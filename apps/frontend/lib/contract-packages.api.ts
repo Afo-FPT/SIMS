@@ -5,9 +5,12 @@ export type ContractPackageUnit = 'day' | 'month' | 'year';
 export interface ContractPackage {
   _id: string;
   name: string;
+  warehouseId: string;
   duration: number;
   unit: ContractPackageUnit;
-  price: number;
+  pricePerM2: number;
+  pricePerDay: number;
+  isActive: boolean;
   description?: string;
   createdAt: string;
   updatedAt: string;
@@ -15,10 +18,13 @@ export interface ContractPackage {
 
 export interface SaveContractPackagePayload {
   name: string;
+  warehouseId: string;
   duration: number;
   unit: ContractPackageUnit;
-  price: number;
+  pricePerM2: number;
+  pricePerDay: number;
   description?: string;
+  isActive?: boolean;
 }
 
 export async function listContractPackages(): Promise<ContractPackage[]> {
@@ -38,7 +44,7 @@ export async function createContractPackage(
 
 export async function updateContractPackage(
   id: string,
-  payload: SaveContractPackagePayload,
+  payload: Partial<SaveContractPackagePayload>,
 ): Promise<ContractPackage> {
   return apiJson<ContractPackage>(`/contract-packages/${id}`, {
     method: 'PATCH',
