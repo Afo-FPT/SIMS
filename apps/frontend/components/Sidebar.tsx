@@ -1,5 +1,6 @@
 
 import React from 'react';
+import Link from 'next/link';
 import { Persona, User } from '../types';
 
 interface SidebarProps {
@@ -136,22 +137,21 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
   return (
     <aside className={`${collapsed ? 'w-[88px]' : 'w-80'} bg-white border-r border-slate-200 flex flex-col h-screen sticky top-0 shrink-0 z-50 transition-[width] duration-200`}>
       <div className={`${collapsed ? 'p-5' : 'p-8'} border-b border-slate-50 flex items-center gap-4`}>
-        <div className="size-11 bg-primary rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-primary/30 group-hover:scale-110 transition-transform duration-500">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center w-full h-full"
-            onClick={() => onNavigate('DASHBOARD')}
-            title="Home"
-          >
+        <Link
+          href="/"
+          className="group flex items-center gap-4 flex-1 min-w-0 rounded-2xl -m-1 p-1 hover:bg-slate-50/80 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          title="Back to homepage"
+        >
+          <div className="size-11 bg-primary rounded-2xl flex items-center justify-center text-white shadow-2xl shadow-primary/30 group-hover:scale-110 transition-transform duration-500 shrink-0">
             <span className="material-symbols-outlined !text-2xl">warehouse</span>
-          </button>
-        </div>
-        {!collapsed && (
-          <div className="flex flex-col flex-1">
-            <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SIMS-AI</h1>
-            <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">{persona} NODE</p>
           </div>
-        )}
+          {!collapsed && (
+            <div className="flex flex-col flex-1 min-w-0">
+              <h1 className="text-slate-900 font-black text-xl tracking-tighter leading-none mb-1">SIMS-AI</h1>
+              <p className="text-primary text-[10px] font-black uppercase tracking-[0.2em]">{persona} NODE</p>
+            </div>
+          )}
+        </Link>
         {onToggleCollapsed && (
           <button
             type="button"
