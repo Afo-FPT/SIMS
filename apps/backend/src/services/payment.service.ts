@@ -49,8 +49,37 @@ export async function startVNPayPaymentForContract(
     status: "pending"
   });
   if (existingPending) {
-    // Optionally we could reuse existing txnRef, but easier to prevent duplicates.
-    throw new Error("There is already a pending payment for this contract. Please complete it first.");
+    const parseVnpDate = (value?: string): Date | null => {
+      if (!value || value.length !== 14) return null;
+      const year = Number(value.slice(0, 4));
+      const month = Number(value.slice(4, 6)) - 1;
+      const day = Number(value.slice(6, 8));
+      const hour = Number(value.slice(8, 10));
+      const minute = Number(value.slice(10, 12));
+      const second = Number(value.slice(12, 14));
+      if ([year, month, day, hour, minute, second].some((n) => Number.isNaN(n))) return null;
+      // Stored format is GMT+7 (VNPay), convert to UTC timestamp.
+      const utcMs = Date.UTC(year, month, day, hour - 7, minute, second);
+      return new Date(utcMs);
+    };
+
+    const expireAt =
+      parseVnpDate(existingPending.vnpExpireDate) ||
+      new Date(existingPending.createdAt.getTime() + 15 * 60 * 1000);
+    const isExpired = expireAt.getTime() <= Date.now();
+
+    if (isExpired) {
+      existingPending.status = "expired";
+      await existingPending.save();
+    } else if (existingPending.paymentUrl) {
+      return {
+        payment: existingPending,
+        paymentUrl: existingPending.paymentUrl,
+        expireAt: existingPending.vnpExpireDate || ""
+      };
+    } else {
+      throw new Error("There is already a pending payment for this contract. Please complete it first.");
+    }
   }
 
   const orderInfo = `Thanh toan hop dong ${contract.contractCode}`;
@@ -69,7 +98,9 @@ export async function startVNPayPaymentForContract(
     gateway: "vnpay",
     status: "pending",
     vnpTxnRef: vnpResult.vnp_TxnRef,
-    vnpOrderInfo: orderInfo
+    vnpOrderInfo: orderInfo,
+    paymentUrl: vnpResult.url,
+    vnpExpireDate: vnpResult.vnp_ExpireDate
   });
 
   return {

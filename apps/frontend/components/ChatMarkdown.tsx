@@ -4,6 +4,16 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 
+function linkifyAppRoutes(text: string): string {
+  if (!text) return text;
+  // Convert plain app routes into markdown links so users can click directly.
+  // Example: /customer/reports -> [/customer/reports](/customer/reports)
+  return text.replace(
+    /(^|[\s(])((?:\/(?:customer|manager|staff|admin)(?:\/[A-Za-z0-9\-_[\]?=&%]*)*))(?![A-Za-z0-9\-_/[\]?=&%])/g,
+    (_m, prefix: string, route: string) => `${prefix}[${route}](${route})`
+  );
+}
+
 const assistantComponents: Components = {
   p: ({ children }) => (
     <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
@@ -35,14 +45,23 @@ const assistantComponents: Components = {
   ),
   hr: () => <hr className="my-3 border-slate-200" />,
   a: ({ href, children }) => (
-    <a
-      href={href}
-      className="text-primary font-bold underline underline-offset-2 hover:text-primary-dark break-all"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children}
-    </a>
+    href?.startsWith('/') ? (
+      <a
+        href={href}
+        className="text-primary font-bold underline underline-offset-2 hover:text-primary-dark break-all"
+      >
+        {children}
+      </a>
+    ) : (
+      <a
+        href={href}
+        className="text-primary font-bold underline underline-offset-2 hover:text-primary-dark break-all"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {children}
+      </a>
+    )
   ),
   code: ({ className, children, ...props }) => {
     const isBlock = /language-/.test(className || '');
@@ -98,7 +117,7 @@ export function ChatMarkdown({ content, role }: ChatMarkdownProps) {
   return (
     <div className="text-sm text-slate-800 break-words [&>*:first-child]:mt-0">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={assistantComponents}>
-        {content}
+        {linkifyAppRoutes(content)}
       </ReactMarkdown>
     </div>
   );

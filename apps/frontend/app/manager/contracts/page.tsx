@@ -127,6 +127,11 @@ export default function ManagerContractsPage() {
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [paymentsRefreshing, setPaymentsRefreshing] = useState(false);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | Contract['status']>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState<'all' | string>('all');
+  const [detailPayments, setDetailPayments] = useState<ManagerPayment[]>([]);
+  const [detailPaymentsLoading, setDetailPaymentsLoading] = useState(false);
 
   const loadPayments = useCallback(async (silent = false) => {
     try {
@@ -183,8 +188,52 @@ export default function ManagerContractsPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(contracts.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = contracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const filteredContracts = contracts.filter((c) => {
+    const q = searchTerm.trim().toLowerCase();
+    const bySearch =
+      !q ||
+      String(c.code || '').toLowerCase().includes(q) ||
+      String(c.customerName || '').toLowerCase().includes(q);
+    const byStatus = statusFilter === 'all' || c.status === statusFilter;
+    const byWarehouse = warehouseFilter === 'all' || c.warehouseId === warehouseFilter;
+    return bySearch && byStatus && byWarehouse;
+  });
+  const filteredTotalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
+  const safePage = Math.min(page, filteredTotalPages);
+  const paged = filteredContracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const warehouseOptions = Array.from(
+    new Map(
+      contracts
+        .filter((c) => c.warehouseId)
+        .map((c) => [c.warehouseId, { id: c.warehouseId, name: c.warehouseName || c.warehouseId }])
+    ).values()
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter, warehouseFilter]);
+
+  useEffect(() => {
+    async function loadDetailPayments() {
+      if (!detail) {
+        setDetailPayments([]);
+        return;
+      }
+      try {
+        setDetailPaymentsLoading(true);
+        const all = await listManagerPayments();
+        const rows = all
+          .filter((p) => p.contractId === detail.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setDetailPayments(rows);
+      } catch {
+        setDetailPayments([]);
+      } finally {
+        setDetailPaymentsLoading(false);
+      }
+    }
+    loadDetailPayments();
+  }, [detail]);
 
   const handleStatusChange = async (id: string, status: Contract['status']) => {
     try {
@@ -297,64 +346,103 @@ export default function ManagerContractsPage() {
       ) : contracts.length === 0 ? (
         <EmptyState icon="description" title="No contracts" message="No contracts yet" />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <Table>
-            <TableHead>
-              <TableHeader>Contract code</TableHeader>
-              <TableHeader>Customer</TableHeader>
-              <TableHeader>Zones</TableHeader>
-              <TableHeader>Warehouse</TableHeader>
-              <TableHeader>Start / End</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Actions</TableHeader>
-            </TableHead>
-            <TableBody>
-              {paged.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
-                  <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
-                  <TableCell className="text-slate-700">{getZonesRentedDisplay(c)}</TableCell>
-                  <TableCell className="text-slate-700">
-                    {c.warehouseName || '—'}
-                    {c.warehouseAddress ? ` — ${c.warehouseAddress}` : ''}
-                  </TableCell>
-                  <TableCell className="text-slate-700">{getDateRangeDisplay(c)}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(c.status)}>
-                      {getStatusDisplay(c.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() => setDetail(c)}
-                      className="text-sm font-bold text-primary hover:underline"
-                    >
-                      View
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input
+                label="Search contract"
+                placeholder="By contract code or customer"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Select
+                label="Warehouse"
+                value={warehouseFilter}
+                onChange={(e) => setWarehouseFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'All warehouses' },
+                  ...warehouseOptions.map((w) => ({ value: w.id, label: w.name })),
+                ]}
+              />
+              <Select
+                label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | Contract['status'])}
+                options={[
+                  { value: 'all', label: 'All statuses' },
+                  { value: 'draft', label: 'Draft' },
+                  { value: 'pending_payment', label: 'Pending payment' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'expired', label: 'Expired' },
+                  { value: 'terminated', label: 'Terminated' },
+                ]}
+              />
+            </div>
+          </div>
+
+          {filteredContracts.length === 0 ? (
+            <EmptyState icon="search_off" title="No matching contracts" message="Try changing search keywords or filters." />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+              <Table>
+                <TableHead>
+                  <TableHeader>Contract code</TableHeader>
+                  <TableHeader>Customer</TableHeader>
+                  <TableHeader>Zones</TableHeader>
+                  <TableHeader>Warehouse</TableHeader>
+                  <TableHeader>Start / End</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>Actions</TableHeader>
+                </TableHead>
+                <TableBody>
+                  {paged.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
+                      <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
+                      <TableCell className="text-slate-700">{getZonesRentedDisplay(c)}</TableCell>
+                      <TableCell className="text-slate-700">
+                        {c.warehouseName || '—'}
+                        {c.warehouseAddress ? ` — ${c.warehouseAddress}` : ''}
+                      </TableCell>
+                      <TableCell className="text-slate-700">{getDateRangeDisplay(c)}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(c.status)}>
+                          {getStatusDisplay(c.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          onClick={() => setDetail(c)}
+                          className="text-sm font-bold text-primary hover:underline"
+                        >
+                          View
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
 
-      {!loading && !error && contracts.length > 0 && (
+      {!loading && !error && filteredContracts.length > 0 && (
         <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
           <p className="text-sm text-slate-500 whitespace-nowrap">
             Showing{' '}
             <span className="font-bold text-slate-700">
-              {Math.min((safePage - 1) * PAGE_SIZE + 1, contracts.length)}
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, filteredContracts.length)}
             </span>
             {' '}to{' '}
             <span className="font-bold text-slate-700">
-              {Math.min(safePage * PAGE_SIZE, contracts.length)}
+              {Math.min(safePage * PAGE_SIZE, filteredContracts.length)}
             </span>
             {' '}of{' '}
-            <span className="font-bold text-slate-700">{contracts.length}</span>
+            <span className="font-bold text-slate-700">{filteredContracts.length}</span>
           </p>
-          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
+          <Pagination currentPage={safePage} totalPages={filteredTotalPages} onPageChange={setPage} />
         </div>
       )}
 
@@ -388,6 +476,57 @@ export default function ManagerContractsPage() {
                 </dd>
               </div>
             </dl>
+            <div>
+              <h4 className="text-sm font-bold text-slate-700 mb-2">Payment Information</h4>
+              {detailPaymentsLoading ? (
+                <LoadingSkeleton className="h-16" />
+              ) : detailPayments.length === 0 ? (
+                <p className="text-sm text-slate-500">No payment records found for this contract.</p>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Time</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Amount</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Status</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">VNPay ref</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailPayments.slice(0, 5).map((p) => (
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                          <td className="px-3 py-2 text-slate-600">
+                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="px-3 py-2 font-bold text-slate-900">{p.amount.toLocaleString('vi-VN')} đ</td>
+                          <td className="px-3 py-2">
+                            <Badge
+                              variant={
+                                p.status === 'paid'
+                                  ? 'success'
+                                  : p.status === 'pending'
+                                  ? 'info'
+                                  : 'error'
+                              }
+                            >
+                              {p.status === 'paid'
+                                ? 'Paid'
+                                : p.status === 'pending'
+                                ? 'Pending'
+                                : p.status === 'expired'
+                                ? 'Expired'
+                                : 'Failed'}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-700 break-all">{p.vnpTxnRef}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
             <div>
               <h4 className="text-sm font-bold text-slate-700 mb-2">Actions</h4>
               <div className="flex flex-wrap gap-2">

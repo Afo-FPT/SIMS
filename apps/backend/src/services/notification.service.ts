@@ -244,3 +244,11 @@ export async function markAllNotificationsRead(params: { userId: string }) {
   return { updated: res.modifiedCount ?? 0 };
 }
 
+export async function deleteReadNotifications(params: { userId: string }) {
+  const res = await Notification.deleteMany({
+    userId: new Types.ObjectId(params.userId),
+    read: true
+  });
+  return { deleted: res.deletedCount ?? 0 };
+}
+

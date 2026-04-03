@@ -89,7 +89,10 @@ Access control:
 For managers/admins, if they need to inspect contract rows, tell them to open **Manager → Contracts** in the app UI.
 
 When the user asks for contract details, prefer get_contract_by_code(contractCode) if the user provides a contract code (e.g. CT-XXXX). Otherwise, call get_contracts_summary first and ask them which contractCode they mean, then call get_contract_by_code.
+When the user asks for contracts expiring soon (e.g., in the next month), call get_expiring_contracts_summary and sort/display nearest expiry first.
 When the user asks where a SKU is located, call get_inventory_product_shelves(sku, contractId?).
+When the user asks about low stock / nearly out-of-stock products, call get_low_stock_products_summary.
+When the user asks about high stock / products with plenty of stock, call get_high_stock_products_summary.
 When the user asks to list products currently stored in a specific zone or warehouse they are renting, call get_zone_inventory_products(zoneCode?, warehouseId?, contractCode?).
 When the user asks for a storage/service request detail, call get_storage_request_by_id(requestId).
 When the user asks about rent requests, call get_rent_requests_summary.
@@ -145,6 +148,87 @@ async function runTool(
         endDate: c.requested_end_date ?? c.rented_zones?.[0]?.end_date,
       }));
     }
+    case "get_expiring_contracts_summary": {
+      if (ctx.role !== "customer") {
+        return { error: "Expiring contract lookup in chat is only available for customers." };
+      }
+
+      const withinDays = Math.min(Math.max(Number(args.withinDays) || 30, 1), 365);
+      const warehouseName = String(args.warehouseName || "").trim().toLowerCase();
+      const statusFilter = String(args.status || "active").trim().toLowerCase();
+      const expiryDate = String(args.expiryDate || "").trim(); // YYYY-MM-DD preferred
+      const expiryMonth = String(args.expiryMonth || "").trim(); // YYYY-MM or MM/YYYY
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const deadline = new Date(today);
+      deadline.setDate(deadline.getDate() + withinDays);
+
+      const rows = await getContracts(ctx.userId, ctx.role);
+
+      const normalizeDateOnly = (value: unknown): Date | null => {
+        if (!value) return null;
+        const d = new Date(String(value));
+        if (Number.isNaN(d.getTime())) return null;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      };
+
+      const parseMonthFilter = (raw: string): { y: number; m: number } | null => {
+        if (!raw) return null;
+        const ym = raw.match(/^(\d{4})-(\d{1,2})$/);
+        if (ym) {
+          const y = Number(ym[1]);
+          const m = Number(ym[2]);
+          if (m >= 1 && m <= 12) return { y, m };
+        }
+        const my = raw.match(/^(\d{1,2})\/(\d{4})$/);
+        if (my) {
+          const m = Number(my[1]);
+          const y = Number(my[2]);
+          if (m >= 1 && m <= 12) return { y, m };
+        }
+        return null;
+      };
+
+      const monthFilter = parseMonthFilter(expiryMonth);
+      const exactExpiryDate = expiryDate ? normalizeDateOnly(expiryDate) : null;
+
+      const filtered = rows
+        .map((c) => {
+          const end = normalizeDateOnly(c.requested_end_date ?? c.rented_zones?.[0]?.end_date);
+          if (!end) return null;
+          const daysUntilEnd = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          return {
+            contractId: c.contract_id,
+            contractCode: c.contract_code,
+            status: c.status,
+            warehouse: c.warehouse_name,
+            startDate: c.requested_start_date ?? c.rented_zones?.[0]?.start_date,
+            endDate: c.requested_end_date ?? c.rented_zones?.[0]?.end_date,
+            daysUntilEnd,
+            _end: end,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        .filter((row) => row.daysUntilEnd >= 0 && row._end <= deadline)
+        .filter((row) => (!warehouseName ? true : String(row.warehouse || "").toLowerCase().includes(warehouseName)))
+        .filter((row) => (!statusFilter ? true : String(row.status || "").toLowerCase() === statusFilter))
+        .filter((row) => {
+          if (!exactExpiryDate) return true;
+          return (
+            row._end.getFullYear() === exactExpiryDate.getFullYear() &&
+            row._end.getMonth() === exactExpiryDate.getMonth() &&
+            row._end.getDate() === exactExpiryDate.getDate()
+          );
+        })
+        .filter((row) => {
+          if (!monthFilter) return true;
+          return row._end.getFullYear() === monthFilter.y && row._end.getMonth() + 1 === monthFilter.m;
+        })
+        .sort((a, b) => a.daysUntilEnd - b.daysUntilEnd);
+
+      return filtered.slice(0, limit).map(({ _end, ...row }) => row);
+    }
     case "get_inventory_products_summary": {
       if (ctx.role !== "customer") {
         return { error: "Inventory lookup is only available for customers." };
@@ -165,6 +249,62 @@ async function runTool(
         contractId: (p as any).contract_id,
         totalQuantity: p.total_quantity,
         unit: p.unit,
+        lastUpdated: p.last_updated,
+      }));
+    }
+    case "get_low_stock_products_summary": {
+      if (ctx.role !== "customer") {
+        return { error: "Low-stock lookup is only available for customers." };
+      }
+      const threshold = Math.max(0, Number(args.threshold) || 10);
+      const skuFilter = String(args.sku || "").trim().toLowerCase();
+      const products = await getMyStoredProducts(ctx.userId);
+      const filtered = products
+        .filter((p) => {
+          const qty = Number((p as any).total_quantity) || 0;
+          if (qty > threshold) return false;
+          if (skuFilter && !String(p.sku || "").toLowerCase().includes(skuFilter)) return false;
+          return true;
+        })
+        .sort((a, b) => (Number((a as any).total_quantity) || 0) - (Number((b as any).total_quantity) || 0));
+
+      return filtered.slice(0, limit).map((p) => ({
+        productName: p.sku,
+        sku: p.sku,
+        productId: p.product_id,
+        contractId: (p as any).contract_id,
+        totalQuantity: p.total_quantity,
+        unit: p.unit,
+        threshold,
+        stockLevel: "LOW",
+        lastUpdated: p.last_updated,
+      }));
+    }
+    case "get_high_stock_products_summary": {
+      if (ctx.role !== "customer") {
+        return { error: "High-stock lookup is only available for customers." };
+      }
+      const threshold = Math.max(0, Number(args.threshold) || 100);
+      const skuFilter = String(args.sku || "").trim().toLowerCase();
+      const products = await getMyStoredProducts(ctx.userId);
+      const filtered = products
+        .filter((p) => {
+          const qty = Number((p as any).total_quantity) || 0;
+          if (qty < threshold) return false;
+          if (skuFilter && !String(p.sku || "").toLowerCase().includes(skuFilter)) return false;
+          return true;
+        })
+        .sort((a, b) => (Number((b as any).total_quantity) || 0) - (Number((a as any).total_quantity) || 0));
+
+      return filtered.slice(0, limit).map((p) => ({
+        productName: p.sku,
+        sku: p.sku,
+        productId: p.product_id,
+        contractId: (p as any).contract_id,
+        totalQuantity: p.total_quantity,
+        unit: p.unit,
+        threshold,
+        stockLevel: "HIGH",
         lastUpdated: p.last_updated,
       }));
     }
@@ -461,13 +601,14 @@ function buildChatTableSpec(
   };
 
   // 1) Contracts list
-  const contracts = lastOf(["get_contracts_summary"]);
+  const contracts = lastOf(["get_contracts_summary", "get_expiring_contracts_summary"]);
   if (contracts?.out && Array.isArray(contracts.out)) {
     const rows = contracts.out.map((r: any) => ({
       ...r,
       startDate: formatTableCellValue(r.startDate),
       endDate: formatTableCellValue(r.endDate),
     }));
+    const hasDaysLeft = rows.some((r: any) => typeof r.daysUntilEnd === "number");
     return {
       contextHref: "/customer/contracts",
       contextLabel: "Open Contracts",
@@ -481,6 +622,7 @@ function buildChatTableSpec(
         { key: "warehouse", label: "Warehouse" },
         { key: "startDate", label: "Start" },
         { key: "endDate", label: "End" },
+        ...(hasDaysLeft ? [{ key: "daysUntilEnd", label: "Days left" }] : []),
       ],
       rows,
     };
@@ -509,12 +651,18 @@ function buildChatTableSpec(
   }
 
   // 2b) Inventory by SKU summary (customer)
-  const invSummary = lastOf(["get_inventory_products_summary"]);
+  const invSummary = lastOf([
+    "get_inventory_products_summary",
+    "get_low_stock_products_summary",
+    "get_high_stock_products_summary",
+  ]);
   if (invSummary?.out && Array.isArray(invSummary.out)) {
     const rows = invSummary.out.map((r: any) => ({
       ...r,
       lastUpdated: formatTableCellValue(r.lastUpdated),
     }));
+    const hasStockLevel = rows.some((r: any) => typeof r.stockLevel === "string");
+    const hasThreshold = rows.some((r: any) => r.threshold != null);
     return {
       contextHref: "/customer/inventory",
       contextLabel: "Open Inventory",
@@ -525,7 +673,8 @@ function buildChatTableSpec(
           textKey: "productName",
           hrefTemplate: "/customer/inventory/{productId}?contractId={contractId}",
         },
-        { key: "sku", label: "SKU" },
+        ...(hasStockLevel ? [{ key: "stockLevel", label: "Stock level" }] : []),
+        ...(hasThreshold ? [{ key: "threshold", label: "Threshold" }] : []),
         { key: "totalQuantity", label: "Quantity" },
         { key: "unit", label: "Unit" },
         { key: "lastUpdated", label: "Updated" },
@@ -551,7 +700,6 @@ function buildChatTableSpec(
           textKey: "productName",
           hrefTemplate: "/customer/inventory/{productId}",
         },
-        { key: "sku", label: "SKU" },
         { key: "totalQuantity", label: "Quantity" },
         { key: "unit", label: "Unit" },
         { key: "zoneCodes", label: "Zone(s)" },
@@ -788,6 +936,41 @@ function detectLanguage(text: string, fallback: FollowUpLanguage = "vi"): Follow
   return viHits >= enHits ? "vi" : "en";
 }
 
+/**
+ * Language for the closing follow-up question must match the assistant reply above,
+ * not the user's query language (user may ask in Vietnamese while the model answers in English).
+ */
+function detectFollowUpLanguage(reply: string, userQuery: string): FollowUpLanguage {
+  const r = (reply || "").trim();
+  const u = (userQuery || "").trim();
+  if (!r) return detectLanguage(u, "vi");
+
+  if (/[àáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(r)) {
+    return "vi";
+  }
+
+  const viHits =
+    (r.match(
+      /\b(mình|bạn|vui lòng|hợp đồng|tồn kho|yêu cầu|báo cáo|thông báo|của|để|không|được|đã|trong|với|hoặc|nếu|khi|liệt kê|danh sách|tóm|chi tiết|quản lý|kho|hàng|một|các|từ|theo|vẫn|còn|đang)\b/gi
+    ) || []).length;
+  const enHits =
+    (r.match(
+      /\b(you|your|please|contract|inventory|request|report|notification|would|can|could|should|may|might|the|here|this|that|these|those|summary|details|open|click|list|show|active|pending|below|above|status|table|items|rows|have|has|had|are|was|were|is|not|for|with|from|will|let|see|check|want|need|total|page|filter|there|what|which|when|where|how|about|more|help|any|available|successful|approved|rejected|completed|pending|also|just|note|link|below|above|overview|dashboard|warehouse|storage)\b/gi
+    ) || []).length;
+
+  if (viHits > enHits) return "vi";
+  if (enHits > viHits) return "en";
+
+  if (/\b(the|a|an|is|are|was|were|have|has|had|this|that|your|here|there|please|can|could|would|will|don't|doesn't|didn't)\b/i.test(r)) {
+    return "en";
+  }
+  if (/\b(cua|khong|duoc|tai|va|hoac|cho|hay|tat ca|yeu cau|hop dong|danh sach|liet ke|chinh|xem|link|duong|bao cao|ton kho)\b/i.test(r)) {
+    return "vi";
+  }
+
+  return detectLanguage(u, "vi");
+}
+
 function inferFollowUpIntent(
   userQuery: string,
   toolOutputs: Array<{ name: string; out: unknown }>
@@ -922,7 +1105,7 @@ function ensureDynamicFollowUp(
   if (!normalized) return normalized;
   if (/[?？]\s*$/.test(normalized)) return normalized;
 
-  const language = detectLanguage(normalized, detectLanguage(userQuery || "", "vi"));
+  const language = detectFollowUpLanguage(normalized, userQuery || "");
   const intent = inferFollowUpIntent(userQuery, toolOutputs);
   const toolNames = toolOutputs.map((t) => t.name);
   const followUp = generateFollowUp(intent, language, { userQuery, toolNames });
@@ -992,12 +1175,90 @@ const functionDeclarations = [
     },
   },
   {
+    name: "get_expiring_contracts_summary",
+    description:
+      "List customer contracts expiring soon (default: within 30 days), ordered by nearest expiry date first. Supports filtering by warehouse name, exact expiry date, and expiry month.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        withinDays: {
+          type: SchemaType.NUMBER,
+          description: "Days ahead from today to include (default 30, max 365)",
+        },
+        warehouseName: {
+          type: SchemaType.STRING,
+          description: "Optional warehouse name filter (substring match, case-insensitive)",
+        },
+        expiryDate: {
+          type: SchemaType.STRING,
+          description: "Optional exact expiry date filter (YYYY-MM-DD)",
+        },
+        expiryMonth: {
+          type: SchemaType.STRING,
+          description: "Optional expiry month filter (YYYY-MM or MM/YYYY)",
+        },
+        status: {
+          type: SchemaType.STRING,
+          description: "Optional status filter (default: active)",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max number of contracts to return (default 12, max 25)",
+        },
+      },
+    },
+  },
+  {
     name: "get_inventory_products_summary",
     description:
       "Get customer's inventory products grouped by SKU (totals per product). Only for customers. Use for stock, SKU, quantity questions. Optionally filter by sku.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        sku: {
+          type: SchemaType.STRING,
+          description: "Optional SKU filter (substring match, case-insensitive)",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max products (default 12, max 25)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_low_stock_products_summary",
+    description:
+      "List customer's low-stock products (nearly out of stock). Returns products with totalQuantity <= threshold (default 10), sorted by lowest quantity first.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        threshold: {
+          type: SchemaType.NUMBER,
+          description: "Low-stock threshold, include quantity <= threshold (default 10)",
+        },
+        sku: {
+          type: SchemaType.STRING,
+          description: "Optional SKU filter (substring match, case-insensitive)",
+        },
+        limit: {
+          type: SchemaType.NUMBER,
+          description: "Max products (default 12, max 25)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_high_stock_products_summary",
+    description:
+      "List customer's high-stock products (products with plenty of stock). Returns products with totalQuantity >= threshold (default 100), sorted by highest quantity first.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        threshold: {
+          type: SchemaType.NUMBER,
+          description: "High-stock threshold, include quantity >= threshold (default 100)",
+        },
         sku: {
           type: SchemaType.STRING,
           description: "Optional SKU filter (substring match, case-insensitive)",

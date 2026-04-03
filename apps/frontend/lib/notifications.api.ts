@@ -41,3 +41,7 @@ export async function markAllNotificationsRead(): Promise<{ updated: number }> {
   return await apiJson<{ updated: number }>(`/notifications/my/read-all`, { method: 'PATCH' });
 }
 
+export async function deleteReadNotifications(): Promise<{ deleted: number }> {
+  return await apiJson<{ deleted: number }>(`/notifications/my/read`, { method: 'DELETE' });
+}
+

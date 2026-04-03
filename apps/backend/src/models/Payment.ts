@@ -9,6 +9,8 @@ export interface IPayment extends Document {
   status: PaymentStatus;
   vnpTxnRef: string;
   vnpOrderInfo: string;
+  paymentUrl?: string;
+  vnpExpireDate?: string;
   vnpResponseCode?: string;
   vnpPayDate?: string;
   rawData?: any;
@@ -48,6 +50,12 @@ const PaymentSchema = new Schema<IPayment>(
     vnpOrderInfo: {
       type: String,
       required: true
+    },
+    paymentUrl: {
+      type: String
+    },
+    vnpExpireDate: {
+      type: String
     },
     vnpResponseCode: {
       type: String

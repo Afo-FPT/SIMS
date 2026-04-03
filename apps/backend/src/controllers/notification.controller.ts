@@ -1,5 +1,11 @@
 import { Request, Response } from "express";
-import { getUnreadCount, listMyNotifications, markAllNotificationsRead, markNotificationRead } from "../services/notification.service";
+import {
+  deleteReadNotifications,
+  getUnreadCount,
+  listMyNotifications,
+  markAllNotificationsRead,
+  markNotificationRead
+} from "../services/notification.service";
 
 export async function listMyNotificationsController(req: Request, res: Response) {
   try {
@@ -42,6 +48,16 @@ export async function markAllReadController(req: Request, res: Response) {
     if (!req.user) return res.status(401).json({ message: "Unauthorized" });
     const data = await markAllNotificationsRead({ userId: req.user.userId });
     return res.json({ message: "All notifications marked as read", data });
+  } catch (error: any) {
+    return res.status(500).json({ message: error?.message || "Internal server error" });
+  }
+}
+
+export async function deleteReadNotificationsController(req: Request, res: Response) {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+    const data = await deleteReadNotifications({ userId: req.user.userId });
+    return res.json({ message: "Read notifications deleted successfully", data });
   } catch (error: any) {
     return res.status(500).json({ message: error?.message || "Internal server error" });
   }
