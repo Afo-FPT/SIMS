@@ -39,6 +39,23 @@ function defaultEndDate(start: string, fallbackMonths = 6): string {
   return d.toISOString().slice(0, 10);
 }
 
+function zoneKey(z: ZoneOption): string {
+  return z.id || z.zoneCode;
+}
+
+/** Zone can be chosen for a new draft: ACTIVE and not currently leased */
+function isZoneSelectable(z: ZoneOption): boolean {
+  if (z.status && z.status !== 'ACTIVE') return false;
+  if (z.rentalStatus === 'RENTED') return false;
+  return true;
+}
+
+function shouldShowVacancySoonNote(z: ZoneOption): boolean {
+  if (z.rentalStatus !== 'RENTED') return false;
+  const d = z.daysUntilAvailable;
+  return typeof d === 'number' && d >= 0 && d < 15;
+}
+
 export default function RentRequestsPage() {
   const toast = useToastHelpers();
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
@@ -164,6 +181,18 @@ export default function RentRequestsPage() {
     };
   }, [warehouseId]);
 
+  useEffect(() => {
+    setSelectedZoneIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        const z = zones.find((x) => zoneKey(x) === id);
+        if (z && isZoneSelectable(z)) next.add(id);
+      }
+      if (next.size === prev.size && [...prev].every((id) => next.has(id))) return prev;
+      return next;
+    });
+  }, [zones]);
+
   const rentalDays = useMemo(() => {
     if (!startDate || !endDate) return 0;
     const start = new Date(startDate);
@@ -174,14 +203,14 @@ export default function RentRequestsPage() {
   }, [startDate, endDate]);
 
   const zoneCount = useMemo(
-    () => zones.filter((z) => z.status === 'ACTIVE' && selectedZoneIds.has(z.id)).length,
+    () => zones.filter((z) => isZoneSelectable(z) && selectedZoneIds.has(zoneKey(z))).length,
     [zones, selectedZoneIds],
   );
 
   const estimatedContractPrice = useMemo(() => {
     if (!rentalDays || !zoneCount) return 0;
     if (selectedPackage) {
-      const selectedZones = zones.filter((z) => z.status === 'ACTIVE' && selectedZoneIds.has(z.id));
+      const selectedZones = zones.filter((z) => isZoneSelectable(z) && selectedZoneIds.has(zoneKey(z)));
       return selectedZones.reduce((sum, z) => {
         const area = Number(z.area ?? 0);
         return sum + area * selectedPackage.pricePerM2 + rentalDays * selectedPackage.pricePerDay;
@@ -300,6 +329,10 @@ export default function RentRequestsPage() {
             <h3 className="text-sm font-bold text-slate-700 mb-2">
               Zones in selected warehouse
             </h3>
+            <p className="text-xs text-slate-500 mb-3">
+              <span className="font-semibold">Rented</span> means the zone has an active or pending-payment contract covering
+              today. Rented zones cannot be selected for a new request.
+            </p>
             {loadingZones ? (
               <p className="text-xs text-slate-500">Loading zones…</p>
             ) : zones.length === 0 ? (
@@ -309,22 +342,24 @@ export default function RentRequestsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {zones.map((z) => {
-                  const disabled = z.status ? z.status !== 'ACTIVE' : false;
-                  const zoneId = z.id || z.zoneCode;
-                  const checked = selectedZoneIds.has(zoneId);
+                  const zid = zoneKey(z);
+                  const disabled = !isZoneSelectable(z);
+                  const checked = selectedZoneIds.has(zid);
+                  const isRented = z.rentalStatus === 'RENTED';
+                  const showVacancyNote = shouldShowVacancySoonNote(z);
                   return (
                     <button
-                      key={zoneId}
+                      key={zid}
                       type="button"
                       disabled={disabled}
                       onClick={() => {
                         if (disabled) return;
                         setSelectedZoneIds((prev) => {
                           const next = new Set(prev);
-                          if (next.has(zoneId)) {
-                            next.delete(zoneId);
+                          if (next.has(zid)) {
+                            next.delete(zid);
                           } else {
-                            next.add(zoneId);
+                            next.add(zid);
                           }
                           return next;
                         });
@@ -332,11 +367,13 @@ export default function RentRequestsPage() {
                       className={`text-left rounded-2xl border px-4 py-3 text-sm transition-colors ${
                         checked
                           ? 'border-primary bg-primary/5'
+                          : isRented
+                          ? 'border-amber-200 bg-amber-50/80'
                           : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                      } ${disabled ? 'opacity-90 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-bold text-slate-900">
                             {z.zoneCode} — {z.name}
                           </p>
@@ -345,15 +382,26 @@ export default function RentRequestsPage() {
                               {z.description}
                             </p>
                           )}
-                          <p className="text-xs text-slate-500">
-                            Status:{' '}
+                          <p className="text-xs text-slate-500 mt-1">
+                            Zone status:{' '}
                             <span className="font-semibold">
-                              {z.status === 'ACTIVE' ? 'Active' : z.status || 'Unknown'}
+                              {z.status === 'ACTIVE' ? 'Active' : z.status || '—'}
+                            </span>
+                            {' · '}
+                            Lease:{' '}
+                            <span className={`font-semibold ${isRented ? 'text-amber-800' : 'text-emerald-700'}`}>
+                              {isRented ? 'Rented' : 'Available'}
                             </span>
                           </p>
+                          {showVacancyNote && typeof z.daysUntilAvailable === 'number' && (
+                            <p className="text-xs text-amber-800 mt-1.5 font-medium">
+                              This zone will become available in {z.daysUntilAvailable}{' '}
+                              {z.daysUntilAvailable === 1 ? 'day' : 'days'} (current lease ends).
+                            </p>
+                          )}
                         </div>
                         {!disabled && (
-                          <span className="inline-flex items-center justify-center size-5 rounded-full border border-primary text-primary text-xs font-bold">
+                          <span className="inline-flex shrink-0 items-center justify-center size-5 rounded-full border border-primary text-primary text-xs font-bold">
                             {checked ? '✓' : ''}
                           </span>
                         )}
@@ -411,7 +459,7 @@ export default function RentRequestsPage() {
                           <div className="text-right">
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pricing</p>
                             <p className="text-sm font-black text-primary">
-                              {pkg.pricePerM2.toLocaleString('vi-VN')}/m² + {pkg.pricePerDay.toLocaleString('vi-VN')}/day
+                              {pkg.pricePerM2.toLocaleString('en-US')}/m² + {pkg.pricePerDay.toLocaleString('en-US')}/day
                             </p>
                           </div>
                         </div>
@@ -479,7 +527,7 @@ export default function RentRequestsPage() {
                   <p>
                     Est. per-zone price:{' '}
                     <span className="font-bold text-primary">
-                      {estimatedPerZonePrice > 0 ? estimatedPerZonePrice.toLocaleString('vi-VN') : '—'} VND
+                      {estimatedPerZonePrice > 0 ? estimatedPerZonePrice.toLocaleString('en-US') : '—'} VND
                     </span>
                   </p>
                 </div>
@@ -487,7 +535,7 @@ export default function RentRequestsPage() {
                 <div className="text-right">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estimated total</p>
                   <p className="text-3xl font-black text-primary tracking-tight">
-                    {estimatedContractPrice > 0 ? estimatedContractPrice.toLocaleString('vi-VN') : '—'} VND
+                    {estimatedContractPrice > 0 ? estimatedContractPrice.toLocaleString('en-US') : '—'} VND
                   </p>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Contract } from '../../../lib/customer-types';
 import {
   listContracts,
@@ -125,7 +125,23 @@ export default function ManagerContractsPage() {
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [payments, setPayments] = useState<ManagerPayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsRefreshing, setPaymentsRefreshing] = useState(false);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
+
+  const loadPayments = useCallback(async (silent = false) => {
+    try {
+      if (silent) setPaymentsRefreshing(true);
+      else setPaymentsLoading(true);
+      setPaymentsError(null);
+      const data = await listManagerPayments();
+      setPayments(data);
+    } catch (err) {
+      setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
+    } finally {
+      if (silent) setPaymentsRefreshing(false);
+      else setPaymentsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     load();
@@ -146,29 +162,10 @@ export default function ManagerContractsPage() {
   }, [createForm.warehouseId]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout | undefined;
-    const loadPayments = async () => {
-      try {
-        setPaymentsLoading(true);
-        setPaymentsError(null);
-        const data = await listManagerPayments();
-        setPayments(data);
-      } catch (err) {
-        setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
-      } finally {
-        setPaymentsLoading(false);
-      }
-    };
-
     if (paymentsOpen) {
-      loadPayments();
-      timer = setInterval(loadPayments, 5000);
+      loadPayments(false);
     }
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [paymentsOpen]);
+  }, [paymentsOpen, loadPayments]);
 
   const load = async () => {
     try {
@@ -501,10 +498,23 @@ export default function ManagerContractsPage() {
       {paymentsOpen && (
         <Modal open={paymentsOpen} onOpenChange={setPaymentsOpen} title="Payments (VNPay)" size="lg">
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="inline-flex items-center gap-1"
+                onClick={() => loadPayments(true)}
+                isLoading={paymentsRefreshing}
+                disabled={paymentsLoading}
+              >
+                <span className="material-symbols-outlined text-lg leading-none">refresh</span>
+                Refresh
+              </Button>
+            </div>
             {paymentsLoading ? (
               <LoadingSkeleton className="h-32" />
             ) : paymentsError ? (
-              <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => setPaymentsOpen(true)} />
+              <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => loadPayments(false)} />
             ) : payments.length === 0 ? (
               <EmptyState icon="payments" title="No payments" message="No payments found yet." />
             ) : (
@@ -581,7 +591,7 @@ export default function ManagerContractsPage() {
               </div>
             )}
             <p className="text-xs text-slate-500">
-              Danh sách thanh toán được tự động cập nhật mỗi 5 giây từ VNPay thông qua backend.
+              Nhấn Refresh để tải lại danh sách thanh toán từ backend.
             </p>
           </div>
         </Modal>

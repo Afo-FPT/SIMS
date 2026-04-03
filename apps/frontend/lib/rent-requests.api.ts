@@ -188,6 +188,8 @@ export async function listContractPackages(warehouseId?: string): Promise<Contra
   }));
 }
 
+export type ZoneRentalStatus = 'AVAILABLE' | 'RENTED';
+
 export interface ZoneOption {
   id: string;
   zoneCode: string;
@@ -196,6 +198,11 @@ export interface ZoneOption {
   warehouseId: string;
   description?: string;
   status?: string;
+  /** From contracts: zone has an active / pending_payment lease covering today */
+  rentalStatus?: ZoneRentalStatus;
+  leaseEndDate?: string;
+  /** Whole days until lease ends (when rented) */
+  daysUntilAvailable?: number;
 }
 
 interface ZoneListApiResponse {
@@ -226,6 +233,10 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneOpt
     warehouseId: z.warehouse_id ?? z.warehouseId ?? warehouseId,
     description: z.description,
     status: z.status ?? z.zone_status ?? z.state,
+    rentalStatus: (z.rental_status ?? z.rentalStatus) as ZoneRentalStatus | undefined,
+    leaseEndDate: z.lease_end_date ?? z.leaseEndDate,
+    daysUntilAvailable:
+      z.days_until_available != null ? Number(z.days_until_available) : z.daysUntilAvailable != null ? Number(z.daysUntilAvailable) : undefined,
   }));
 }
 

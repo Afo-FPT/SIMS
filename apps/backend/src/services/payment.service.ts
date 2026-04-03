@@ -262,7 +262,14 @@ export async function startVNPayPaymentForRequestCredits(
 
 export async function getPaymentsForManager(): Promise<IPayment[]> {
   return Payment.find({})
-    .populate("contractId", "contractCode status customerId warehouseId")
+    .populate({
+      path: "contractId",
+      select: "contractCode status customerId warehouseId",
+      populate: [
+        { path: "customerId", select: "name email" },
+        { path: "warehouseId", select: "name" }
+      ]
+    })
     .sort({ createdAt: -1 })
     .limit(200)
     .lean()
