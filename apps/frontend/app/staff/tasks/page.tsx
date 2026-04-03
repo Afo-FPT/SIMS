@@ -115,6 +115,99 @@ function badgeVariantForType(t: TaskType): 'info' | 'warning' | 'neutral' {
   }
 }
 
+function taskTypePillClass(t: TaskType): string {
+  // Use soft pastel colors, distinct from status badges
+  switch (t) {
+    case 'INBOUND':
+      return 'bg-sky-50 text-sky-700';
+    case 'OUTBOUND':
+      return 'bg-pink-50 text-pink-700';
+    case 'INVENTORY_CHECKING':
+      return 'bg-slate-50 text-slate-700';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function getProgressForRow(row: StaffTaskRow): { percent: number; label: string } {
+  if (row.type === 'INBOUND' || row.type === 'OUTBOUND') {
+    switch (row.status) {
+      case 'APPROVED':
+        return { percent: 25, label: 'Approved (waiting for staff work)' };
+      case 'DONE_BY_STAFF':
+        return { percent: 75, label: 'Submitted by staff' };
+      case 'COMPLETED':
+        return { percent: 100, label: 'Completed' };
+      case 'REJECTED':
+        return { percent: 0, label: 'Rejected' };
+      default:
+        return { percent: 0, label: 'Unknown status' };
+    }
+  }
+
+  // Cycle count (inventory checking)
+  switch (row.status) {
+    case 'PENDING_MANAGER_APPROVAL':
+      return { percent: 0, label: 'Pending approval' };
+    case 'ASSIGNED_TO_STAFF':
+      return { percent: 30, label: 'Counting' };
+    case 'STAFF_SUBMITTED':
+      return { percent: 70, label: 'Submitted' };
+    case 'CONFIRMED':
+      return { percent: 100, label: 'Confirmed' };
+    case 'ADJUSTMENT_REQUESTED':
+      return { percent: 60, label: 'Adjustment requested' };
+    case 'RECOUNT_REQUIRED':
+      return { percent: 50, label: 'Recount required' };
+    case 'REJECTED':
+      return { percent: 0, label: 'Rejected' };
+    default:
+      return { percent: 0, label: 'Unknown status' };
+  }
+}
+
+function statusPillClass(status: string): string {
+  // Use explicit Tailwind classes so they are picked up by Tailwind.
+  switch (status) {
+    // Storage requests
+    case 'APPROVED':
+      return 'bg-blue-100 text-blue-700';
+    case 'DONE_BY_STAFF':
+      return 'bg-amber-100 text-amber-700';
+    case 'COMPLETED':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-700';
+
+    // Cycle count
+    case 'PENDING_MANAGER_APPROVAL':
+      return 'bg-violet-100 text-violet-700';
+    case 'ASSIGNED_TO_STAFF':
+      return 'bg-cyan-100 text-cyan-700';
+    case 'STAFF_SUBMITTED':
+      return 'bg-orange-100 text-orange-700';
+    case 'CONFIRMED':
+      return 'bg-lime-100 text-lime-700';
+    case 'ADJUSTMENT_REQUESTED':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'RECOUNT_REQUIRED':
+      return 'bg-fuchsia-100 text-fuchsia-700';
+
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function renderStatusPill(status: string, label: string) {
+  return (
+    <span
+      className={`inline-flex items-center font-bold rounded-lg px-2.5 py-1 text-xs ${statusPillClass(status)}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function StaffTasksPage() {
   const toast = useToastHelpers();
   const [allRows, setAllRows] = useState<StaffTaskRow[]>([]);
@@ -123,6 +216,7 @@ export default function StaffTasksPage() {
 
   const [statusGroup, setStatusGroup] = useState<StatusGroup>('ALL');
   const [taskTypeFilter, setTaskTypeFilter] = useState<TaskType | 'ALL'>('ALL');
+  const [showReferenceCode, setShowReferenceCode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const limit = 10;
@@ -256,6 +350,14 @@ export default function StaffTasksPage() {
     return filteredRows.slice(start, start + limit);
   }, [filteredRows, safePage]);
 
+  const taskCounts = useMemo(() => {
+    const total = allRows.length;
+    const inbound = allRows.filter((r) => r.type === 'INBOUND').length;
+    const outbound = allRows.filter((r) => r.type === 'OUTBOUND').length;
+    const inventory = allRows.filter((r) => r.type === 'INVENTORY_CHECKING').length;
+    return { total, inbound, outbound, inventory };
+  }, [allRows]);
+
   const statusBadgeText = (row: StaffTaskRow) => {
     if (row.type === 'INVENTORY_CHECKING') return CYCLE_STATUS_LABEL[row.status] || row.status;
     return row.status;
@@ -263,46 +365,110 @@ export default function StaffTasksPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tasks</h1>
-        <p className="text-slate-500 mt-1">Inbound, outbound & inventory tasks assigned to you</p>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight whitespace-nowrap">
+            Tasks
+          </h1>
+          <p className="text-slate-500 mt-1 text-base whitespace-nowrap lg:whitespace-normal">
+            Inbound, outbound & inventory tasks assigned to you
+          </p>
+        </div>
+
+        {/* Overview / Stats */}
+        <div className="flex flex-wrap justify-end gap-3 w-full lg:w-auto">
+          {/* Total Tasks - primary green background */}
+          <div className="w-52 rounded-3xl border border-primary-dark bg-primary p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-white">Total Tasks</p>
+              <p className="text-xl sm:text-2xl font-black text-white">
+                {loading ? '—' : taskCounts.total}
+              </p>
+            </div>
+          </div>
+          {/* Inbound */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Inbound</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.inbound}
+              </p>
+            </div>
+          </div>
+          {/* Outbound */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Outbound</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.outbound}
+              </p>
+            </div>
+          </div>
+          {/* Inventory Checking */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Inventory Checking</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.inventory}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[200px]">
-          <Input
-            placeholder="Search by reference, contract code, customer, warehouse..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[240px]">
+            <Input
+              placeholder="Search by reference, contract code, customer, warehouse..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-slate-200 bg-white shadow-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showReferenceCode}
+              onChange={(e) => setShowReferenceCode(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20"
+            />
+            <span className="text-sm font-bold text-slate-700 whitespace-nowrap">Reference code</span>
+          </label>
         </div>
 
-        <Select
-          options={[
-            { value: 'ALL', label: 'All statuses' },
-            { value: 'IN_PROGRESS', label: 'In progress' },
-            { value: 'COMPLETED', label: 'Completed' },
-            { value: 'REJECTED', label: 'Rejected' },
-          ]}
-          value={statusGroup}
-          onChange={(e) => setStatusGroup(e.target.value as StatusGroup)}
-        />
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All statuses' },
+                { value: 'IN_PROGRESS', label: 'In progress' },
+                { value: 'COMPLETED', label: 'Completed' },
+                { value: 'REJECTED', label: 'Rejected' },
+              ]}
+              value={statusGroup}
+              onChange={(e) => setStatusGroup(e.target.value as StatusGroup)}
+            />
+          </div>
 
-        <Select
-          options={[
-            { value: 'ALL', label: 'All types' },
-            { value: 'INBOUND', label: 'Inbound' },
-            { value: 'OUTBOUND', label: 'Outbound' },
-            { value: 'INVENTORY_CHECKING', label: 'Inventory Checking' },
-          ]}
-          value={taskTypeFilter}
-          onChange={(e) => setTaskTypeFilter(e.target.value as TaskType | 'ALL')}
-        />
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All types' },
+                { value: 'INBOUND', label: 'Inbound' },
+                { value: 'OUTBOUND', label: 'Outbound' },
+                { value: 'INVENTORY_CHECKING', label: 'Inventory Checking' },
+              ]}
+              value={taskTypeFilter}
+              onChange={(e) => setTaskTypeFilter(e.target.value as TaskType | 'ALL')}
+            />
+          </div>
+        </div>
       </div>
 
       {loading ? (
-        <TableSkeleton rows={6} cols={8} />
+        <TableSkeleton rows={6} cols={showReferenceCode ? 9 : 8} />
       ) : error ? (
         <ErrorState title="Failed to load tasks" message={error} onRetry={load} />
       ) : filteredRows.length === 0 ? (
@@ -315,23 +481,35 @@ export default function StaffTasksPage() {
         <>
           <Table>
             <TableHead>
-              <TableHeader>Type</TableHeader>
-              <TableHeader>Reference</TableHeader>
+              <TableHeader className="w-16">#</TableHeader>
+              <TableHeader>Task</TableHeader>
+              {showReferenceCode && <TableHeader>Ref</TableHeader>}
               <TableHeader>Customer</TableHeader>
               <TableHeader>Location</TableHeader>
+              <TableHeader>Progress</TableHeader>
               <TableHeader>Status</TableHeader>
-              <TableHeader>Updated</TableHeader>
+              <TableHeader>Last updated</TableHeader>
               <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
-              {paginatedRows.map((r) => {
-                const group = getStatusGroupForRow(r);
+              {paginatedRows.map((r, idx) => {
+                const startIndex = (safePage - 1) * limit;
+                const stt = startIndex + idx + 1;
+                const progress = getProgressForRow(r);
+                const statusLabel = statusBadgeText(r);
                 return (
                   <TableRow key={r.rowKey}>
+                    <TableCell className="font-bold text-slate-900">{stt}</TableCell>
                     <TableCell>
-                      <Badge variant={badgeVariantForType(r.type)}>{typeToLabel(r.type)}</Badge>
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold whitespace-nowrap ${taskTypePillClass(r.type)}`}
+                      >
+                        {typeToLabel(r.type)}
+                      </span>
                     </TableCell>
-                    <TableCell className="font-bold text-slate-900">{r.reference}</TableCell>
+                    {showReferenceCode && (
+                      <TableCell className="font-bold text-slate-900">{r.reference}</TableCell>
+                    )}
                     <TableCell className="text-slate-700">{r.customerName}</TableCell>
                     <TableCell>
                       <div className="space-y-1">
@@ -344,9 +522,13 @@ export default function StaffTasksPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={badgeVariantForStatusGroup(group)}>
-                        {statusBadgeText(r)}
-                      </Badge>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900">{progress.percent}%</p>
+                        <p className="text-xs text-slate-500">{progress.label}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {renderStatusPill(r.status, statusLabel)}
                     </TableCell>
                     <TableCell className="text-slate-600 text-sm">{formatDateTime(r.updatedAt)}</TableCell>
                     <TableCell>
