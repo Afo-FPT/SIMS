@@ -19,7 +19,7 @@ import {
 } from '../../../lib/storage-requests.api';
 import { getCustomerContracts } from '../../../lib/customer.api';
 import { useToastHelpers } from '../../../lib/toast';
-import { listMyStoredItems, type StoredItemOption } from '../../../lib/stored-items.api';
+import { listMyStoredItems, listMyStoredProducts, type StoredItemOption } from '../../../lib/stored-items.api';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -43,18 +43,25 @@ export default function ServiceRequestsPage() {
   const processedCreditRef = useRef<string | null>(null);
   const PAGE_SIZE = 10;
   const [customerContracts, setCustomerContracts] = useState<Contract[]>([]);
+  /** Contract IDs that still have stock (any zone) — used to hide empty expired contracts from this page. */
+  const [contractsWithStockIds, setContractsWithStockIds] = useState<Set<string>>(() => new Set());
   const [contractsLoading, setContractsLoading] = useState(true);
   const [contractsError, setContractsError] = useState<string | null>(null);
 
-  /** Active + expired: expired allows outbound clearance only (backend enforced). */
+  /** Active always; expired only if there is remaining inventory (outbound clearance still relevant). */
   const formContracts = useMemo(
-    () => customerContracts.filter((c) => c.status === 'active' || c.status === 'expired'),
-    [customerContracts]
+    () =>
+      customerContracts.filter((c) => {
+        if (c.status === 'active') return true;
+        if (c.status === 'expired') return contractsWithStockIds.has(c.id);
+        return false;
+      }),
+    [customerContracts, contractsWithStockIds]
   );
 
   const expiredContracts = useMemo(
-    () => customerContracts.filter((c) => c.status === 'expired'),
-    [customerContracts]
+    () => customerContracts.filter((c) => c.status === 'expired' && contractsWithStockIds.has(c.id)),
+    [customerContracts, contractsWithStockIds]
   );
   const terminatedContracts = useMemo(
     () => customerContracts.filter((c) => c.status === 'terminated'),
@@ -63,17 +70,33 @@ export default function ServiceRequestsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getCustomerContracts()
-      .then((contracts) => {
-        if (!cancelled) setCustomerContracts(contracts);
+    setContractsLoading(true);
+    setContractsError(null);
+    Promise.all([getCustomerContracts(), listMyStoredProducts()])
+      .then(([contracts, products]) => {
+        if (cancelled) return;
+        setCustomerContracts(contracts);
+        const ids = new Set<string>();
+        for (const p of products) {
+          if ((p.total_quantity ?? 0) > 0) {
+            ids.add(p.contract_id);
+          }
+        }
+        setContractsWithStockIds(ids);
       })
       .catch((err) => {
-        if (!cancelled) setContractsError(err instanceof Error ? err.message : 'Failed to load contracts');
+        if (!cancelled) {
+          setContractsError(err instanceof Error ? err.message : 'Failed to load contracts');
+          setCustomerContracts([]);
+          setContractsWithStockIds(new Set());
+        }
       })
       .finally(() => {
         if (!cancelled) setContractsLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [contractId, setContractId] = useState('');
