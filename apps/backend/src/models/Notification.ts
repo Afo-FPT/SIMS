@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type NotificationChannel = "in_app" | "email";
-export type NotificationEntityType = "storage_request";
+export type NotificationEntityType = "storage_request" | "contract";
 export type NotificationType =
   | "REQUEST_CREATED"
   | "REQUEST_UPDATED"
@@ -10,7 +10,9 @@ export type NotificationType =
   | "REQUEST_REJECTED"
   | "REQUEST_ASSIGNED"
   | "REQUEST_DONE_BY_STAFF"
-  | "REQUEST_COMPLETED";
+  | "REQUEST_COMPLETED"
+  | "CONTRACT_EXPIRED"
+  | "CONTRACT_TERMINATED";
 
 export interface INotification extends Document {
   userId: Types.ObjectId;
@@ -44,12 +46,14 @@ const NotificationSchema = new Schema<INotification>(
         "REQUEST_REJECTED",
         "REQUEST_ASSIGNED",
         "REQUEST_DONE_BY_STAFF",
-        "REQUEST_COMPLETED"
+        "REQUEST_COMPLETED",
+        "CONTRACT_EXPIRED",
+        "CONTRACT_TERMINATED"
       ]
     },
     title: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
-    relatedEntityType: { type: String, enum: ["storage_request"], default: undefined },
+    relatedEntityType: { type: String, enum: ["storage_request", "contract"], default: undefined },
     relatedEntityId: { type: Schema.Types.ObjectId, default: undefined, index: true },
     read: { type: Boolean, default: false, index: true },
     readAt: { type: Date, default: null },

@@ -80,9 +80,17 @@ export async function startVNPayRequestCreditPaymentController(req: Request, res
       }
     });
   } catch (error: any) {
-    res.status(500).json({
-      message: error.message || "Internal server error"
-    });
+    const msg = error?.message || "Internal server error";
+    if (
+      msg.includes("Invalid") ||
+      msg.includes("not found") ||
+      msg.includes("does not belong") ||
+      msg.includes("active contract") ||
+      msg.includes("pending request-credit")
+    ) {
+      return res.status(400).json({ message: msg });
+    }
+    res.status(500).json({ message: msg });
   }
 }
 

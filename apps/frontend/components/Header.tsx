@@ -290,6 +290,10 @@ function iconForNotificationType(type: string): string {
       return 'sync_alt';
     case 'REQUEST_UPDATED':
       return 'edit';
+    case 'CONTRACT_EXPIRED':
+      return 'event_busy';
+    case 'CONTRACT_TERMINATED':
+      return 'gavel';
     default:
       return 'notifications';
   }

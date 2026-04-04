@@ -8,6 +8,8 @@ export interface StoredItemViewDTO {
   stored_item_id: string;
   contract_id: string;
   contract_code?: string;
+  /** Present when contract is populated (e.g. active | expired | terminated) */
+  contract_status?: string;
   shelf_id: string;
   shelf_code?: string;
   zone_code?: string;
@@ -27,6 +29,7 @@ export interface StoredProductOverviewDTO {
   sku: string;
   contract_id: string;
   contract_code?: string;
+  contract_status?: string;
   warehouse_name?: string;
   zone_codes?: string[];
   total_quantity: number;
@@ -278,7 +281,7 @@ export async function getMyStoredItems(
 
   const items = await StoredItem.find(query)
     .populate("shelfId", "shelfCode")
-    .populate("contractId", "contractCode")
+    .populate("contractId", "contractCode status")
     .sort({ updatedAt: -1 });
 
   const shelfIds = items.map((it: any) => it.shelfId?._id ?? it.shelfId).filter(Boolean);
@@ -315,6 +318,10 @@ export async function getMyStoredItems(
     contract_code:
       typeof (it as any).contractId === "object" && "contractCode" in (it as any).contractId
         ? (it as any).contractId.contractCode
+        : undefined,
+    contract_status:
+      typeof (it as any).contractId === "object" && "status" in (it as any).contractId
+        ? String((it as any).contractId.status)
         : undefined,
     shelf_id: (it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString(),
     shelf_code:
@@ -357,6 +364,7 @@ export async function getMyStoredProducts(
         sku,
         contract_id: it.contract_id,
         contract_code: it.contract_code,
+        contract_status: it.contract_status,
         warehouse_name: it.warehouse_name,
         zone_codes: it.zone_code ? [it.zone_code] : [],
         total_quantity: it.quantity || 0,
@@ -374,6 +382,9 @@ export async function getMyStoredProducts(
       // contract_code should be identical per contract; keep first non-empty
       if (!existing.contract_code && it.contract_code) {
         existing.contract_code = it.contract_code;
+      }
+      if (!existing.contract_status && it.contract_status) {
+        existing.contract_status = it.contract_status;
       }
       if (!existing.warehouse_name && it.warehouse_name) {
         existing.warehouse_name = it.warehouse_name;

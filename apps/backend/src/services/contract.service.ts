@@ -5,6 +5,8 @@ import Warehouse from "../models/Warehouse";
 import User from "../models/User";
 import { ContractPackage } from "../models/ContractPackage";
 import { Types } from "mongoose";
+import { runContractExpirySideEffects } from "./contract-expiry-side-effects.service";
+import { runContractTerminationSideEffects } from "./contract-termination-side-effects.service";
 
 /**
  * DTO for creating a contract (manager: assign zones)
@@ -808,6 +810,30 @@ export async function updateContractStatus(
     }
 
     await session.commitTransaction();
+
+    if (newStatus === "expired") {
+      try {
+        await runContractExpirySideEffects({
+          _id: contract._id,
+          customerId: contract.customerId,
+          contractCode: contract.contractCode
+        });
+      } catch (e: any) {
+        console.error("[Contract] runContractExpirySideEffects failed", e?.message || e);
+      }
+    }
+
+    if (newStatus === "terminated") {
+      try {
+        await runContractTerminationSideEffects({
+          _id: contract._id,
+          customerId: contract.customerId,
+          contractCode: contract.contractCode
+        });
+      } catch (e: any) {
+        console.error("[Contract] runContractTerminationSideEffects failed", e?.message || e);
+      }
+    }
 
     const updated = await Contract.findById(contractId)
       .populate("customerId", "name email")

@@ -5,6 +5,8 @@ import StoredItem from "../models/StoredItem";
 import { notifyStorageRequestEvent } from "./notification.service";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
 import Shelf from "../models/Shelf";
+import Contract from "../models/Contract";
+import { assertStaffMayCompleteStorageRequest } from "./contract-rules.service";
 
 export interface StaffCompleteRequestItemDTO {
   requestDetailId: string;
@@ -192,6 +194,12 @@ export async function staffCompleteStorageRequest(
     if (!request) {
       throw new Error("Storage request not found");
     }
+    const contract = await Contract.findById(request.contractId).session(session);
+    if (!contract) {
+      throw new Error("Contract not found");
+    }
+    assertStaffMayCompleteStorageRequest(contract, request.requestType as "IN" | "OUT");
+
     if (request.status !== "APPROVED") {
       throw new Error("Only APPROVED requests can be completed by staff");
     }

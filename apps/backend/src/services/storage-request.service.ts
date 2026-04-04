@@ -5,6 +5,10 @@ import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
 import { notifyStorageRequestEvent } from "./notification.service";
 import { getAllowedStaffIdsForWarehouse } from "./staff-warehouse.service";
+import {
+  assertCustomerMayCreateStorageRequest,
+  assertManagerMayAssignStorageRequest
+} from "./contract-rules.service";
 
 function normalizeObjectIdString(value: any): string | null {
   if (!value) return null;
@@ -218,12 +222,13 @@ function validateCreateInboundRequest(data: CreateInboundRequestDTO): void {
 }
 
 /**
- * Validate contract ownership
+ * Validate contract ownership and whether this request type is allowed for current contract status.
  */
 async function validateContractOwnership(
   contractId: string,
-  customerId: string
-): Promise<void> {
+  customerId: string,
+  forRequestType: "IN" | "OUT"
+) {
   const contract = await Contract.findById(contractId);
 
   if (!contract) {
@@ -234,10 +239,8 @@ async function validateContractOwnership(
     throw new Error("Contract does not belong to the authenticated customer");
   }
 
-  // Contract status must be "active" (lowercase) to allow storage requests
-  if (contract.status !== "active") {
-    throw new Error("Contract is not active");
-  }
+  assertCustomerMayCreateStorageRequest(contract, forRequestType);
+  return contract;
 }
 
 async function validateZoneBelongsToContract(
@@ -302,7 +305,7 @@ export async function createInboundRequest(
   }
 
   // Validate contract ownership
-  await validateContractOwnership(data.contractId, customerId);
+  await validateContractOwnership(data.contractId, customerId, "IN");
   const normalizedZoneId = normalizeObjectIdString(data.zoneId);
   if (!normalizedZoneId) {
     throw new Error("Invalid zone ID");
@@ -378,7 +381,7 @@ export async function createOutboundRequest(
   }
 
   // Validate contract ownership
-  await validateContractOwnership(data.contractId, customerId);
+  await validateContractOwnership(data.contractId, customerId, "OUT");
 
   // Validate all shelves belong to the contract
   for (const item of data.items) {
@@ -473,8 +476,9 @@ export async function assignStorageRequest(
 
   // Enforce warehouse-scoped staffing: staff assigned by manager must be configured for
   // the warehouse of this request's contract.
-  const contract = await Contract.findById(request.contractId).select("warehouseId").lean();
+  const contract = await Contract.findById(request.contractId).select("warehouseId status").lean();
   if (!contract) throw new Error("Contract not found");
+  assertManagerMayAssignStorageRequest(contract as any, request.requestType as "IN" | "OUT");
   const allowed = await getAllowedStaffIdsForWarehouse(contract.warehouseId.toString(), staffIds);
   const missing = staffIds.filter((id) => !allowed.has(id));
   if (missing.length > 0) {

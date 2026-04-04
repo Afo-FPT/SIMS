@@ -215,6 +215,33 @@ export async function releaseReservedCredit(params: {
   );
 }
 
+/** Release any credits reserved for a storage request / cycle entity (e.g. contract auto-expiry). */
+export async function releaseReservedCreditsForEntity(params: {
+  entityType: RequestCreditEntityType;
+  entityId: string;
+  session?: ClientSession;
+}): Promise<void> {
+  const { entityType, entityId, session } = params;
+  if (!Types.ObjectId.isValid(entityId)) return;
+  await RequestCredit.updateMany(
+    {
+      reservedEntityType: entityType,
+      reservedEntityId: new Types.ObjectId(entityId),
+      status: "reserved"
+    },
+    {
+      $set: { status: "available" },
+      $unset: {
+        reservationToken: 1,
+        reservedEntityType: 1,
+        reservedEntityId: 1,
+        consumedAt: 1
+      }
+    },
+    { session: session || undefined }
+  );
+}
+
 export async function consumeReservedCreditForEntity(params: {
   customerId: string;
   contractId: string;

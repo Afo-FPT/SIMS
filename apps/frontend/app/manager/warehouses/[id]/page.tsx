@@ -299,17 +299,6 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
-  const previewMaxM3 = useMemo(() => {
-    const tierCount = parseInt(shelfForm.tierCountStr, 10);
-    const h = Number(shelfForm.heightStr);
-    const w = Number(shelfForm.widthStr);
-    const d = Number(shelfForm.depthStr);
-    if (!Number.isFinite(tierCount) || tierCount < 1) return 0;
-    if (!Number.isFinite(h) || !Number.isFinite(w) || !Number.isFinite(d)) return 0;
-    if (h <= 0 || w <= 0 || d <= 0) return 0;
-    return Math.round(tierCount * h * w * d * 1_000_000) / 1_000_000;
-  }, [shelfForm.tierCountStr, shelfForm.heightStr, shelfForm.widthStr, shelfForm.depthStr]);
-
   useEffect(() => {
     if (warehouse && !editingInfo) {
       setInfoForm({
@@ -956,16 +945,6 @@ export default function ManagerWarehouseDetailPage() {
               placeholder="1.0"
               required
             />
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-sm text-slate-700">
-              <span className="font-bold">Dung tích tối đa ước tính:</span>{' '}
-              <span className="font-mono font-bold text-primary">{formatM3(previewMaxM3)}</span>
-              <span className="text-slate-500">
-                {' '}
-                (= số tầng × cao × rộng × dài, áp dụng cùng kích thước cho mọi tầng)
-              </span>
-            </p>
           </div>
           <div className="flex justify-end">
             <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>

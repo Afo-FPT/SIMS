@@ -39,7 +39,10 @@ export async function staffCompleteStorageRequestController(req: Request, res: R
       msg.includes("not assigned") ||
       msg.includes("capacity") ||
       msg.includes("Remaining") ||
-      msg.includes("enough remaining")
+      msg.includes("enough remaining") ||
+      msg.includes("Contract has expired") ||
+      msg.includes("Contract is terminated") ||
+      msg.includes("Contract is not active")
     ) {
       return res.status(400).json({ message: msg });
     }

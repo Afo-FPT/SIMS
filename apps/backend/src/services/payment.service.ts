@@ -5,6 +5,7 @@ import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
 import RequestCreditPayment, { type IRequestCreditPayment } from "../models/RequestCreditPayment";
 import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
+import { assertContractActiveForRequestCredits } from "./contract-rules.service";
 
 export interface StartVNPayPaymentResult {
   payment: IPayment;
@@ -229,12 +230,18 @@ export async function handleVNPayReturn(
   await requestCreditPayment.save();
 
   if (newStatus === "paid") {
-    await grantRequestCredits({
-      customerId: requestCreditPayment.customerId.toString(),
-      contractId: requestCreditPayment.contractId.toString(),
-      credits: requestCreditPayment.creditsGranted || 1,
-      paidAt: new Date()
-    });
+    const contractRc = await Contract.findById(requestCreditPayment.contractId);
+    if (!contractRc || contractRc.status !== "active") {
+      message =
+        "Payment successful, but credits were not granted because the contract is no longer active. Please contact support for a refund or adjustment.";
+    } else {
+      await grantRequestCredits({
+        customerId: requestCreditPayment.customerId.toString(),
+        contractId: requestCreditPayment.contractId.toString(),
+        credits: requestCreditPayment.creditsGranted || 1,
+        paidAt: new Date()
+      });
+    }
   }
 
   return {
@@ -254,6 +261,19 @@ export async function startVNPayPaymentForRequestCredits(
   if (!Types.ObjectId.isValid(customerId)) {
     throw new Error("Invalid customer ID");
   }
+
+  if (!Types.ObjectId.isValid(contractId)) {
+    throw new Error("Invalid contract ID");
+  }
+
+  const contractForCredit = await Contract.findById(contractId);
+  if (!contractForCredit) {
+    throw new Error("Contract not found");
+  }
+  if (contractForCredit.customerId.toString() !== customerId) {
+    throw new Error("Contract does not belong to the authenticated customer");
+  }
+  assertContractActiveForRequestCredits(contractForCredit);
 
   const existingPending = await RequestCreditPayment.findOne({
     customerId: new Types.ObjectId(customerId),

@@ -42,18 +42,30 @@ export default function ServiceRequestsPage() {
   const router = useRouter();
   const processedCreditRef = useRef<string | null>(null);
   const PAGE_SIZE = 10;
-  const [activeContracts, setActiveContracts] = useState<Contract[]>([]);
+  const [customerContracts, setCustomerContracts] = useState<Contract[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
   const [contractsError, setContractsError] = useState<string | null>(null);
+
+  /** Active + expired: expired allows outbound clearance only (backend enforced). */
+  const formContracts = useMemo(
+    () => customerContracts.filter((c) => c.status === 'active' || c.status === 'expired'),
+    [customerContracts]
+  );
+
+  const expiredContracts = useMemo(
+    () => customerContracts.filter((c) => c.status === 'expired'),
+    [customerContracts]
+  );
+  const terminatedContracts = useMemo(
+    () => customerContracts.filter((c) => c.status === 'terminated'),
+    [customerContracts]
+  );
 
   useEffect(() => {
     let cancelled = false;
     getCustomerContracts()
       .then((contracts) => {
-        if (!cancelled) {
-          const active = contracts.filter((c) => c.status === 'active');
-          setActiveContracts(active);
-        }
+        if (!cancelled) setCustomerContracts(contracts);
       })
       .catch((err) => {
         if (!cancelled) setContractsError(err instanceof Error ? err.message : 'Failed to load contracts');
@@ -66,6 +78,7 @@ export default function ServiceRequestsPage() {
 
   const [contractId, setContractId] = useState('');
   const [selectedZoneKey, setSelectedZoneKey] = useState('');
+  const [type, setType] = useState<ServiceRequestType>('Inbound');
 
   const zoneOptions = useMemo(() => {
     const extractObjectId = (value: any): string | null => {
@@ -99,7 +112,7 @@ export default function ServiceRequestsPage() {
       warehouseName: string;
     }> = [];
 
-    for (const c of activeContracts) {
+    for (const c of formContracts) {
       for (const z of c.rentedZones || []) {
         const normalizedZoneId = extractObjectId((z as any).zoneId);
         if (!normalizedZoneId || normalizedZoneId === 'undefined' || normalizedZoneId === 'null') continue;
@@ -114,7 +127,7 @@ export default function ServiceRequestsPage() {
       }
     }
     return rows;
-  }, [activeContracts]);
+  }, [formContracts]);
 
   const selectedZoneOption = useMemo(
     () => zoneOptions.find((z) => z.key === selectedZoneKey) || null,
@@ -132,8 +145,22 @@ export default function ServiceRequestsPage() {
     setContractId(selectedZoneOption.contractId);
   }, [selectedZoneOption]);
 
-  const hasActive = activeContracts.length > 0;
-  const [type, setType] = useState<ServiceRequestType>('Inbound');
+  const hasFormContracts = zoneOptions.length > 0;
+
+  const selectedContractRecord = useMemo(
+    () => customerContracts.find((c) => c.id === contractId),
+    [customerContracts, contractId]
+  );
+  const selectedContractStatus = selectedContractRecord?.status;
+  const isContractActive = selectedContractStatus === 'active';
+  const isContractExpired = selectedContractStatus === 'expired';
+
+  useEffect(() => {
+    if (isContractExpired && (type === 'Inbound' || type === 'Inventory Checking')) {
+      setType('Outbound');
+    }
+  }, [isContractExpired, type]);
+
   const [preferredDate, setPreferredDate] = useState('');
   const [preferredTime, setPreferredTime] = useState('');
   const [notes, setNotes] = useState('');
@@ -316,11 +343,10 @@ export default function ServiceRequestsPage() {
   };
 
   useEffect(() => {
-    if (!hasActive) return;
-    // Always load data so the weekly quota/banner is accurate even on "New request" tab.
+    if (customerContracts.length === 0) return;
     loadTrackingRequests();
     loadCycleCounts();
-  }, [hasActive]);
+  }, [customerContracts.length]);
 
   useEffect(() => {
     const creditResult = searchParams.get('creditResult');
@@ -514,6 +540,12 @@ export default function ServiceRequestsPage() {
     if (!selectedZoneOption) e.contract = 'Select a zone';
     if (!contractId) e.contract = 'No active contract found for selected zone';
     if (!preferredDate) e.preferredDate = 'Preferred date is required';
+    if (type === 'Inbound' && !isContractActive) {
+      e.contract = 'Inbound is only available for active contracts.';
+    }
+    if (type === 'Inventory Checking' && !isContractActive) {
+      e.contract = 'Inventory checking is only available for active contracts.';
+    }
     if (type === 'Inbound') {
       if (!inboundRef.trim()) {
         e.inboundRef = 'Inbound reference is required';
@@ -686,16 +718,17 @@ export default function ServiceRequestsPage() {
     );
   }
 
-  if (!hasActive) {
+  if (!hasFormContracts) {
     return (
       <div className="space-y-6">
         <h1 className="text-3xl font-black text-slate-900">Service Requests</h1>
         <div className="bg-amber-50 border border-amber-200 rounded-3xl p-8 text-center">
           <span className="material-symbols-outlined text-4xl text-amber-500 mb-4">info</span>
-          <p className="text-lg font-bold text-amber-800">Need active contract</p>
-          <p className="text-sm text-amber-700 mt-2">
-            Confirm an active contract first to create Inbound, Outbound, or Inventory Checking
-            requests.
+          <p className="text-lg font-bold text-amber-800">No eligible contract for new requests</p>
+          <p className="text-sm text-amber-700 mt-2 max-w-lg mx-auto">
+            You need an <strong>active</strong> contract (inbound, outbound, inventory checking) or an{' '}
+            <strong>expired</strong> contract still shown in the system for <strong>outbound clearance</strong> only.
+            Draft, pending payment, or terminated contracts cannot create requests here.
           </p>
           <a
             href="/customer/contracts"
@@ -715,6 +748,37 @@ export default function ServiceRequestsPage() {
         <h1 className="text-3xl font-black text-slate-900">Service Requests</h1>
         <p className="text-slate-500 mt-1">Inbound, Outbound & Inventory Checking</p>
       </div>
+
+      {expiredContracts.length > 0 && (
+        <div
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-bold flex items-center gap-2">
+            <span className="material-symbols-outlined text-amber-600">schedule</span>
+            Expired contract{expiredContracts.length > 1 ? 's' : ''} (clearance)
+          </p>
+          <p className="mt-1 text-amber-900">
+            {expiredContracts.map((c) => c.code).join(', ')} — inbound and inventory checking are closed.
+            You can still submit <strong>outbound</strong> requests to remove stock.
+          </p>
+        </div>
+      )}
+
+      {terminatedContracts.length > 0 && (
+        <div
+          className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+          role="status"
+        >
+          <p className="font-bold flex items-center gap-2">
+            <span className="material-symbols-outlined text-red-600">gavel</span>
+            Terminated contract{terminatedContracts.length > 1 ? 's' : ''}
+          </p>
+          <p className="mt-1 text-red-900">
+            {terminatedContracts.map((c) => c.code).join(', ')} — no new service requests are allowed.
+          </p>
+        </div>
+      )}
 
       {/* Main tabs: New request | Request list (theo dõi) */}
       <div className="flex gap-2 border-b border-slate-200 pb-2">
@@ -963,19 +1027,42 @@ export default function ServiceRequestsPage() {
 
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-2">Request type</label>
-          <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
-            {REQUEST_TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setType(t.id)}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${type === t.id ? 'bg-white shadow text-primary' : 'text-slate-600 hover:text-slate-900'
+          <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit flex-wrap">
+            {REQUEST_TYPES.map((t) => {
+              const inboundLocked = t.id === 'Inbound' && !isContractActive;
+              const cycleLocked = t.id === 'Inventory Checking' && !isContractActive;
+              const disabled = inboundLocked || cycleLocked;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={disabled}
+                  title={
+                    inboundLocked
+                      ? 'Inbound requires an active contract'
+                      : cycleLocked
+                        ? 'Inventory checking requires an active contract'
+                        : undefined
+                  }
+                  onClick={() => !disabled && setType(t.id)}
+                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                    disabled
+                      ? 'text-slate-400 cursor-not-allowed opacity-60'
+                      : type === t.id
+                        ? 'bg-white shadow text-primary'
+                        : 'text-slate-600 hover:text-slate-900'
                   }`}
-              >
-                {t.label}
-              </button>
-            ))}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
+          {isContractExpired && (
+            <p className="text-xs text-amber-700 mt-2">
+              This contract is <strong>expired</strong>: only outbound requests are available until you renew.
+            </p>
+          )}
         </div>
 
         {type === 'Inbound' && (
@@ -1344,11 +1431,17 @@ export default function ServiceRequestsPage() {
                 <span className="font-bold">{weeklyTotalUsedPlusUnfinished}/{REQUEST_WEEKLY_LIMIT}</span> lượt. Để gửi thêm request, cần thanh toán{" "}
                 <span className="font-bold">{REQUEST_EXTRA_PRICE_VND.toLocaleString('vi-VN')}đ</span>.
               </p>
+              {!isContractActive && (
+                <p className="text-amber-900 mt-2 font-bold">
+                  Mua thêm lượt chỉ khả dụng khi hợp đồng đang <strong>active</strong>.
+                </p>
+              )}
             </div>
             <button
               type="button"
+              disabled={!isContractActive}
               onClick={handleBuyExtraRequest}
-              className="px-4 py-2 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-colors"
+              className="px-4 py-2 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
               Mua thêm 1 lượt
             </button>

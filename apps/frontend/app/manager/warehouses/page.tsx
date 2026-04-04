@@ -102,9 +102,6 @@ export default function ManagerWarehousesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouses</h1>
-        <p className="text-slate-500 mt-1">
-          Tạo kho; zone và kệ (kích thước từng tầng, dung tích m³) quản lý trong trang chi tiết kho.
-        </p>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
