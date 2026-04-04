@@ -76,10 +76,13 @@ export interface StorageRequestView {
   }>;
 }
 
-export async function listStorageRequests(params: { requestType?: 'IN' | 'OUT'; status?: string } = {}): Promise<StorageRequestView[]> {
+export async function listStorageRequests(
+  params: { requestType?: 'IN' | 'OUT'; status?: string; allAssigned?: boolean } = {}
+): Promise<StorageRequestView[]> {
   const qs = new URLSearchParams();
   if (params.requestType) qs.set('requestType', params.requestType);
   if (params.status) qs.set('status', params.status);
+  if (params.allAssigned) qs.set('allAssigned', 'true');
   return await apiJson<StorageRequestView[]>(
     `/storage-requests${qs.toString() ? `?${qs}` : ''}`,
     { method: 'GET' }

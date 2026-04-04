@@ -5,6 +5,8 @@ import StorageRequestDetail from "../models/StorageRequestDetail";
 export interface ListStorageRequestsQuery {
   requestType?: "IN" | "OUT";
   status?: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
+  /** When true, staff sees all assigned requests regardless of status (e.g. reports). */
+  allAssigned?: boolean;
 }
 
 export interface StorageRequestViewDTO {
@@ -65,7 +67,7 @@ export async function listStorageRequests(
   }
   if (userRole === "staff") {
     q.assignedStaffIds = new Types.ObjectId(userId);
-    if (!query.status) q.status = "APPROVED";
+    if (!query.status && !query.allAssigned) q.status = "APPROVED";
   }
   if (query.requestType) q.requestType = query.requestType;
   if (query.status) q.status = query.status;

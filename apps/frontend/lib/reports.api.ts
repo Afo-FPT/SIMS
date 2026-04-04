@@ -5,6 +5,10 @@ import type {
   TopOutboundProductItem,
   ProcessingTimeTrendPoint,
   ProcessingTimeBoxPlotItem,
+  ExpiryStackedReport,
+  ZonePricingComboRow,
+  PenaltyTopCustomerRow,
+  ManagerDeepGranularity,
 } from '../types/manager';
 
 export type ReportGranularity = 'day' | 'week';
@@ -60,4 +64,33 @@ export async function getProcessingTime(
   return apiJson<{ trendData: ProcessingTimeTrendPoint[]; boxPlotData: ProcessingTimeBoxPlotItem[] }>(
     `/reports/processing-time?${params.toString()}`,
   );
+}
+
+/** Stacked expiry status (contracts + zone leases) by period */
+export async function getManagerExpiryStackedReport(
+  startDate: string,
+  endDate: string,
+  granularity: ManagerDeepGranularity,
+): Promise<ExpiryStackedReport> {
+  const params = new URLSearchParams({ startDate, endDate, granularity });
+  return apiJson<ExpiryStackedReport>(`/reports/manager/expiry-stacked?${params.toString()}`);
+}
+
+/** Zone occupancy (snapshot) + avg rent in range + AI suggested monthly price */
+export async function getManagerZonePricingCombo(
+  startDate: string,
+  endDate: string,
+): Promise<ZonePricingComboRow[]> {
+  const params = new URLSearchParams({ startDate, endDate });
+  return apiJson<ZonePricingComboRow[]>(`/reports/manager/zone-pricing-combo?${params.toString()}`);
+}
+
+/** Top customers by damage quantity (inventory penalty proxy) */
+export async function getManagerPenaltyTopCustomers(
+  startDate: string,
+  endDate: string,
+  limit = 10,
+): Promise<PenaltyTopCustomerRow[]> {
+  const params = new URLSearchParams({ startDate, endDate, limit: String(limit) });
+  return apiJson<PenaltyTopCustomerRow[]>(`/reports/manager/penalty-top-customers?${params.toString()}`);
 }

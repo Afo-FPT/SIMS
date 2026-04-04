@@ -15,7 +15,8 @@ export async function listStorageRequestsController(req: Request, res: Response)
 
     const query: ListStorageRequestsQuery = {
       requestType: (req.query.requestType as any) || undefined,
-      status: (req.query.status as any) || undefined
+      status: (req.query.status as any) || undefined,
+      allAssigned: String(req.query.allAssigned || "") === "true" ? true : undefined
     };
 
     const data = await listStorageRequests(req.user.userId, req.user.role, query);

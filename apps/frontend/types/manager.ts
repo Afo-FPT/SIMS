@@ -208,3 +208,61 @@ export interface ProcessingTimeBoxPlotItem {
   count: number;
   avgHours: number;
 }
+
+/** Manager deep reports (stacked expiry, zone pricing combo, penalty top customers) */
+export type ManagerDeepGranularity = 'daily' | 'monthly' | 'yearly';
+
+export interface ExpiryContractAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  aggregateEndDate: string;
+  tier: 'expired' | 'expiringSoon';
+  contractStatus: string;
+}
+
+export interface ExpiryZoneLeaseAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  zoneId: string;
+  zoneCode: string;
+  leaseEndDate: string;
+  tier: 'expired' | 'expiringSoon';
+  shelfCodes: string[];
+  contractStatus: string;
+}
+
+export interface ExpiryStackedBucket {
+  label: string;
+  contracts: { expired: number; expiringSoon: number; active: number };
+  zoneLeases: { expired: number; expiringSoon: number; active: number };
+  details?: {
+    contractAlerts: ExpiryContractAlertRow[];
+    zoneLeaseAlerts: ExpiryZoneLeaseAlertRow[];
+  };
+}
+
+export interface ExpiryStackedReport {
+  granularity: ManagerDeepGranularity;
+  buckets: ExpiryStackedBucket[];
+}
+
+export interface ZonePricingComboRow {
+  zoneCode: string;
+  zoneId: string;
+  warehouseId: string;
+  warehouseName: string;
+  occupancyPercent: number;
+  avgMonthlyRentInRange: number;
+  suggestedMonthlyPrice: number;
+  shelfTotal: number;
+  shelfRented: number;
+}
+
+export interface PenaltyTopCustomerRow {
+  customerId: string;
+  customerName: string;
+  totalDamageUnits: number;
+  affectedRequestCount: number;
+}

@@ -1,37 +1,40 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
   ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJSCore,
   Legend as ChartLegend,
-  LineElement,
   LinearScale,
-  PointElement,
   Tooltip as ChartTooltip,
 } from 'chart.js';
-import { Pie, Line, Bar } from 'react-chartjs-2';
+import { Pie, Bar } from 'react-chartjs-2';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
-import { Input } from '../../../components/ui/Input';
+import {
+  type QuickPreset,
+  pad2,
+  parseLocalDateStart,
+  parseLocalDateEndOfDay,
+  defaultReportDateRange,
+} from '../../../lib/report-date-range';
+import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Button } from '../../../components/ui/Button';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+
 ChartJSCore.register(
   ArcElement,
   BarElement,
   CategoryScale,
   ChartLegend,
-  LineElement,
   LinearScale,
-  PointElement,
   ChartTooltip,
 );
 
@@ -50,62 +53,155 @@ ChartJSCore.defaults.transitions.show = {
     y: { from: 0 },
   },
 } as any;
-type ReportTab = 'performance' | 'history' | 'discrepancy' | 'cycle' | 'workload';
 
-function dayKey(ts: string): string {
-  return new Date(ts).toLocaleDateString('en-GB', { weekday: 'short' });
+type Granularity = 'day' | 'month' | 'year';
+
+/** Pick day / month / year buckets from range length (no manual control). */
+function inferInOutChartGranularity(startIso: string, endIso: string): Granularity {
+  const startMs = parseLocalDateStart(startIso);
+  const endMs = parseLocalDateEndOfDay(endIso);
+  if (endMs < startMs) return 'day';
+  const approxDays = (endMs - startMs) / 86400000;
+  if (approxDays <= 45) return 'day';
+  if (approxDays <= 550) return 'month';
+  return 'year';
 }
 
-function toIsoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+const SHORT_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatYearMonthKey(ymKey: string): string {
+  const [y, m] = ymKey.split('-').map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return ymKey;
+  return `${SHORT_MONTH_NAMES[m - 1]} ${y}`;
 }
+
+/** Classify warehouse/zone context from real names (no DB type field). */
+function classifyWarehouseUsageLabel(text: string): 'Cold storage' | 'Small/Large' | 'Normal' {
+  const t = (text || '').toLowerCase();
+  if (/cold|lạnh|frozen|freeze|chill|refrigerat|cooler/.test(t)) return 'Cold storage';
+  if (/\bsmall\b|\blarge\b|\bxl\b|\bsml\b|bulk|oversize|quá khổ|micro|mega/.test(t)) return 'Small/Large';
+  return 'Normal';
+}
+
+function storageContextText(r: {
+  warehouse_name?: string;
+  requested_zone_code?: string;
+  items?: Array<{ zone_code?: string }>;
+}): string {
+  const parts = [r.warehouse_name || '', r.requested_zone_code || ''];
+  (r.items || []).forEach((i) => parts.push(i.zone_code || ''));
+  return parts.join(' ').trim() || 'normal';
+}
+
+function isStorageCompleted(status: string): boolean {
+  return status === 'COMPLETED';
+}
+
+function isStoragePending(status: string): boolean {
+  if (status === 'REJECTED') return false;
+  return !isStorageCompleted(status);
+}
+
+function isCycleCompleted(status: string): boolean {
+  return status === 'CONFIRMED';
+}
+
+function isCyclePending(status: string): boolean {
+  if (status === 'REJECTED') return false;
+  return !isCycleCompleted(status);
+}
+
+function localYmd(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function enumerateBucketLabels(startIso: string, endIso: string, g: Granularity): string[] {
+  const startMs = parseLocalDateStart(startIso);
+  const endMs = parseLocalDateEndOfDay(endIso);
+  if (startMs > endMs) return [];
+
+  const labels: string[] = [];
+  if (g === 'day') {
+    const d = new Date(startMs);
+    d.setHours(0, 0, 0, 0);
+    while (d.getTime() <= endMs) {
+      labels.push(localYmd(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return labels;
+  }
+  if (g === 'month') {
+    const start = new Date(startMs);
+    const end = new Date(endMs);
+    const d = new Date(start.getFullYear(), start.getMonth(), 1);
+    const endCap = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (d <= endCap) {
+      labels.push(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`);
+      d.setMonth(d.getMonth() + 1);
+    }
+    return labels;
+  }
+  const start = new Date(startMs);
+  const end = new Date(endMs);
+  const y0 = start.getFullYear();
+  const y1 = end.getFullYear();
+  for (let y = y0; y <= y1; y++) labels.push(String(y));
+  return labels;
+}
+
+function bucketKeyFromCreatedAt(createdAt: string | Date, g: Granularity): string | null {
+  const d = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  if (Number.isNaN(d.getTime())) return null;
+  if (g === 'day') return localYmd(d);
+  if (g === 'month') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+  return String(d.getFullYear());
+}
+
+/** Use created_at when present; otherwise updated_at (some payloads omit creation time). */
+function activityInstant(e: { created_at?: string; updated_at?: string }): Date | undefined {
+  const raw = e.created_at ?? e.updated_at;
+  if (raw == null || raw === '') return undefined;
+  const d = new Date(raw as string);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function formatBucketLabel(label: string, g: Granularity): string {
+  if (g === 'day') {
+    const [y, m, day] = label.split('-');
+    return `${m}/${day}/${y.slice(2)}`;
+  }
+  if (g === 'month') return label;
+  return label;
+}
+
+const CHART_KEYS = {
+  inout: 'staff_report_inout_column',
+  stacked: 'staff_report_status_stacked',
+  pie: 'staff_report_warehouse_pie',
+} as const;
 
 export default function StaffReportsPage() {
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return toIsoDate(d);
-  });
-  const [endDate, setEndDate] = useState(() => toIsoDate(new Date()));
-  const [activeQuickRange, setActiveQuickRange] = useState<'30' | '90'>('90');
-  const [tab, setTab] = useState<ReportTab>('performance');
+  const initRange = defaultReportDateRange();
+  const [inOutStart, setInOutStart] = useState(initRange.start);
+  const [inOutEnd, setInOutEnd] = useState(initRange.end);
+  const [inOutPreset, setInOutPreset] = useState<QuickPreset | null>(null);
+
+  const [statusStart, setStatusStart] = useState(initRange.start);
+  const [statusEnd, setStatusEnd] = useState(initRange.end);
+  const [statusPreset, setStatusPreset] = useState<QuickPreset | null>(null);
+
+  const [warehouseStart, setWarehouseStart] = useState(initRange.start);
+  const [warehouseEnd, setWarehouseEnd] = useState(initRange.end);
+  const [warehousePreset, setWarehousePreset] = useState<QuickPreset | null>(null);
+
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
-  const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
+  const [aiInsightsByKey, setAiInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
-
-  const aiStartDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().slice(0, 10);
-  }, []);
-  const aiEndDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
-
-  async function handleInsightRequest(chartKey: string, data: unknown) {
-    try {
-      setInsightError(null);
-      setInsightLoadingKey(chartKey);
-      const res = await requestReportInsight({ chartKey, startDate: aiStartDate, endDate: aiEndDate, data });
-      setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
-    } catch (e) {
-      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
-    } finally {
-      setInsightLoadingKey(null);
-    }
-  }
-
-  function clearInsight(chartKey: string) {
-    setInsightsByKey((prev) => {
-      if (!prev[chartKey]) return prev;
-      const next = { ...prev };
-      delete next[chartKey];
-      return next;
-    });
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +211,10 @@ export default function StaffReportsPage() {
       try {
         if (!hasLoaded) setLoading(true);
         setError(null);
-        const [req, cc] = await Promise.all([listStorageRequests(), getCycleCounts()]);
+        const [req, cc] = await Promise.all([
+          listStorageRequests({ allAssigned: true }),
+          getCycleCounts(),
+        ]);
         if (cancelled) return;
         setRequests(req);
         setCycleCounts(cc);
@@ -150,135 +249,163 @@ export default function StaffReportsPage() {
     };
   }, [hasLoaded]);
 
-  const filteredRequests = useMemo(() => {
-    const from = new Date(startDate).getTime();
-    const to = new Date(endDate).getTime() + 86399999;
+  const inOutFromMs = useMemo(() => parseLocalDateStart(inOutStart), [inOutStart]);
+  const inOutToMs = useMemo(() => parseLocalDateEndOfDay(inOutEnd), [inOutEnd]);
+
+  const filteredRequestsInOut = useMemo(() => {
     return requests.filter((r) => {
-      const t = new Date(r.updated_at || r.created_at).getTime();
-      return t >= from && t <= to;
+      const d = activityInstant(r);
+      if (!d) return false;
+      const t = d.getTime();
+      return t >= inOutFromMs && t <= inOutToMs;
     });
-  }, [requests, startDate, endDate]);
+  }, [requests, inOutFromMs, inOutToMs]);
 
-  const filteredCycleCounts = useMemo(() => {
-    const from = new Date(startDate).getTime();
-    const to = new Date(endDate).getTime() + 86399999;
+  const statusFromMs = useMemo(() => parseLocalDateStart(statusStart), [statusStart]);
+  const statusToMs = useMemo(() => parseLocalDateEndOfDay(statusEnd), [statusEnd]);
+
+  const statusMonthKeys = useMemo(
+    () => enumerateBucketLabels(statusStart, statusEnd, 'month'),
+    [statusStart, statusEnd],
+  );
+
+  const statusMonthDisplayLabels = useMemo(
+    () => statusMonthKeys.map(formatYearMonthKey),
+    [statusMonthKeys],
+  );
+
+  const warehouseFromMs = useMemo(() => parseLocalDateStart(warehouseStart), [warehouseStart]);
+  const warehouseToMs = useMemo(() => parseLocalDateEndOfDay(warehouseEnd), [warehouseEnd]);
+
+  const filteredRequestsWarehouse = useMemo(() => {
+    return requests.filter((r) => {
+      const d = activityInstant(r);
+      if (!d) return false;
+      const t = d.getTime();
+      return t >= warehouseFromMs && t <= warehouseToMs;
+    });
+  }, [requests, warehouseFromMs, warehouseToMs]);
+
+  const filteredCycleWarehouse = useMemo(() => {
     return cycleCounts.filter((c) => {
-      const t = new Date(c.updated_at || c.created_at).getTime();
-      return t >= from && t <= to;
+      const d = activityInstant(c);
+      if (!d) return false;
+      const t = d.getTime();
+      return t >= warehouseFromMs && t <= warehouseToMs;
     });
-  }, [cycleCounts, startDate, endDate]);
+  }, [cycleCounts, warehouseFromMs, warehouseToMs]);
 
-  const completion = useMemo(() => {
-    const total = filteredRequests.length + filteredCycleCounts.length;
-    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length + filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
-    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length + filteredCycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
-    const pending = Math.max(0, total - completed - inProgress);
-    const ratio = total === 0 ? 0 : Math.round((completed / total) * 100);
-    return { total, completed, inProgress, pending, ratio };
-  }, [filteredRequests, filteredCycleCounts]);
+  const inOutGranularity = useMemo(
+    () => inferInOutChartGranularity(inOutStart, inOutEnd),
+    [inOutStart, inOutEnd],
+  );
 
-  const inOutPerDay = useMemo(() => {
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const base = weekdays.map((d) => ({ day: d, inbound: 0, outbound: 0, cycle: 0 }));
-    const byDay = new Map(base.map((d) => [d.day, d]));
-    filteredRequests.forEach((r) => {
-      const day = dayKey(r.updated_at || r.created_at);
-      const row = byDay.get(day);
-      if (!row) return;
-      const qty = r.items.reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
-      if (r.request_type === 'IN') row.inbound += qty;
-      else row.outbound += qty;
+  const inOutBuckets = useMemo(() => {
+    const labelsRaw = enumerateBucketLabels(inOutStart, inOutEnd, inOutGranularity);
+    const inbound = labelsRaw.map(() => 0);
+    const outbound = labelsRaw.map(() => 0);
+    const idx = new Map(labelsRaw.map((l, i) => [l, i]));
+
+    filteredRequestsInOut.forEach((r) => {
+      const d = activityInstant(r);
+      if (!d) return;
+      const k = bucketKeyFromCreatedAt(d, inOutGranularity);
+      if (k == null) return;
+      const i = idx.get(k);
+      if (i === undefined) return;
+      if (r.request_type === 'IN') inbound[i] += 1;
+      else if (r.request_type === 'OUT') outbound[i] += 1;
     });
-    filteredCycleCounts.forEach((c) => {
-      const day = dayKey(c.updated_at || c.created_at);
-      const row = byDay.get(day);
-      if (!row) return;
-      row.cycle += (c.items || c.target_items || []).length;
+
+    const labels = labelsRaw.map((l) => formatBucketLabel(l, inOutGranularity));
+    return { labelsRaw, labels, inbound, outbound };
+  }, [filteredRequestsInOut, inOutStart, inOutEnd, inOutGranularity]);
+
+  const monthlyStatus = useMemo(() => {
+    const labels = statusMonthKeys;
+    const completed = labels.map(() => 0);
+    const pending = labels.map(() => 0);
+    const idx = new Map(labels.map((l, i) => [l, i]));
+
+    const inWindow = (t: number) => t >= statusFromMs && t <= statusToMs;
+
+    requests.forEach((r) => {
+      const d = activityInstant(r);
+      if (!d) return;
+      const t = d.getTime();
+      if (!inWindow(t)) return;
+      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+      const i = idx.get(key);
+      if (i === undefined) return;
+      if (isStorageCompleted(r.status)) completed[i] += 1;
+      else if (isStoragePending(r.status)) pending[i] += 1;
     });
-    return base;
-  }, [filteredRequests, filteredCycleCounts]);
 
-  const operationHistory = useMemo(() => {
-    return inOutPerDay.map((d, index) => ({
-      ...d,
-      seq: index + 1,
-      totalOps: d.inbound + d.outbound + d.cycle,
-    }));
-  }, [inOutPerDay]);
-
-  const discrepancySummary = useMemo(() => {
-    const damaged = filteredRequests.reduce((sum, r) => sum + r.items.reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
-    const mismatch = filteredCycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
-    const location = filteredRequests.filter((r) => r.status === 'REJECTED').length;
-    return [
-      { name: 'Damaged', value: damaged },
-      { name: 'Quantity mismatch', value: mismatch },
-      { name: 'Location/flow issue', value: location },
-    ];
-  }, [filteredRequests, filteredCycleCounts]);
-
-  const cycleAccuracy = useMemo(() => {
-    return filteredCycleCounts.map((c) => {
-      const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
-      const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
-      const accuracy = system === 0 ? 100 : Math.max(0, Math.round(100 - (Math.abs(system - actual) / system) * 100));
-      return {
-        id: c.cycle_count_id.slice(-6).toUpperCase(),
-        system,
-        actual,
-        accuracy,
-      };
+    cycleCounts.forEach((c) => {
+      const d = activityInstant(c);
+      if (!d) return;
+      const t = d.getTime();
+      if (!inWindow(t)) return;
+      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+      const i = idx.get(key);
+      if (i === undefined) return;
+      if (isCycleCompleted(c.status)) completed[i] += 1;
+      else if (isCyclePending(c.status)) pending[i] += 1;
     });
-  }, [filteredCycleCounts]);
 
-  const taskTypeDistribution = useMemo(() => {
-    const inbound = filteredRequests.filter((r) => r.request_type === 'IN').length;
-    const outbound = filteredRequests.filter((r) => r.request_type === 'OUT').length;
-    const cycleCount = filteredCycleCounts.length;
-    return [
-      { name: 'Inbound tasks', value: inbound },
-      { name: 'Outbound tasks', value: outbound },
-      { name: 'Cycle count tasks', value: cycleCount },
-    ];
-  }, [filteredRequests, filteredCycleCounts]);
+    return { completed, pending };
+  }, [requests, cycleCounts, statusMonthKeys, statusFromMs, statusToMs]);
 
-  const workloadByStatus = useMemo(() => {
-    const requestPending = filteredRequests.filter((r) => r.status === 'PENDING').length;
-    const requestInProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
-    const requestCompleted = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
+  const warehouseTypeCounts = useMemo(() => {
+    const acc: Record<string, number> = { Normal: 0, 'Cold storage': 0, 'Small/Large': 0 };
+    filteredRequestsWarehouse.forEach((r) => {
+      const cat = classifyWarehouseUsageLabel(storageContextText(r));
+      acc[cat] = (acc[cat] || 0) + 1;
+    });
+    filteredCycleWarehouse.forEach((c) => {
+      const cat = classifyWarehouseUsageLabel(c.warehouse_name || '');
+      acc[cat] = (acc[cat] || 0) + 1;
+    });
+    return acc;
+  }, [filteredRequestsWarehouse, filteredCycleWarehouse]);
 
-    const cyclePending = filteredCycleCounts.filter((c) => c.status === 'PENDING').length;
-    const cycleInProgress = filteredCycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
-    const cycleCompleted = filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+  const pieLabels = ['Normal', 'Cold storage', 'Small/Large'] as const;
+  const pieData = pieLabels.map((l) => warehouseTypeCounts[l] || 0);
+  const pieTotalTickets = pieData.reduce((a, b) => a + b, 0);
+  const pieHasData = pieTotalTickets > 0;
 
-    return [
-      { status: 'Pending', requests: requestPending, cycleCounts: cyclePending },
-      { status: 'In progress', requests: requestInProgress, cycleCounts: cycleInProgress },
-      { status: 'Completed', requests: requestCompleted, cycleCounts: cycleCompleted },
-    ];
-  }, [filteredRequests, filteredCycleCounts]);
+  const pieChartSlices = pieLabels.map((label, i) => ({
+    label,
+    value: pieData[i] ?? 0,
+    color: COLORS[i % COLORS.length],
+  })).filter((s) => s.value > 0);
 
-  const quickRangeClass = (key: '30' | '90') =>
-    `px-4 py-2.5 text-sm font-bold transition-colors ${
-      activeQuickRange === key ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'
-    }`;
+  async function handleInsightRequest(chartKey: string, rangeStart: string, rangeEnd: string, data: unknown) {
+    try {
+      setInsightError(null);
+      setInsightLoadingKey(chartKey);
+      const res = await requestReportInsight({ chartKey, startDate: rangeStart, endDate: rangeEnd, data });
+      setAiInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
+    } catch (e) {
+      setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
+    } finally {
+      setInsightLoadingKey(null);
+    }
+  }
 
-  const applyQuickRange = (days: 30 | 90) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    setStartDate(toIsoDate(start));
-    setEndDate(toIsoDate(end));
-    setActiveQuickRange(days === 30 ? '30' : '90');
-  };
+  function clearAiInsight(chartKey: string) {
+    setAiInsightsByKey((prev) => {
+      if (!prev[chartKey]) return prev;
+      const next = { ...prev };
+      delete next[chartKey];
+      return next;
+    });
+  }
 
   if (loading) {
     return (
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
-          <p className="text-slate-500 mt-1">Personal performance, operations history, discrepancies, and cycle-count quality</p>
-        </div>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
     );
@@ -290,209 +417,144 @@ export default function StaffReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
-        <p className="text-slate-500 mt-1">Personal performance, operations history, discrepancies, and cycle-count quality</p>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
-            <p className="text-sm text-slate-500 mt-1">Adjust time range for all staff report modules</p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <button type="button" onClick={() => applyQuickRange(30)} className={quickRangeClass('30')}>
-                Last 30 days
-              </button>
-              <button type="button" onClick={() => applyQuickRange(90)} className={quickRangeClass('90')}>
-                Last 90 days
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
+      {insightError && (
+        <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">{insightError}</div>
+      )}
 
-      <div className="flex flex-wrap gap-2">
-        {[
-          ['performance', 'Performance'],
-          ['history', 'Operation History'],
-          ['discrepancy', 'Discrepancy'],
-          ['cycle', 'Cycle Count'],
-          ['workload', 'Task Workload Overview'],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id as ReportTab)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
-              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
-            }`}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div className="min-w-0 flex-1 pr-2">
+            <h2 className="text-lg font-black text-slate-900">Inbound / outbound</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Column chart: inbound vs outbound storage request counts in this date range (buckets scale by how long the range is).
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            isLoading={insightLoadingKey === CHART_KEYS.inout}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== CHART_KEYS.inout}
+            onClick={() =>
+              handleInsightRequest(CHART_KEYS.inout, inOutStart, inOutEnd, {
+                granularity: inOutGranularity,
+                startDate: inOutStart,
+                endDate: inOutEnd,
+                labels: inOutBuckets.labels,
+                inbound: inOutBuckets.inbound,
+                outbound: inOutBuckets.outbound,
+              })
+            }
           >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'performance' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Personal Daily Performance Report</h2>
-        {insightError && (
-          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
-            {insightError}
-          </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <KpiCard title="Completed today" value={completion.completed} />
-          <KpiCard title="In progress" value={completion.inProgress} />
-          <KpiCard title="Pending" value={completion.pending} />
-          <KpiCard title="Completion rate" value={`${completion.ratio}%`} />
+            Insight
+          </Button>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_daily_performance'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_daily_performance'}
-              onClick={() =>
-                handleInsightRequest('staff_daily_performance', {
-                  completion,
-                  inOutPerDay,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Bar
-              data={{
-                labels: inOutPerDay.map((d) => d.day),
-                datasets: [
-                  {
-                    label: 'Inbound',
-                    data: inOutPerDay.map((d) => d.inbound),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Outbound',
-                    data: inOutPerDay.map((d) => d.outbound),
-                    backgroundColor: '#6366f1',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { x: { ticks: { autoSkip: false } }, y: { beginAtZero: true } },
-              }}
-            />
-          </div>
-          <div className="flex items-center justify-center">
-            <div className="w-56">
-              <div className="relative h-4 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full bg-emerald-500" style={{ width: `${completion.ratio}%` }} />
-              </div>
-              <p className="text-center mt-3 text-2xl font-black text-slate-900">{completion.ratio}%</p>
-              <p className="text-center text-sm text-slate-500">Gauge: completion rate</p>
-            </div>
-          </div>
+        <ChartDateFilterBar
+          startDate={inOutStart}
+          endDate={inOutEnd}
+          activePreset={inOutPreset}
+          onStartChange={setInOutStart}
+          onEndChange={setInOutEnd}
+          onClearPreset={() => setInOutPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setInOutStart(r.start);
+            setInOutEnd(r.end);
+            setInOutPreset(preset);
+          }}
+        />
+        <div className="h-72">
+          <Bar
+            data={{
+              labels: inOutBuckets.labels,
+              datasets: [
+                { label: 'Inbound', data: inOutBuckets.inbound, backgroundColor: '#0ea5e9' },
+                { label: 'Outbound', data: inOutBuckets.outbound, backgroundColor: '#6366f1' },
+              ],
+            }}
+            options={{
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'bottom' } },
+              scales: {
+                x: { ticks: { maxRotation: 45, minRotation: 0, autoSkip: true } },
+                y: { beginAtZero: true, ticks: { precision: 0 } },
+              },
+            }}
+          />
         </div>
-        {insightsByKey.staff_daily_performance && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
+        {aiInsightsByKey[CHART_KEYS.inout] && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm space-y-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_daily_performance')}>
+              <Button variant="ghost" size="sm" onClick={() => clearAiInsight(CHART_KEYS.inout)}>
                 Clear
               </Button>
             </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_daily_performance} />
+            <ChatMarkdown role="model" content={aiInsightsByKey[CHART_KEYS.inout]} />
           </div>
         )}
       </section>
-      )}
 
-      {tab === 'history' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Personal Operation History Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_operation_history_line'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_line'}
-              onClick={() =>
-                handleInsightRequest('staff_operation_history_line', {
-                  operationHistory,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Line
-              data={{
-                labels: operationHistory.map((d) => d.day),
-                datasets: [
-                  {
-                    label: 'Total operations',
-                    data: operationHistory.map((d) => d.totalOps),
-                    borderColor: '#0ea5e9',
-                    backgroundColor: '#0ea5e9',
-                    tension: 0.3,
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div className="min-w-0 flex-1 pr-2">
+            <h2 className="text-lg font-black text-slate-900">Status by month</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Stacked column chart: completed vs pending storage requests and cycle counts, one month per column inside this date range.
+            </p>
           </div>
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_operation_history_bar'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_bar'}
-              onClick={() =>
-                handleInsightRequest('staff_operation_history_bar', {
-                  operationHistory,
-                })
-              }
-            >
-              Insight
-            </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            isLoading={insightLoadingKey === CHART_KEYS.stacked}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== CHART_KEYS.stacked}
+            onClick={() =>
+              handleInsightRequest(CHART_KEYS.stacked, statusStart, statusEnd, {
+                rangeStart: statusStart,
+                rangeEnd: statusEnd,
+                monthLabels: statusMonthDisplayLabels,
+                completed: monthlyStatus.completed,
+                pending: monthlyStatus.pending,
+              })
+            }
+          >
+            Insight
+          </Button>
+        </div>
+        <ChartDateFilterBar
+          startDate={statusStart}
+          endDate={statusEnd}
+          activePreset={statusPreset}
+          onStartChange={setStatusStart}
+          onEndChange={setStatusEnd}
+          onClearPreset={() => setStatusPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setStatusStart(r.start);
+            setStatusEnd(r.end);
+            setStatusPreset(preset);
+          }}
+        />
+        <div className="h-72">
+          {statusMonthKeys.length === 0 ? (
+            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-500">From ≤ To required.</div>
+          ) : (
             <Bar
               data={{
-                labels: operationHistory.map((d) => d.day),
+                labels: statusMonthDisplayLabels,
                 datasets: [
                   {
-                    label: 'Inbound',
-                    data: operationHistory.map((d) => d.inbound),
-                    backgroundColor: '#0ea5e9',
-                    stack: 'ops',
-                  },
-                  {
-                    label: 'Outbound',
-                    data: operationHistory.map((d) => d.outbound),
-                    backgroundColor: '#6366f1',
-                    stack: 'ops',
-                  },
-                  {
-                    label: 'Cycle count',
-                    data: operationHistory.map((d) => d.cycle),
+                    label: 'Completed',
+                    data: monthlyStatus.completed,
                     backgroundColor: '#22c55e',
-                    stack: 'ops',
+                    stack: 's',
+                  },
+                  {
+                    label: 'Pending',
+                    data: monthlyStatus.pending,
+                    backgroundColor: '#f59e0b',
+                    stack: 's',
                   },
                 ],
               }}
@@ -500,266 +562,133 @@ export default function StaffReportsPage() {
                 maintainAspectRatio: false,
                 plugins: { legend: { position: 'bottom' } },
                 scales: {
-                  x: { stacked: true, ticks: { autoSkip: false } },
-                  y: { stacked: true, beginAtZero: true },
+                  x: { stacked: true, ticks: { maxRotation: 45, minRotation: 0, autoSkip: true } },
+                  y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
                 },
               }}
             />
- 
-          </div>
+          )}
         </div>
-        {(insightsByKey.staff_operation_history_line || insightsByKey.staff_operation_history_bar) && (
-          <div className="mt-4 space-y-3">
-            {insightsByKey.staff_operation_history_line && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_operation_history_line')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_operation_history_line} />
-              </div>
-            )}
-            {insightsByKey.staff_operation_history_bar && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_operation_history_bar')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_operation_history_bar} />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-      )}
-
-      {tab === 'discrepancy' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Discrepancy & Issue Summary Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72">
-            <Pie
-              data={{
-                labels: discrepancySummary.map((d) => d.name),
-                datasets: [
-                  {
-                    data: discrepancySummary.map((d) => d.value),
-                    backgroundColor: discrepancySummary.map((_, i) => COLORS[i % COLORS.length]),
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-              }}
-            />
-          </div>
-          <div className="h-72">
-            <Bar
-              data={{
-                labels: discrepancySummary.map((d) => d.name),
-                datasets: [
-                  {
-                    label: 'Count',
-                    data: discrepancySummary.map((d) => d.value),
-                    backgroundColor: '#f59e0b',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
-          </div>
-        </div>
-        {(insightsByKey.staff_discrepancy_pie || insightsByKey.staff_discrepancy_bar) && (
-          <div className="mt-4 space-y-3">
-            {insightsByKey.staff_discrepancy_pie && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_pie')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_pie} />
-              </div>
-            )}
-            {insightsByKey.staff_discrepancy_bar && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_bar')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_bar} />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-      )}
-
-      {tab === 'cycle' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Cycle Count Execution Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_cycle_count_execution'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_cycle_count_execution'}
-              onClick={() =>
-                handleInsightRequest('staff_cycle_count_execution', {
-                  cycleAccuracy,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Bar
-              data={{
-                labels: cycleAccuracy.map((d) => d.id),
-                datasets: [
-                  {
-                    label: 'System',
-                    data: cycleAccuracy.map((d) => d.system),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Actual',
-                    data: cycleAccuracy.map((d) => d.actual),
-                    backgroundColor: '#22c55e',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
-          </div>
-          <div className="space-y-3">
-            {cycleAccuracy.slice(0, 6).map((row) => (
-              <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="font-bold text-slate-900">Cycle {row.id}</p>
-                  <p className="text-sm font-bold text-slate-700">{row.accuracy}%</p>
-                </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className={`${row.accuracy >= 95 ? 'bg-emerald-500' : row.accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'} h-full`} style={{ width: `${row.accuracy}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        {insightsByKey.staff_cycle_count_execution && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
+        {aiInsightsByKey[CHART_KEYS.stacked] && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm space-y-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_cycle_count_execution')}>
+              <Button variant="ghost" size="sm" onClick={() => clearAiInsight(CHART_KEYS.stacked)}>
                 Clear
               </Button>
             </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_cycle_count_execution} />
+            <ChatMarkdown role="model" content={aiInsightsByKey[CHART_KEYS.stacked]} />
           </div>
         )}
       </section>
-      )}
 
-      {tab === 'workload' && (
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Task Workload Overview</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_warehouse_health'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_warehouse_health'}
-              onClick={() =>
-                handleInsightRequest('staff_warehouse_health', {
-                  taskTypeDistribution,
-                  completion,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Pie
-              data={{
-                labels: taskTypeDistribution.map((d) => d.name),
-                datasets: [
-                  {
-                    data: taskTypeDistribution.map((d) => d.value),
-                    backgroundColor: taskTypeDistribution.map((_, i) => COLORS[i % COLORS.length]),
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-              }}
-            />
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <div className="min-w-0 flex-1 pr-2">
+            <h2 className="text-lg font-black text-slate-900">Warehouse mix</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Pie chart: share of tickets by zone type (Normal, cold storage, small/large) inferred from warehouse and zone names in this date range.
+            </p>
           </div>
-          <div className="h-72">
-            <Bar
-              data={{
-                labels: workloadByStatus.map((d) => d.status),
-                datasets: [
-                  {
-                    label: 'Storage requests',
-                    data: workloadByStatus.map((d) => d.requests),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Cycle counts',
-                    data: workloadByStatus.map((d) => d.cycleCounts),
-                    backgroundColor: '#22c55e',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            isLoading={insightLoadingKey === CHART_KEYS.pie}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== CHART_KEYS.pie}
+            onClick={() =>
+              handleInsightRequest(CHART_KEYS.pie, warehouseStart, warehouseEnd, {
+                startDate: warehouseStart,
+                endDate: warehouseEnd,
+                counts: warehouseTypeCounts,
+              })
+            }
+          >
+            Insight
+          </Button>
         </div>
-        {insightsByKey.staff_warehouse_health && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
+        <ChartDateFilterBar
+          startDate={warehouseStart}
+          endDate={warehouseEnd}
+          activePreset={warehousePreset}
+          onStartChange={setWarehouseStart}
+          onEndChange={setWarehouseEnd}
+          onClearPreset={() => setWarehousePreset(null)}
+          onApplyPreset={(r, preset) => {
+            setWarehouseStart(r.start);
+            setWarehouseEnd(r.end);
+            setWarehousePreset(preset);
+          }}
+        />
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 mb-5">
+          {pieLabels.map((label, i) => {
+            const n = pieData[i] ?? 0;
+            const pct = pieTotalTickets ? Math.round((n / pieTotalTickets) * 100) : 0;
+            return (
+              <div
+                key={label}
+                className="rounded-2xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-center"
+              >
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+                <p className="text-2xl font-black text-slate-900 tabular-nums">{n}</p>
+                <p className="text-sm text-slate-600 tabular-nums">{pct}%</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="relative mx-auto h-72 w-full min-w-0 max-w-lg">
+          {pieHasData && pieChartSlices.length > 0 ? (
+            <Pie
+              key={`warehouse-mix-${warehouseStart}-${warehouseEnd}-${pieTotalTickets}`}
+              data={{
+                labels: pieChartSlices.map((s) => s.label),
+                datasets: [
+                  {
+                    data: pieChartSlices.map((s) => s.value),
+                    backgroundColor: pieChartSlices.map((s) => s.color),
+                    borderWidth: 2,
+                    borderColor: '#ffffff',
+                    hoverOffset: 8,
+                  },
+                ],
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: 12 },
+                plugins: {
+                  legend: { position: 'bottom' },
+                  tooltip: {
+                    callbacks: {
+                      label(ctx) {
+                        const v = Number(ctx.raw);
+                        const sum = pieChartSlices.reduce((a, s) => a + s.value, 0);
+                        const pct = sum ? Math.round((v / sum) * 100) : 0;
+                        return ` ${v} tickets (${pct}%)`;
+                      },
+                    },
+                  },
+                },
+              }}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-center text-sm text-slate-500 px-4">No data in range.</div>
+          )}
+        </div>
+        {aiInsightsByKey[CHART_KEYS.pie] && (
+          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm space-y-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_warehouse_health')}>
+              <Button variant="ghost" size="sm" onClick={() => clearAiInsight(CHART_KEYS.pie)}>
                 Clear
               </Button>
             </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_warehouse_health} />
+            <ChatMarkdown role="model" content={aiInsightsByKey[CHART_KEYS.pie]} />
           </div>
         )}
       </section>
-      )}
-    </div>
-  );
-}
-
-function KpiCard({ title, value }: { title: string; value: string | number }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <p className="text-xs uppercase font-black tracking-wider text-slate-500">{title}</p>
-      <p className="text-2xl font-black text-slate-900 mt-1">{value}</p>
     </div>
   );
 }

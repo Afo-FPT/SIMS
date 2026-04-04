@@ -20,12 +20,23 @@ import {
   getApprovalByManager,
   getTopOutboundProducts,
   getProcessingTime,
+  getManagerExpiryStackedReport,
+  getManagerZonePricingCombo,
+  getManagerPenaltyTopCustomers,
   type ReportGranularity,
 } from '../../../lib/reports.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { useToastHelpers } from '../../../lib/toast';
+import {
+  parseLocalDateStart,
+  parseLocalDateEndOfDay,
+  defaultReportDateRange,
+  type QuickPreset,
+} from '../../../lib/report-date-range';
+import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { Button } from '../../../components/ui/Button';
-import { Input } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
+import { Pagination } from '../../../components/ui/Pagination';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
@@ -38,6 +49,12 @@ import type {
   TopOutboundProductItem,
   ProcessingTimeTrendPoint,
   ProcessingTimeBoxPlotItem,
+  ExpiryStackedReport,
+  ExpiryContractAlertRow,
+  ExpiryZoneLeaseAlertRow,
+  ZonePricingComboRow,
+  PenaltyTopCustomerRow,
+  ManagerDeepGranularity,
 } from '../../../types/manager';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
@@ -47,7 +64,59 @@ const APPROVED_COLOR = '#059669';
 const REJECTED_COLOR = '#dc2626';
 const OUTBOUND_TOP_COLOR = '#0ea5e9';
 const GANTT_COLORS = ['#0ea5e9', '#6366f1', '#22c55e', '#f59e0b', '#14b8a6'];
-type ReportTab = 'summary' | 'approvals' | 'outbound' | 'processing' | 'contracts' | 'anomalies';
+type ReportTab = 'summary' | 'deep' | 'approvals' | 'outbound' | 'processing' | 'contracts' | 'anomalies';
+
+/** Same bucket logic as staff In/Out chart → backend daily | monthly | yearly */
+function inferManagerDeepGranularity(startIso: string, endIso: string): ManagerDeepGranularity {
+  const startMs = parseLocalDateStart(startIso);
+  const endMs = parseLocalDateEndOfDay(endIso);
+  if (endMs < startMs) return 'monthly';
+  const approxDays = (endMs - startMs) / 86400000;
+  if (approxDays <= 45) return 'daily';
+  if (approxDays <= 550) return 'monthly';
+  return 'yearly';
+}
+
+const EXPIRY_TABLE_PAGE_SIZE = 10;
+const ZONE_PRICING_TABLE_PAGE_SIZE = 10;
+const ZONE_PRICING_WAREHOUSE_FILTER_ALL = 'all';
+/** Select value when zone rows have no warehouse id in payload */
+const ZONE_PRICING_WAREHOUSE_NONE_KEY = '__no_warehouse__';
+
+const MANAGER_CONTRACT_STATUSES = [
+  'draft',
+  'pending_payment',
+  'active',
+  'expired',
+  'terminated',
+] as const;
+
+type ManagerContractStatus = (typeof MANAGER_CONTRACT_STATUSES)[number];
+
+const EXPIRY_CONTRACT_STATUS_ALL = 'all' as const;
+type ExpiryContractStatusFilterValue = typeof EXPIRY_CONTRACT_STATUS_ALL | ManagerContractStatus;
+
+function formatManagerContractStatusLabel(status: string): string {
+  if (!status) return '—';
+  return status.replace(/_/g, ' ');
+}
+
+function formatZonePricingVnd(amount: number): string {
+  if (!Number.isFinite(amount)) return '—';
+  return `${Math.round(amount).toLocaleString('en-US')} ₫`;
+}
+
+const EXPIRY_DETAIL_STATUS_SELECT_OPTIONS: { value: string; label: string }[] = [
+  { value: EXPIRY_CONTRACT_STATUS_ALL, label: 'All statuses' },
+  ...MANAGER_CONTRACT_STATUSES.map((st) => ({
+    value: st,
+    label: formatManagerContractStatusLabel(st),
+  })),
+];
+
+type ExpiryDetailTableRow =
+  | ({ kind: 'contract' } & ExpiryContractAlertRow)
+  | ({ kind: 'zone' } & ExpiryZoneLeaseAlertRow);
 
 ChartJSCore.register(
   ArcElement,
@@ -81,8 +150,54 @@ export default function ManagerReportsPage() {
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState('2026-01-01');
-  const [endDate, setEndDate] = useState('2026-04-30');
+  const initR = defaultReportDateRange();
+  const [kpiStart, setKpiStart] = useState(initR.start);
+  const [kpiEnd, setKpiEnd] = useState(initR.end);
+  const [kpiPreset, setKpiPreset] = useState<QuickPreset | null>(null);
+
+  const [trendStart, setTrendStart] = useState(initR.start);
+  const [trendEnd, setTrendEnd] = useState(initR.end);
+  const [trendPreset, setTrendPreset] = useState<QuickPreset | null>(null);
+
+  const [spaceStart, setSpaceStart] = useState(initR.start);
+  const [spaceEnd, setSpaceEnd] = useState(initR.end);
+  const [spacePreset, setSpacePreset] = useState<QuickPreset | null>(null);
+
+  const [stockStart, setStockStart] = useState(initR.start);
+  const [stockEnd, setStockEnd] = useState(initR.end);
+  const [stockPreset, setStockPreset] = useState<QuickPreset | null>(null);
+
+  const [approvalStart, setApprovalStart] = useState(initR.start);
+  const [approvalEnd, setApprovalEnd] = useState(initR.end);
+  const [approvalPreset, setApprovalPreset] = useState<QuickPreset | null>(null);
+
+  const [outboundStart, setOutboundStart] = useState(initR.start);
+  const [outboundEnd, setOutboundEnd] = useState(initR.end);
+  const [outboundPreset, setOutboundPreset] = useState<QuickPreset | null>(null);
+
+  const [processingStart, setProcessingStart] = useState(initR.start);
+  const [processingEnd, setProcessingEnd] = useState(initR.end);
+  const [processingPreset, setProcessingPreset] = useState<QuickPreset | null>(null);
+
+  const [contractRiskStart, setContractRiskStart] = useState(initR.start);
+  const [contractRiskEnd, setContractRiskEnd] = useState(initR.end);
+  const [contractRiskPreset, setContractRiskPreset] = useState<QuickPreset | null>(null);
+
+  const [anomalyStart, setAnomalyStart] = useState(initR.start);
+  const [anomalyEnd, setAnomalyEnd] = useState(initR.end);
+  const [anomalyPreset, setAnomalyPreset] = useState<QuickPreset | null>(null);
+
+  const [deepExpiryStart, setDeepExpiryStart] = useState(initR.start);
+  const [deepExpiryEnd, setDeepExpiryEnd] = useState(initR.end);
+  const [deepExpiryPreset, setDeepExpiryPreset] = useState<QuickPreset | null>(null);
+
+  const [deepPricingStart, setDeepPricingStart] = useState(initR.start);
+  const [deepPricingEnd, setDeepPricingEnd] = useState(initR.end);
+  const [deepPricingPreset, setDeepPricingPreset] = useState<QuickPreset | null>(null);
+
+  const [deepPenaltyStart, setDeepPenaltyStart] = useState(initR.start);
+  const [deepPenaltyEnd, setDeepPenaltyEnd] = useState(initR.end);
+  const [deepPenaltyPreset, setDeepPenaltyPreset] = useState<QuickPreset | null>(null);
 
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
@@ -99,43 +214,108 @@ export default function ManagerReportsPage() {
   const [inventoryData, setInventoryData] = useState<{ name: string; qty: number }[]>([]);
   const [trendData, setTrendData] = useState<ManagerReportTrendPoint[]>([]);
   const [anomalies, setAnomalies] = useState<ManagerReportAnomaly[]>([]);
+  const [kpiAnomalies, setKpiAnomalies] = useState<ManagerReportAnomaly[]>([]);
   const [expiringAndCapacity, setExpiringAndCapacity] = useState<ManagerReportExpiringAndCapacity | null>(null);
-  const [granularity, setGranularity] = useState<ReportGranularity>('day');
+  const [trendGranularity, setTrendGranularity] = useState<ReportGranularity>('day');
   const [approvalByManager, setApprovalByManager] = useState<ApprovalByManagerItem[]>([]);
   const [topOutboundProducts, setTopOutboundProducts] = useState<TopOutboundProductItem[]>([]);
   const [processingTimeTrend, setProcessingTimeTrend] = useState<ProcessingTimeTrendPoint[]>([]);
   const [processingTimeBoxPlot, setProcessingTimeBoxPlot] = useState<ProcessingTimeBoxPlotItem[]>([]);
   const [processingTimeGranularity, setProcessingTimeGranularity] = useState<'week' | 'month'>('week');
   const [tab, setTab] = useState<ReportTab>('summary');
+
+  const [deepExpiryData, setDeepExpiryData] = useState<ExpiryStackedReport | null>(null);
+  const [deepExpiryLoading, setDeepExpiryLoading] = useState(false);
+  const [expirySelectedBucketIndex, setExpirySelectedBucketIndex] = useState(0);
+  const [expiryDetailPage, setExpiryDetailPage] = useState(1);
+  const [expiryContractStatusSelect, setExpiryContractStatusSelect] =
+    useState<ExpiryContractStatusFilterValue>(EXPIRY_CONTRACT_STATUS_ALL);
+
+  const [deepPricingData, setDeepPricingData] = useState<ZonePricingComboRow[] | null>(null);
+  const [deepPricingLoading, setDeepPricingLoading] = useState(false);
+  const [zonePricingTablePage, setZonePricingTablePage] = useState(1);
+  const [zonePricingWarehouseFilter, setZonePricingWarehouseFilter] = useState<string>(
+    ZONE_PRICING_WAREHOUSE_FILTER_ALL,
+  );
+
+  const [deepPenaltyData, setDeepPenaltyData] = useState<PenaltyTopCustomerRow[] | null>(null);
+  const [deepPenaltyLoading, setDeepPenaltyLoading] = useState(false);
+
+  const deepExpiryGranularity = useMemo(
+    () => inferManagerDeepGranularity(deepExpiryStart, deepExpiryEnd),
+    [deepExpiryStart, deepExpiryEnd],
+  );
+
+  const expiryFilteredDetailRows: ExpiryDetailTableRow[] = useMemo(() => {
+    const b = deepExpiryData?.buckets[expirySelectedBucketIndex];
+    if (!b?.details) return [];
+    const out: ExpiryDetailTableRow[] = [];
+    const match = (status: string) =>
+      expiryContractStatusSelect === EXPIRY_CONTRACT_STATUS_ALL || expiryContractStatusSelect === status;
+    for (const r of b.details.contractAlerts) {
+      if (match(r.contractStatus)) {
+        out.push({ kind: 'contract', ...r });
+      }
+    }
+    for (const r of b.details.zoneLeaseAlerts) {
+      if (match(r.contractStatus)) {
+        out.push({ kind: 'zone', ...r });
+      }
+    }
+    return out;
+  }, [deepExpiryData, expirySelectedBucketIndex, expiryContractStatusSelect]);
+
+  const expiryDetailTotalPages = Math.max(1, Math.ceil(expiryFilteredDetailRows.length / EXPIRY_TABLE_PAGE_SIZE));
+  const safeExpiryDetailPage = Math.min(Math.max(1, expiryDetailPage), expiryDetailTotalPages);
+  const expiryPagedDetailRows = useMemo(() => {
+    const start = (safeExpiryDetailPage - 1) * EXPIRY_TABLE_PAGE_SIZE;
+    return expiryFilteredDetailRows.slice(start, start + EXPIRY_TABLE_PAGE_SIZE);
+  }, [expiryFilteredDetailRows, safeExpiryDetailPage]);
+
+  const zonePricingFilteredRows = useMemo(() => {
+    const d = deepPricingData ?? [];
+    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_FILTER_ALL) return d;
+    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_NONE_KEY) {
+      return d.filter((r) => !(r.warehouseId || '').trim());
+    }
+    return d.filter((r) => (r.warehouseId || '').trim() === zonePricingWarehouseFilter);
+  }, [deepPricingData, zonePricingWarehouseFilter]);
+
+  const zonePricingDetailTotalPages = Math.max(
+    1,
+    Math.ceil(zonePricingFilteredRows.length / ZONE_PRICING_TABLE_PAGE_SIZE),
+  );
+  const safeZonePricingDetailPage = Math.min(
+    Math.max(1, zonePricingTablePage),
+    zonePricingDetailTotalPages,
+  );
+  const zonePricingPagedRows = useMemo(() => {
+    const start = (safeZonePricingDetailPage - 1) * ZONE_PRICING_TABLE_PAGE_SIZE;
+    return zonePricingFilteredRows.slice(start, start + ZONE_PRICING_TABLE_PAGE_SIZE);
+  }, [zonePricingFilteredRows, safeZonePricingDetailPage]);
+
+  const zonePricingWarehouseSelectOptions = useMemo(() => {
+    const d = deepPricingData ?? [];
+    const byKey = new Map<string, string>();
+    for (const r of d) {
+      const id = (r.warehouseId || '').trim();
+      const key = id || ZONE_PRICING_WAREHOUSE_NONE_KEY;
+      if (!byKey.has(key)) {
+        byKey.set(key, id ? (r.warehouseName || '—').trim() || '—' : 'Unknown warehouse');
+      }
+    }
+    const entries = [...byKey.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    return [
+      { value: ZONE_PRICING_WAREHOUSE_FILTER_ALL, label: 'All warehouses' },
+      ...entries.map(([value, label]) => ({ value, label })),
+    ];
+  }, [deepPricingData]);
+
   const stockChartHeight = Math.max(288, inventoryData.length * 44);
   // Keep stable height to avoid reflow / label jump during polling
   const outboundChartHeight = Math.max(220, 10 * 42);
   const topOutboundProductsSignatureRef = useRef<string>('');
   const topOutboundOrderRef = useRef<string[]>([]);
-  const trendXAxisInterval = granularity === 'day' ? Math.max(0, Math.ceil(trendData.length / 8) - 1) : 'preserveStartEnd';
-  const processingTrendXAxisInterval =
-    processingTimeGranularity === 'week'
-      ? Math.max(0, Math.ceil(processingTimeTrend.length / 6) - 1)
-      : 'preserveStartEnd';
-
-  const formatTrendLabel = (value: string) => {
-    if (granularity !== 'day') return value;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-  };
-
-  const formatProcessingPeriodLabel = (value: string) => {
-    if (processingTimeGranularity === 'month') {
-      const date = new Date(`${value}-01`);
-      if (!Number.isNaN(date.getTime())) {
-        return date.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
-      }
-      return value;
-    }
-    return value.replace(/\s+/g, ' ');
-  };
-
   const normalizeTopOutboundProducts = (list: TopOutboundProductItem[]): TopOutboundProductItem[] => {
     const incoming = Array.isArray(list) ? list : [];
     const keyOf = (p: TopOutboundProductItem) => String(p.itemName ?? '').trim();
@@ -246,6 +426,96 @@ export default function ManagerReportsPage() {
     };
   }, []);
 
+  const expiryStackedBarOptions = useMemo(() => {
+    const buckets = deepExpiryData?.buckets ?? [];
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      onClick: (_e: unknown, elements: { index: number }[]) => {
+        if (elements[0]) {
+          setExpirySelectedBucketIndex(elements[0].index);
+          setExpiryDetailPage(1);
+        }
+      },
+      plugins: {
+        legend: { position: 'bottom' as const },
+        tooltip: {
+          mode: 'index' as const,
+          intersect: false,
+          callbacks: {
+            afterBody: (items: { dataIndex: number }[]) => {
+              if (!items.length) return [];
+              const idx = items[0].dataIndex;
+              const d = buckets[idx]?.details;
+              if (!d) return ['No contract/zone detail for this period.'];
+              const lines: string[] = [];
+              if (d.contractAlerts.length) {
+                lines.push('Contracts (expired / expiring ≤30d):');
+                for (const r of d.contractAlerts.slice(0, 6)) {
+                  lines.push(
+                    `  ${r.contractCode} · ${r.customerName} · ${r.contractStatus} · ${r.tier} · ends ${r.aggregateEndDate}`,
+                  );
+                }
+                if (d.contractAlerts.length > 6) lines.push(`  …+${d.contractAlerts.length - 6} more (table below)`);
+              }
+              if (d.zoneLeaseAlerts.length) {
+                lines.push('Zone lines + shelf codes (inventory):');
+                for (const r of d.zoneLeaseAlerts.slice(0, 5)) {
+                  const sc = r.shelfCodes.length ? r.shelfCodes.join(', ') : '—';
+                  lines.push(
+                    `  ${r.contractCode} / zone ${r.zoneCode} · ${r.contractStatus} · ${r.tier} · ${r.leaseEndDate} · shelves: ${sc}`,
+                  );
+                }
+                if (d.zoneLeaseAlerts.length > 5) lines.push(`  …+${d.zoneLeaseAlerts.length - 5} more (table below)`);
+              }
+              if (!d.contractAlerts.length && !d.zoneLeaseAlerts.length) {
+                lines.push('No expired or soon-expiring items in this snapshot.');
+              }
+              return lines;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+      },
+    };
+  }, [deepExpiryData]);
+
+  useEffect(() => {
+    topOutboundOrderRef.current = [];
+    topOutboundProductsSignatureRef.current = '';
+  }, [outboundStart, outboundEnd]);
+
+  useEffect(() => {
+    setExpiryDetailPage(1);
+  }, [expirySelectedBucketIndex, expiryContractStatusSelect, deepExpiryData]);
+
+  useEffect(() => {
+    setExpiryDetailPage((p) => Math.min(Math.max(1, p), expiryDetailTotalPages));
+  }, [expiryDetailTotalPages]);
+
+  useEffect(() => {
+    setZonePricingTablePage(1);
+  }, [zonePricingWarehouseFilter, deepPricingData]);
+
+  useEffect(() => {
+    setZonePricingTablePage((p) => Math.min(Math.max(1, p), zonePricingDetailTotalPages));
+  }, [zonePricingDetailTotalPages]);
+
+  useEffect(() => {
+    if (!deepPricingData?.length) return;
+    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_FILTER_ALL) return;
+    const keys = new Set<string>();
+    for (const r of deepPricingData) {
+      keys.add((r.warehouseId || '').trim() || ZONE_PRICING_WAREHOUSE_NONE_KEY);
+    }
+    if (!keys.has(zonePricingWarehouseFilter)) {
+      setZonePricingWarehouseFilter(ZONE_PRICING_WAREHOUSE_FILTER_ALL);
+    }
+  }, [deepPricingData, zonePricingWarehouseFilter]);
+
   useEffect(() => {
     setInsightsByKey({});
     setInsightLoadingKey(null);
@@ -257,31 +527,46 @@ export default function ManagerReportsPage() {
       try {
         if (!hasLoaded) setLoading(true);
         setError(null);
-        if (!startDate || !endDate) return;
 
-        const [report, approvalData, topOutboundData, processingTimeData] = await Promise.all([
-          getManagerReport(startDate, endDate, granularity),
-          getApprovalByManager(startDate, endDate),
-          getTopOutboundProducts(startDate, endDate),
-          getProcessingTime(startDate, endDate, processingTimeGranularity),
+        const [
+          reportKpi,
+          reportTrend,
+          reportSpace,
+          reportStock,
+          reportAnom,
+          reportContracts,
+          approvalData,
+          topOutboundData,
+          processingTimeData,
+        ] = await Promise.all([
+          getManagerReport(kpiStart, kpiEnd, 'day'),
+          getManagerReport(trendStart, trendEnd, trendGranularity),
+          getManagerReport(spaceStart, spaceEnd, 'day'),
+          getManagerReport(stockStart, stockEnd, 'day'),
+          getManagerReport(anomalyStart, anomalyEnd, 'day'),
+          getManagerReport(contractRiskStart, contractRiskEnd, 'day'),
+          getApprovalByManager(approvalStart, approvalEnd),
+          getTopOutboundProducts(outboundStart, outboundEnd),
+          getProcessingTime(processingStart, processingEnd, processingTimeGranularity),
         ]);
 
         if (cancelled) return;
-        setStats(report.stats);
+        setStats(reportKpi.stats);
+        setTrendData(reportTrend.trendData ?? []);
+        setKpiAnomalies(reportTrend.anomalies ?? []);
         setCapacityData(
-          report.capacityData?.length
-            ? report.capacityData
+          reportSpace.capacityData?.length
+            ? reportSpace.capacityData
             : [
                 { name: 'Occupied', value: 0 },
                 { name: 'Empty', value: 100 },
               ],
         );
         setInventoryData(
-          (report.inventoryData ?? []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
+          (reportStock.inventoryData ?? []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
         );
-        setTrendData(report.trendData ?? []);
-        setAnomalies(report.anomalies ?? []);
-        setExpiringAndCapacity(report.expiringAndCapacity ?? null);
+        setAnomalies(reportAnom.anomalies ?? []);
+        setExpiringAndCapacity(reportContracts.expiringAndCapacity ?? null);
         setApprovalByManager(approvalData ?? []);
         const nextTopOutbound = normalizeTopOutboundProducts(topOutboundData ?? []);
         const signature = nextTopOutbound
@@ -325,13 +610,116 @@ export default function ManagerReportsPage() {
       if (pollTimer) clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [startDate, endDate, granularity, processingTimeGranularity, hasLoaded, toast]);
+  }, [
+    kpiStart,
+    kpiEnd,
+    trendStart,
+    trendEnd,
+    trendGranularity,
+    spaceStart,
+    spaceEnd,
+    stockStart,
+    stockEnd,
+    anomalyStart,
+    anomalyEnd,
+    contractRiskStart,
+    contractRiskEnd,
+    approvalStart,
+    approvalEnd,
+    outboundStart,
+    outboundEnd,
+    processingStart,
+    processingEnd,
+    processingTimeGranularity,
+    hasLoaded,
+    toast,
+  ]);
 
-  async function handleInsightRequest(chartKey: string, data: unknown) {
+  useEffect(() => {
+    if (tab !== 'deep') return;
+    let cancelled = false;
+    (async () => {
+      setDeepExpiryLoading(true);
+      try {
+        const data = await getManagerExpiryStackedReport(deepExpiryStart, deepExpiryEnd, deepExpiryGranularity);
+        if (!cancelled) setDeepExpiryData(data);
+      } catch (e) {
+        if (!cancelled) {
+          setDeepExpiryData(null);
+          toast.error(e instanceof Error ? e.message : 'Could not load expiry stats');
+        }
+      } finally {
+        if (!cancelled) setDeepExpiryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, deepExpiryStart, deepExpiryEnd, deepExpiryGranularity, toast]);
+
+  useEffect(() => {
+    if (!deepExpiryData?.buckets?.length) return;
+    setExpirySelectedBucketIndex(deepExpiryData.buckets.length - 1);
+  }, [deepExpiryData]);
+
+  useEffect(() => {
+    if (tab !== 'deep') return;
+    let cancelled = false;
+    (async () => {
+      setDeepPricingLoading(true);
+      try {
+        const data = await getManagerZonePricingCombo(deepPricingStart, deepPricingEnd);
+        if (!cancelled) setDeepPricingData(data);
+      } catch (e) {
+        if (!cancelled) {
+          setDeepPricingData(null);
+          toast.error(e instanceof Error ? e.message : 'Could not load zone pricing data');
+        }
+      } finally {
+        if (!cancelled) setDeepPricingLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, deepPricingStart, deepPricingEnd, toast]);
+
+  useEffect(() => {
+    if (tab !== 'deep') return;
+    let cancelled = false;
+    (async () => {
+      setDeepPenaltyLoading(true);
+      try {
+        const data = await getManagerPenaltyTopCustomers(deepPenaltyStart, deepPenaltyEnd, 10);
+        if (!cancelled) setDeepPenaltyData(data);
+      } catch (e) {
+        if (!cancelled) {
+          setDeepPenaltyData(null);
+          toast.error(e instanceof Error ? e.message : 'Could not load penalty analysis');
+        }
+      } finally {
+        if (!cancelled) setDeepPenaltyLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, deepPenaltyStart, deepPenaltyEnd, toast]);
+
+  async function handleInsightRequest(
+    chartKey: string,
+    data: unknown,
+    range?: { startDate: string; endDate: string },
+  ) {
     try {
       setInsightError(null);
       setInsightLoadingKey(chartKey);
-      const res = await requestReportInsight({ chartKey, startDate, endDate, data });
+      const res = await requestReportInsight({
+        chartKey,
+        startDate: range?.startDate ?? kpiStart,
+        endDate: range?.endDate ?? kpiEnd,
+        data,
+      });
       setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
     } catch (e) {
       setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
@@ -349,192 +737,14 @@ export default function ManagerReportsPage() {
     });
   }
 
-  // ====================== EXPORT CSV ======================
-  const handleExportCSV = () => {
-    try {
-      const now = new Date().toISOString().slice(0, 10);
-      const filename = `SIMS-AI_Operational_Report_${now}.csv`;
-
-      const escapeCsvValue = (value: any): string => {
-        if (value == null) return '';
-        const str = String(value).trim();
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      let csvRows: string[] = [];
-
-      csvRows.push('SIMS-AI OPERATIONAL REPORT');
-      csvRows.push(
-        `Generated Date: ${new Date().toLocaleString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })}`,
-      );
-      csvRows.push(`Period: ${startDate} to ${endDate}`);
-      csvRows.push('');
-  
-      // KEY METRICS
-      csvRows.push('=== KEY METRICS ===');
-      csvRows.push('Metric,Value,Unit');
-      csvRows.push(`Inbound Volume,${escapeCsvValue(stats.inbound)},units`);
-      csvRows.push(`Outbound Volume,${escapeCsvValue(stats.outbound)},units`);
-      csvRows.push(`Task Completion Rate,${escapeCsvValue(stats.completion)},%`);
-      csvRows.push(`Stock Discrepancies,${escapeCsvValue(stats.discrepancies)},items`);
-      csvRows.push('');
-  
-      // SPACE UTILIZATION
-      csvRows.push('=== SPACE UTILIZATION ===');
-      csvRows.push('Category,Value (%),Note');
-      capacityData.forEach(item => {
-        csvRows.push([
-          escapeCsvValue(item.name),
-          escapeCsvValue(item.value),
-          escapeCsvValue('Calculated from Shelf.maxCapacity vs StoredItem.quantity')
-        ].join(','));
-      });
-      csvRows.push('');
-  
-      // STOCK BY CATEGORY
-      csvRows.push('=== STOCK BY CATEGORY ===');
-      csvRows.push('Category,Quantity,Note');
-      inventoryData.forEach(item => {
-        csvRows.push([
-          escapeCsvValue(item.name),
-          escapeCsvValue(item.qty),
-          escapeCsvValue('From StoredItem grouped by category')
-        ].join(','));
-      });
-      csvRows.push('');
-
-      // INBOUND/OUTBOUND TREND
-      csvRows.push('=== INBOUND/OUTBOUND TREND ===');
-      csvRows.push('Date,Inbound,Outbound');
-      trendData.forEach(item => {
-        csvRows.push([escapeCsvValue(item.date), escapeCsvValue(item.inbound), escapeCsvValue(item.outbound)].join(','));
-      });
-      csvRows.push('');
-
-      // ANOMALIES
-      csvRows.push('=== DETECTED ANOMALIES ===');
-      csvRows.push('Date,Type,Value,Message,Severity');
-      anomalies.forEach(a => {
-        csvRows.push([escapeCsvValue(a.date), escapeCsvValue(a.type), escapeCsvValue(a.value), escapeCsvValue(a.message), escapeCsvValue(a.severity)].join(','));
-      });
-
-      // APPROVAL RATE BY MANAGER
-      csvRows.push('');
-      csvRows.push('=== APPROVAL RATE BY MANAGER ===');
-      csvRows.push('Manager,Inbound Approved,Inbound Rejected,Outbound Approved,Outbound Rejected,Total Approved,Total Rejected,Approval Rate (%)');
-      approvalByManager.forEach(m => {
-        csvRows.push([
-          escapeCsvValue(m.managerName),
-          escapeCsvValue(m.inboundApproved),
-          escapeCsvValue(m.inboundRejected),
-          escapeCsvValue(m.outboundApproved),
-          escapeCsvValue(m.outboundRejected),
-          escapeCsvValue(m.totalApproved),
-          escapeCsvValue(m.totalRejected),
-          escapeCsvValue(m.approvalRatePercent),
-        ].join(','));
-      });
-
-      // TOP 10 OUTBOUND PRODUCTS
-      csvRows.push('');
-      csvRows.push('=== TOP 10 OUTBOUND PRODUCTS ===');
-      csvRows.push('Rank,Product Name,Total Quantity,Outbound Count,Unit');
-      topOutboundProducts.forEach(p => {
-        csvRows.push([
-          escapeCsvValue(p.rank),
-          escapeCsvValue(p.itemName),
-          escapeCsvValue(p.totalQuantity),
-          escapeCsvValue(p.outboundCount),
-          escapeCsvValue(p.unit),
-        ].join(','));
-      });
-
-      // PROCESSING TIME
-      csvRows.push('');
-      csvRows.push('=== AVERAGE PROCESSING TIME (TREND) ===');
-      csvRows.push('Period,Inbound Avg (h),Outbound Avg (h),Inbound Count,Outbound Count');
-      processingTimeTrend.forEach(t => {
-        csvRows.push([
-          escapeCsvValue(t.period),
-          escapeCsvValue(t.inboundAvgHours),
-          escapeCsvValue(t.outboundAvgHours),
-          escapeCsvValue(t.inboundCount),
-          escapeCsvValue(t.outboundCount),
-        ].join(','));
-      });
-      csvRows.push('');
-      csvRows.push('=== PROCESSING TIME DISTRIBUTION (BOX PLOT) ===');
-      csvRows.push('Type,Min (h),Q1 (h),Median (h),Q3 (h),Max (h),Count,Avg (h)');
-      processingTimeBoxPlot.forEach(b => {
-        csvRows.push([
-          escapeCsvValue(b.type),
-          escapeCsvValue(b.min),
-          escapeCsvValue(b.q1),
-          escapeCsvValue(b.median),
-          escapeCsvValue(b.q3),
-          escapeCsvValue(b.max),
-          escapeCsvValue(b.count),
-          escapeCsvValue(b.avgHours),
-        ].join(','));
-      });
-
-      if (expiringAndCapacity) {
-        csvRows.push('');
-        csvRows.push('=== EXPIRING CONTRACTS & CAPACITY RISK ===');
-        csvRows.push('KPI,Value');
-        csvRows.push(`Expiring in 30 days,${escapeCsvValue(expiringAndCapacity.kpis.expiringIn30)}`);
-        csvRows.push(`Expiring in 60 days,${escapeCsvValue(expiringAndCapacity.kpis.expiringIn60)}`);
-        csvRows.push(`Expiring in 90 days,${escapeCsvValue(expiringAndCapacity.kpis.expiringIn90)}`);
-        csvRows.push(`Capacity utilization (%),${escapeCsvValue(expiringAndCapacity.kpis.capacityUtilizationPercent)}`);
-        csvRows.push('');
-        csvRows.push('Expiring in 30 days,ContractCode,Customer,StartDate,EndDate,ExpiresInDays');
-        expiringAndCapacity.expiringIn30.forEach(c => {
-          csvRows.push([escapeCsvValue('30'), escapeCsvValue(c.contractCode), escapeCsvValue(c.customerName), escapeCsvValue(c.startDate), escapeCsvValue(c.endDate), escapeCsvValue(c.expiresInDays)].join(','));
-        });
-        csvRows.push('Expiring in 60 days,ContractCode,Customer,StartDate,EndDate,ExpiresInDays');
-        expiringAndCapacity.expiringIn60.forEach(c => {
-          csvRows.push([escapeCsvValue('60'), escapeCsvValue(c.contractCode), escapeCsvValue(c.customerName), escapeCsvValue(c.startDate), escapeCsvValue(c.endDate), escapeCsvValue(c.expiresInDays)].join(','));
-        });
-        csvRows.push('Expiring in 90 days,ContractCode,Customer,StartDate,EndDate,ExpiresInDays');
-        expiringAndCapacity.expiringIn90.forEach(c => {
-          csvRows.push([escapeCsvValue('90'), escapeCsvValue(c.contractCode), escapeCsvValue(c.customerName), escapeCsvValue(c.startDate), escapeCsvValue(c.endDate), escapeCsvValue(c.expiresInDays)].join(','));
-        });
-      }
-
-      const csvContent = csvRows.join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      toast.success('CSV report exported successfully');
-    } catch (err) {
-      toast.error('CSV export failed');
-      console.error(err);
-    }
-  };
-
   if (loading) {
     return (
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-          <p className="text-slate-500 mt-1">Operational analytics, approvals, outbound products, processing time, and anomalies</p>
+          <p className="text-sm text-slate-500 mt-2 max-w-3xl leading-relaxed">
+            Per-section date filters and tabs for summary, deep analytics, approvals, outbound, processing, contracts, and anomalies.
+          </p>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -549,7 +759,10 @@ export default function ManagerReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-        <p className="text-slate-500 mt-1">Operational analytics, approvals, outbound products, processing time, and anomalies</p>
+        <p className="text-sm text-slate-500 mt-2 max-w-3xl leading-relaxed">
+          Each chart or block has its own date range (and quick presets). Tabs cover summary KPIs, deep analytics, approvals,
+          outbound, processing, contract risk, and anomalies.
+        </p>
       </div>
       {insightError && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
@@ -557,73 +770,10 @@ export default function ManagerReportsPage() {
         </div>
       )}
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
-            <p className="text-sm text-slate-500 mt-1">Adjust time range and granularity for all modules</p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <button
-              type="button"
-              onClick={() => {
-                const end = new Date();
-                const start = new Date();
-                start.setDate(start.getDate() - 30);
-                setStartDate(start.toISOString().slice(0, 10));
-                setEndDate(end.toISOString().slice(0, 10));
-              }}
-              className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Last 30 days
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const end = new Date();
-                const start = new Date();
-                start.setDate(start.getDate() - 90);
-                setStartDate(start.toISOString().slice(0, 10));
-                setEndDate(end.toISOString().slice(0, 10));
-              }}
-              className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Last 90 days
-            </button>
-            </div>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-            <button
-              type="button"
-              onClick={() => setGranularity('day')}
-              className={`px-4 py-2.5 text-sm font-bold transition-colors ${granularity === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              By day
-            </button>
-            <button
-              type="button"
-              onClick={() => setGranularity('week')}
-              className={`px-4 py-2.5 text-sm font-bold transition-colors ${granularity === 'week' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-              By week
-            </button>
-            </div>
-            <Button onClick={handleExportCSV}>Download CSV Report</Button>
-          </div>
-        </div>
-      </section>
-
       <div className="flex flex-wrap gap-2">
         {[
           ['summary', 'Summary'],
+          ['deep', 'Deep dive'],
           ['approvals', 'Approval Rate'],
           ['outbound', 'Top Outbound Products'],
           ['processing', 'Processing Time'],
@@ -644,6 +794,19 @@ export default function ManagerReportsPage() {
 
       {tab === 'summary' && (
         <>
+          <ChartDateFilterBar
+            startDate={kpiStart}
+            endDate={kpiEnd}
+            activePreset={kpiPreset}
+            onStartChange={setKpiStart}
+            onEndChange={setKpiEnd}
+            onClearPreset={() => setKpiPreset(null)}
+            onApplyPreset={(r, preset) => {
+              setKpiStart(r.start);
+              setKpiEnd(r.end);
+              setKpiPreset(preset);
+            }}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <StatCard title="Inbound Flow" value={stats.inbound} unit="units" />
             <StatCard title="Outbound Flow" value={stats.outbound} unit="units" />
@@ -653,7 +816,23 @@ export default function ManagerReportsPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Space Utilization</h3>
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Space utilization</h3>
+                <p className="text-xs text-slate-500 mt-1">Share of capacity in use vs empty.</p>
+              </div>
+              <ChartDateFilterBar
+                startDate={spaceStart}
+                endDate={spaceEnd}
+                activePreset={spacePreset}
+                onStartChange={setSpaceStart}
+                onEndChange={setSpaceEnd}
+                onClearPreset={() => setSpacePreset(null)}
+                onApplyPreset={(r, preset) => {
+                  setSpaceStart(r.start);
+                  setSpaceEnd(r.end);
+                  setSpacePreset(preset);
+                }}
+              />
               <div className="h-72 relative">
                 <Button
                   variant="ghost"
@@ -662,11 +841,11 @@ export default function ManagerReportsPage() {
                   isLoading={insightLoadingKey === 'manager_space_utilization'}
                   disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_space_utilization'}
                   onClick={() =>
-                    handleInsightRequest('manager_space_utilization', {
-                      capacityData,
-                      startDate,
-                      endDate,
-                    })
+                    handleInsightRequest(
+                      'manager_space_utilization',
+                      { capacityData },
+                      { startDate: spaceStart, endDate: spaceEnd },
+                    )
                   }
                 >
                   Insight
@@ -701,7 +880,23 @@ export default function ManagerReportsPage() {
             </div>
 
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Stock by Category</h3>
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Stock by category</h3>
+                <p className="text-xs text-slate-500 mt-1">Inventory quantity grouped by product category.</p>
+              </div>
+              <ChartDateFilterBar
+                startDate={stockStart}
+                endDate={stockEnd}
+                activePreset={stockPreset}
+                onStartChange={setStockStart}
+                onEndChange={setStockEnd}
+                onClearPreset={() => setStockPreset(null)}
+                onApplyPreset={(r, preset) => {
+                  setStockStart(r.start);
+                  setStockEnd(r.end);
+                  setStockPreset(preset);
+                }}
+              />
               <div className="max-h-[28rem] overflow-y-auto pr-1">
                 <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }} className="relative">
                   <Button
@@ -711,11 +906,11 @@ export default function ManagerReportsPage() {
                     isLoading={insightLoadingKey === 'manager_stock_by_category'}
                     disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_stock_by_category'}
                     onClick={() =>
-                      handleInsightRequest('manager_stock_by_category', {
-                        inventoryData,
-                        startDate,
-                        endDate,
-                      })
+                      handleInsightRequest(
+                        'manager_stock_by_category',
+                        { inventoryData },
+                        { startDate: stockStart, endDate: stockEnd },
+                      )
                     }
                   >
                     Insight
@@ -741,9 +936,46 @@ export default function ManagerReportsPage() {
           </div>
 
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
-              Inbound / Outbound Trend {granularity === 'week' ? '(by week)' : '(by day)'}
-            </h3>
+            <div className="mb-6">
+              <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Inbound / outbound trend</h3>
+              <p className="text-xs text-slate-500 mt-1">Request counts bucketed by day or week for this range.</p>
+            </div>
+            <ChartDateFilterBar
+              startDate={trendStart}
+              endDate={trendEnd}
+              activePreset={trendPreset}
+              onStartChange={setTrendStart}
+              onEndChange={setTrendEnd}
+              onClearPreset={() => setTrendPreset(null)}
+              onApplyPreset={(r, preset) => {
+                setTrendStart(r.start);
+                setTrendEnd(r.end);
+                setTrendPreset(preset);
+              }}
+            />
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Trend buckets</p>
+              <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white w-fit">
+                <button
+                  type="button"
+                  onClick={() => setTrendGranularity('day')}
+                  className={`px-4 py-2 text-xs font-bold transition-colors sm:text-sm ${
+                    trendGranularity === 'day' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  By day
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTrendGranularity('week')}
+                  className={`px-4 py-2 text-xs font-bold transition-colors sm:text-sm ${
+                    trendGranularity === 'week' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  By week
+                </button>
+              </div>
+            </div>
             <div className="h-80 relative">
               <Button
                 variant="ghost"
@@ -752,13 +984,15 @@ export default function ManagerReportsPage() {
                 isLoading={insightLoadingKey === 'manager_inbound_outbound_trend'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_inbound_outbound_trend'}
                 onClick={() =>
-                  handleInsightRequest('manager_inbound_outbound_trend', {
-                    granularity,
-                    trendData,
-                    anomalies,
-                    startDate,
-                    endDate,
-                  })
+                  handleInsightRequest(
+                    'manager_inbound_outbound_trend',
+                    {
+                      granularity: trendGranularity,
+                      trendData,
+                      anomalies: kpiAnomalies,
+                    },
+                    { startDate: trendStart, endDate: trendEnd },
+                  )
                 }
               >
                 Insight
@@ -816,12 +1050,23 @@ export default function ManagerReportsPage() {
 
       {tab === 'approvals' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
-          Approval Rate by Manager
-        </h3>
-        <p className="text-slate-500 text-sm mb-6">
-          Compare quantity and approval/rejection rate per Manager (Inbound + Outbound)
-        </p>
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Approval rate by manager</h3>
+          <p className="text-xs text-slate-500 mt-1">Inbound and outbound decisions in the window.</p>
+        </div>
+        <ChartDateFilterBar
+          startDate={approvalStart}
+          endDate={approvalEnd}
+          activePreset={approvalPreset}
+          onStartChange={setApprovalStart}
+          onEndChange={setApprovalEnd}
+          onClearPreset={() => setApprovalPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setApprovalStart(r.start);
+            setApprovalEnd(r.end);
+            setApprovalPreset(preset);
+          }}
+        />
 
         {approvalByManager.length > 0 ? (
           <>
@@ -867,11 +1112,11 @@ export default function ManagerReportsPage() {
                 isLoading={insightLoadingKey === 'manager_approval_by_manager'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_approval_by_manager'}
                 onClick={() =>
-                  handleInsightRequest('manager_approval_by_manager', {
-                    approvalByManager,
-                    startDate,
-                    endDate,
-                  })
+                  handleInsightRequest(
+                    'manager_approval_by_manager',
+                    { approvalByManager },
+                    { startDate: approvalStart, endDate: approvalEnd },
+                  )
                 }
               >
                 Insight
@@ -959,12 +1204,23 @@ export default function ManagerReportsPage() {
 
       {tab === 'outbound' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
-          Top 10 Outbound Products
-        </h3>
-        <p className="text-slate-500 text-sm mb-6">
-          Products with highest outbound frequency and volume in the selected period (30/90 days)
-        </p>
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Top 10 outbound products</h3>
+          <p className="text-xs text-slate-500 mt-1">Highest volume and shipment count.</p>
+        </div>
+        <ChartDateFilterBar
+          startDate={outboundStart}
+          endDate={outboundEnd}
+          activePreset={outboundPreset}
+          onStartChange={setOutboundStart}
+          onEndChange={setOutboundEnd}
+          onClearPreset={() => setOutboundPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setOutboundStart(r.start);
+            setOutboundEnd(r.end);
+            setOutboundPreset(preset);
+          }}
+        />
 
         {topOutboundProducts.length > 0 ? (
           <>
@@ -977,11 +1233,11 @@ export default function ManagerReportsPage() {
                 isLoading={insightLoadingKey === 'manager_top_outbound_products'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_top_outbound_products'}
                 onClick={() =>
-                  handleInsightRequest('manager_top_outbound_products', {
-                    topOutboundProducts,
-                    startDate,
-                    endDate,
-                  })
+                  handleInsightRequest(
+                    'manager_top_outbound_products',
+                    { topOutboundProducts },
+                    { startDate: outboundStart, endDate: outboundEnd },
+                  )
                 }
               >
                 Insight
@@ -1062,12 +1318,23 @@ export default function ManagerReportsPage() {
 
       {tab === 'processing' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">
-          Average Processing Time
-        </h3>
-        <p className="text-slate-500 text-sm mb-6">
-          Time from request creation to approval/rejection (Inbound vs Outbound)
-        </p>
+        <div className="mb-6">
+          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Processing time</h3>
+          <p className="text-xs text-slate-500 mt-1">Hours from request creation to decision.</p>
+        </div>
+        <ChartDateFilterBar
+          startDate={processingStart}
+          endDate={processingEnd}
+          activePreset={processingPreset}
+          onStartChange={setProcessingStart}
+          onEndChange={setProcessingEnd}
+          onClearPreset={() => setProcessingPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setProcessingStart(r.start);
+            setProcessingEnd(r.end);
+            setProcessingPreset(preset);
+          }}
+        />
 
         {(processingTimeTrend.length > 0 || processingTimeBoxPlot.some((b) => b.count > 0)) ? (
           <>
@@ -1103,12 +1370,14 @@ export default function ManagerReportsPage() {
                     isLoading={insightLoadingKey === 'manager_processing_time_trend'}
                     disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_processing_time_trend'}
                     onClick={() =>
-                      handleInsightRequest('manager_processing_time_trend', {
-                        processingTimeGranularity,
-                        processingTimeTrend,
-                        startDate,
-                        endDate,
-                      })
+                      handleInsightRequest(
+                        'manager_processing_time_trend',
+                        {
+                          processingTimeGranularity,
+                          processingTimeTrend,
+                        },
+                        { startDate: processingStart, endDate: processingEnd },
+                      )
                     }
                   >
                     Insight
@@ -1160,11 +1429,38 @@ export default function ManagerReportsPage() {
               </div>
 
               {/* Box Plot */}
-              <div>
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute -top-2 right-0 z-10"
+                  isLoading={insightLoadingKey === 'manager_processing_time_distribution'}
+                  disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_processing_time_distribution'}
+                  onClick={() =>
+                    handleInsightRequest(
+                      'manager_processing_time_distribution',
+                      { processingTimeBoxPlot },
+                      { startDate: processingStart, endDate: processingEnd },
+                    )
+                  }
+                >
+                  Insight
+                </Button>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 pr-24">
                   Distribution (Box Plot)
                 </h4>
                 <BoxPlotChart data={processingTimeBoxPlot} />
+                {insightsByKey.manager_processing_time_distribution && (
+                  <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                      <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_processing_time_distribution')}>
+                        Clear
+                      </Button>
+                    </div>
+                    <ChatMarkdown role="model" content={insightsByKey.manager_processing_time_distribution} />
+                  </div>
+                )}
               </div>
             </div>
           </>
@@ -1176,11 +1472,31 @@ export default function ManagerReportsPage() {
       </div>
       )}
 
-      {tab === 'contracts' && expiringAndCapacity && (
+      {tab === 'contracts' && (
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
-            Contracts expiring & capacity risk
-          </h3>
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Contracts &amp; capacity</h3>
+            <p className="text-xs text-slate-500 mt-1">Near-term expiries and utilization snapshot.</p>
+          </div>
+          <ChartDateFilterBar
+            startDate={contractRiskStart}
+            endDate={contractRiskEnd}
+            activePreset={contractRiskPreset}
+            onStartChange={setContractRiskStart}
+            onEndChange={setContractRiskEnd}
+            onClearPreset={() => setContractRiskPreset(null)}
+            onApplyPreset={(r, preset) => {
+              setContractRiskStart(r.start);
+              setContractRiskEnd(r.end);
+              setContractRiskPreset(preset);
+            }}
+          />
+          {!expiringAndCapacity ? (
+            <div className="py-12 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
+              No contract risk snapshot for this range. Try another date span or check back later.
+            </div>
+          ) : (
+            <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard title="Expiring in 30 days" value={expiringAndCapacity.kpis.expiringIn30} unit="contracts" isWarning={expiringAndCapacity.kpis.expiringIn30 > 0} />
             <StatCard title="Expiring in 60 days" value={expiringAndCapacity.kpis.expiringIn60} unit="contracts" />
@@ -1207,11 +1523,11 @@ export default function ManagerReportsPage() {
                   isLoading={insightLoadingKey === 'manager_expiring_contracts'}
                   disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_expiring_contracts'}
                   onClick={() =>
-                    handleInsightRequest('manager_expiring_contracts', {
-                      expiringAndCapacity,
-                      startDate,
-                      endDate,
-                    })
+                    handleInsightRequest(
+                      'manager_expiring_contracts',
+                      { expiringAndCapacity },
+                      { startDate: contractRiskStart, endDate: contractRiskEnd },
+                    )
                   }
                 >
                   Insight
@@ -1235,14 +1551,602 @@ export default function ManagerReportsPage() {
               <ChatMarkdown role="model" content={insightsByKey.manager_expiring_contracts} />
             </div>
           )}
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'deep' && (
+        <div className="space-y-8">
+          {/* 1. Expiry stacked */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 pr-2">
+                <h2 className="text-lg font-black text-slate-900">Expiry status (contracts &amp; zone lines)</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Stacked counts by snapshot date; red/yellow need action. Hover a column or click it—table lists contract
+                  codes, customers, zone codes, and shelf codes from inventory (StoredItem).
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                isLoading={insightLoadingKey === 'manager_deep_expiry_stacked'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_deep_expiry_stacked'}
+                onClick={() => {
+                  const buckets = deepExpiryData?.buckets ?? [];
+                  const last = buckets[buckets.length - 1];
+                  const focus = buckets[expirySelectedBucketIndex] ?? last;
+                  handleInsightRequest(
+                    'manager_deep_expiry_stacked',
+                    {
+                      bucketTotals: buckets.map((b) => ({
+                        label: b.label,
+                        contracts: b.contracts,
+                        zoneLeases: b.zoneLeases,
+                      })),
+                      focusBucketLabel: focus?.label,
+                      focusContractAlerts: focus?.details?.contractAlerts ?? [],
+                      focusZoneLeaseAlerts: focus?.details?.zoneLeaseAlerts ?? [],
+                      latestBucketLabel: last?.label,
+                      latestContractAlerts: last?.details?.contractAlerts ?? [],
+                      latestZoneLeaseAlerts: last?.details?.zoneLeaseAlerts ?? [],
+                      backendGranularity: deepExpiryData?.granularity,
+                      inferredGranularity: deepExpiryGranularity,
+                    },
+                    { startDate: deepExpiryStart, endDate: deepExpiryEnd },
+                  );
+                }}
+              >
+                Insight
+              </Button>
+            </div>
+            <ChartDateFilterBar
+              startDate={deepExpiryStart}
+              endDate={deepExpiryEnd}
+              activePreset={deepExpiryPreset}
+              onStartChange={setDeepExpiryStart}
+              onEndChange={setDeepExpiryEnd}
+              onClearPreset={() => setDeepExpiryPreset(null)}
+              onApplyPreset={(r, preset) => {
+                setDeepExpiryStart(r.start);
+                setDeepExpiryEnd(r.end);
+                setDeepExpiryPreset(preset);
+              }}
+            />
+            <div className="relative h-80 w-full">
+              {deepExpiryLoading ? (
+                <LoadingSkeleton className="h-full rounded-2xl" />
+              ) : deepExpiryData && deepExpiryData.buckets.length > 0 ? (
+                <Bar
+                  data={{
+                    labels: deepExpiryData.buckets.map((b) => b.label),
+                    datasets: [
+                      {
+                        label: 'Contract · Expired',
+                        data: deepExpiryData.buckets.map((b) => b.contracts.expired),
+                        backgroundColor: '#dc2626',
+                        stack: 'contracts',
+                      },
+                      {
+                        label: 'Contract · Expiring soon',
+                        data: deepExpiryData.buckets.map((b) => b.contracts.expiringSoon),
+                        backgroundColor: '#ca8a04',
+                        stack: 'contracts',
+                      },
+                      {
+                        label: 'Contract · Active',
+                        data: deepExpiryData.buckets.map((b) => b.contracts.active),
+                        backgroundColor: '#16a34a',
+                        stack: 'contracts',
+                      },
+                      {
+                        label: 'Zone line · Expired',
+                        data: deepExpiryData.buckets.map((b) => b.zoneLeases.expired),
+                        backgroundColor: '#f87171',
+                        stack: 'zones',
+                      },
+                      {
+                        label: 'Zone line · Expiring soon',
+                        data: deepExpiryData.buckets.map((b) => b.zoneLeases.expiringSoon),
+                        backgroundColor: '#facc15',
+                        stack: 'zones',
+                      },
+                      {
+                        label: 'Zone line · Active',
+                        data: deepExpiryData.buckets.map((b) => b.zoneLeases.active),
+                        backgroundColor: '#4ade80',
+                        stack: 'zones',
+                      },
+                    ],
+                  }}
+                  options={expiryStackedBarOptions}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  No data in this range.
+                </div>
+              )}
+            </div>
+
+            {deepExpiryData && deepExpiryData.buckets.length > 0 && (
+              <div className="mt-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+                    Detail — period: {deepExpiryData.buckets[expirySelectedBucketIndex]?.label ?? '—'}
+                  </p>
+                  <p className="text-xs text-slate-400">Click a bar to change period</p>
+                </div>
+                <div className="max-w-sm">
+                  <Select
+                    label="Contract status"
+                    options={EXPIRY_DETAIL_STATUS_SELECT_OPTIONS}
+                    value={expiryContractStatusSelect}
+                    onChange={(e) =>
+                      setExpiryContractStatusSelect(e.target.value as ExpiryContractStatusFilterValue)
+                    }
+                    className="bg-white"
+                  />
+                </div>
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="w-12 px-3 py-2 text-center">#</th>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Contract</th>
+                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Zone</th>
+                        <th className="px-3 py-2">Shelf codes</th>
+                        <th className="px-3 py-2">End date</th>
+                        <th className="px-3 py-2">Expiry tier</th>
+                        <th className="px-3 py-2">Contract status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expiryPagedDetailRows.map((row, i) => {
+                        const rowNum = (safeExpiryDetailPage - 1) * EXPIRY_TABLE_PAGE_SIZE + i + 1;
+                        return row.kind === 'contract' ? (
+                          <tr key={`c-${row.contractId}-${row.aggregateEndDate}-${i}`} className="border-b border-slate-100">
+                            <td className="px-3 py-2 text-center tabular-nums text-slate-500 font-semibold">{rowNum}</td>
+                            <td className="px-3 py-2 text-slate-600">Contract (aggregate)</td>
+                            <td className="px-3 py-2 font-mono font-semibold text-slate-900">{row.contractCode}</td>
+                            <td className="px-3 py-2">{row.customerName}</td>
+                            <td className="px-3 py-2 text-slate-400">—</td>
+                            <td className="px-3 py-2 text-slate-400">—</td>
+                            <td className="px-3 py-2 tabular-nums">{row.aggregateEndDate}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={
+                                  row.tier === 'expired' ? 'font-bold text-red-600' : 'font-bold text-amber-600'
+                                }
+                              >
+                                {row.tier === 'expired' ? 'Expired' : 'Expiring soon'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-800">{formatManagerContractStatusLabel(row.contractStatus)}</td>
+                          </tr>
+                        ) : (
+                          <tr
+                            key={`z-${row.contractId}-${row.zoneId}-${row.leaseEndDate}-${i}`}
+                            className="border-b border-slate-100"
+                          >
+                            <td className="px-3 py-2 text-center tabular-nums text-slate-500 font-semibold">{rowNum}</td>
+                            <td className="px-3 py-2 text-slate-600">Zone lease</td>
+                            <td className="px-3 py-2 font-mono font-semibold text-slate-900">{row.contractCode}</td>
+                            <td className="px-3 py-2">{row.customerName}</td>
+                            <td className="px-3 py-2 font-mono text-slate-800">{row.zoneCode}</td>
+                            <td className="px-3 py-2 text-xs text-slate-700">
+                              {row.shelfCodes.length ? row.shelfCodes.join(', ') : '—'}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">{row.leaseEndDate}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={
+                                  row.tier === 'expired' ? 'font-bold text-red-600' : 'font-bold text-amber-600'
+                                }
+                              >
+                                {row.tier === 'expired' ? 'Expired' : 'Expiring soon'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-slate-800">{formatManagerContractStatusLabel(row.contractStatus)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {expiryFilteredDetailRows.length === 0 &&
+                  ((deepExpiryData.buckets[expirySelectedBucketIndex]?.details?.contractAlerts?.length ?? 0) > 0 ||
+                    (deepExpiryData.buckets[expirySelectedBucketIndex]?.details?.zoneLeaseAlerts?.length ?? 0) > 0) && (
+                    <p className="text-sm text-slate-500">
+                      No rows match this contract status. Choose &quot;All statuses&quot; or another period.
+                    </p>
+                  )}
+                {expiryFilteredDetailRows.length > 0 && (
+                  <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+                    <p className="text-xs text-slate-500">
+                      Showing {(safeExpiryDetailPage - 1) * EXPIRY_TABLE_PAGE_SIZE + 1}–
+                      {Math.min(safeExpiryDetailPage * EXPIRY_TABLE_PAGE_SIZE, expiryFilteredDetailRows.length)} of{' '}
+                      {expiryFilteredDetailRows.length}
+                    </p>
+                    <Pagination
+                      currentPage={safeExpiryDetailPage}
+                      totalPages={expiryDetailTotalPages}
+                      onPageChange={setExpiryDetailPage}
+                    />
+                  </div>
+                )}
+                {(deepExpiryData.buckets[expirySelectedBucketIndex]?.details?.contractAlerts?.length ?? 0) === 0 &&
+                  (deepExpiryData.buckets[expirySelectedBucketIndex]?.details?.zoneLeaseAlerts?.length ?? 0) === 0 && (
+                    <p className="text-sm text-slate-500">
+                      No expired or expiring-soon contracts/leases in this snapshot (all green for this date).
+                    </p>
+                  )}
+              </div>
+            )}
+
+            {insightsByKey.manager_deep_expiry_stacked && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_deep_expiry_stacked')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_deep_expiry_stacked} />
+              </div>
+            )}
+          </section>
+
+          {/* 2. Combo pricing */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 pr-2">
+                <h2 className="text-lg font-black text-slate-900">Zone fill vs suggested rent</h2>
+                <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                  See how full each zone is compared side by side with a suggested monthly rent, so you can spot crowded
+                  areas and where pricing might deserve another look.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                isLoading={insightLoadingKey === 'manager_deep_zone_pricing'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_deep_zone_pricing'}
+                onClick={() =>
+                  handleInsightRequest(
+                    'manager_deep_zone_pricing',
+                    deepPricingData,
+                    { startDate: deepPricingStart, endDate: deepPricingEnd },
+                  )
+                }
+              >
+                Insight
+              </Button>
+            </div>
+            <ChartDateFilterBar
+              startDate={deepPricingStart}
+              endDate={deepPricingEnd}
+              activePreset={deepPricingPreset}
+              onStartChange={setDeepPricingStart}
+              onEndChange={setDeepPricingEnd}
+              onClearPreset={() => setDeepPricingPreset(null)}
+              onApplyPreset={(r, preset) => {
+                setDeepPricingStart(r.start);
+                setDeepPricingEnd(r.end);
+                setDeepPricingPreset(preset);
+              }}
+            />
+            <div className="relative h-80 w-full">
+              {deepPricingLoading ? (
+                <LoadingSkeleton className="h-full rounded-2xl" />
+              ) : deepPricingData && deepPricingData.length > 0 ? (
+                <ChartJSComponent
+                  type="bar"
+                  data={{
+                    labels: deepPricingData.map((r) => r.zoneCode),
+                    datasets: [
+                      {
+                        type: 'bar',
+                        label: 'Occupancy %',
+                        data: deepPricingData.map((r) => r.occupancyPercent),
+                        backgroundColor: 'rgba(14, 165, 233, 0.55)',
+                        borderColor: 'rgb(14, 165, 233)',
+                        borderWidth: 1,
+                        yAxisID: 'y',
+                      },
+                      {
+                        type: 'line',
+                        label: 'Suggested rent (VND/mo)',
+                        data: deepPricingData.map((r) => r.suggestedMonthlyPrice),
+                        borderColor: '#9333ea',
+                        backgroundColor: 'rgba(147, 51, 234, 0.15)',
+                        tension: 0.25,
+                        yAxisID: 'y1',
+                        pointRadius: 4,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                      y: {
+                        type: 'linear',
+                        position: 'left',
+                        min: 0,
+                        max: 100,
+                        title: { display: true, text: 'Fill %' },
+                      },
+                      y1: {
+                        type: 'linear',
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'VND / month' },
+                        ticks: {
+                          callback: (v) => (typeof v === 'number' ? `${(v / 1000).toFixed(0)}k` : v),
+                        },
+                      },
+                    },
+                  }}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  No zones or shelf data for this range.
+                </div>
+              )}
+            </div>
+            {deepPricingData && deepPricingData.length > 0 && !deepPricingLoading && (
+              <div className="mt-6 space-y-4">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Detail breakdown</p>
+                <div className="max-w-md">
+                  <Select
+                    label="Warehouse"
+                    options={zonePricingWarehouseSelectOptions}
+                    value={zonePricingWarehouseFilter}
+                    onChange={(e) => setZonePricingWarehouseFilter(e.target.value)}
+                    className="bg-white"
+                  />
+                </div>
+                {zonePricingFilteredRows.length === 0 ? (
+                  <p className="text-sm text-slate-500">No rows for this warehouse filter.</p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                      <table className="w-full min-w-[960px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
+                            <th className="w-12 px-3 py-2 text-center">#</th>
+                            <th className="px-3 py-2">Zone</th>
+                            <th className="px-3 py-2">Warehouse</th>
+                            <th className="px-3 py-2 text-right">Fill %</th>
+                            <th className="px-3 py-2 text-right">Shelves rented / total</th>
+                            <th className="px-3 py-2 text-right">Avg rent in range</th>
+                            <th className="px-3 py-2 text-right">Suggested rent / mo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {zonePricingPagedRows.map((row, i) => {
+                            const rowNum =
+                              (safeZonePricingDetailPage - 1) * ZONE_PRICING_TABLE_PAGE_SIZE + i + 1;
+                            return (
+                              <tr key={`${row.zoneId}-${row.zoneCode}-${i}`} className="border-b border-slate-100">
+                                <td className="px-3 py-2 text-center tabular-nums text-slate-500 font-semibold">
+                                  {rowNum}
+                                </td>
+                                <td className="px-3 py-2 font-mono font-semibold text-slate-900">{row.zoneCode}</td>
+                                <td className="px-3 py-2 text-slate-800">{row.warehouseName || '—'}</td>
+                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                                  {Math.round(row.occupancyPercent)}%
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                                  {row.shelfRented}
+                                  <span className="text-slate-400"> / </span>
+                                  {row.shelfTotal}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                                  {formatZonePricingVnd(row.avgMonthlyRentInRange)}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
+                                  {formatZonePricingVnd(row.suggestedMonthlyPrice)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+                      <p className="text-xs text-slate-500">
+                        Showing {(safeZonePricingDetailPage - 1) * ZONE_PRICING_TABLE_PAGE_SIZE + 1}–
+                        {Math.min(
+                          safeZonePricingDetailPage * ZONE_PRICING_TABLE_PAGE_SIZE,
+                          zonePricingFilteredRows.length,
+                        )}{' '}
+                        of {zonePricingFilteredRows.length}
+                      </p>
+                      <Pagination
+                        currentPage={safeZonePricingDetailPage}
+                        totalPages={zonePricingDetailTotalPages}
+                        onPageChange={setZonePricingTablePage}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {insightsByKey.manager_deep_zone_pricing && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_deep_zone_pricing')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_deep_zone_pricing} />
+              </div>
+            )}
+          </section>
+
+          {/* 3. Penalty horizontal bar */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 pr-2">
+                <h2 className="text-lg font-black text-slate-900">Damage exposure by customer</h2>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Top customers by total damage units on request line items in the reporting window.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                isLoading={insightLoadingKey === 'manager_deep_penalty_damage'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_deep_penalty_damage'}
+                onClick={() =>
+                  handleInsightRequest(
+                    'manager_deep_penalty_damage',
+                    deepPenaltyData,
+                    { startDate: deepPenaltyStart, endDate: deepPenaltyEnd },
+                  )
+                }
+              >
+                Insight
+              </Button>
+            </div>
+            <ChartDateFilterBar
+              startDate={deepPenaltyStart}
+              endDate={deepPenaltyEnd}
+              activePreset={deepPenaltyPreset}
+              onStartChange={setDeepPenaltyStart}
+              onEndChange={setDeepPenaltyEnd}
+              onClearPreset={() => setDeepPenaltyPreset(null)}
+              onApplyPreset={(r, preset) => {
+                setDeepPenaltyStart(r.start);
+                setDeepPenaltyEnd(r.end);
+                setDeepPenaltyPreset(preset);
+              }}
+            />
+            <div
+              className="relative w-full"
+              style={{ height: `${Math.max(280, (deepPenaltyData?.length ?? 5) * 40 + 80)}px` }}
+            >
+              {deepPenaltyLoading ? (
+                <LoadingSkeleton className="h-full min-h-[280px] rounded-2xl" />
+              ) : deepPenaltyData && deepPenaltyData.length > 0 ? (
+                <Bar
+                  data={{
+                    labels: deepPenaltyData.map((r) =>
+                      r.customerName.length > 28 ? `${r.customerName.slice(0, 28)}…` : r.customerName,
+                    ),
+                    datasets: [
+                      {
+                        label: 'Total damage (units)',
+                        data: deepPenaltyData.map((r) => r.totalDamageUnits),
+                        backgroundColor: 'rgba(239, 68, 68, 0.65)',
+                        borderColor: '#b91c1c',
+                        borderWidth: 1,
+                      },
+                    ],
+                  }}
+                  options={{
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { display: false },
+                      tooltip: {
+                        callbacks: {
+                          afterLabel: (ctx) => {
+                            const row = deepPenaltyData![ctx.dataIndex];
+                            return `${row.affectedRequestCount} request(s) with damage`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        beginAtZero: true,
+                        ticks: { precision: 0 },
+                        title: { display: true, text: 'Units' },
+                      },
+                    },
+                  }}
+                />
+              ) : (
+                <div className="flex h-full min-h-[240px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  No damage records in this range.
+                </div>
+              )}
+            </div>
+            {insightsByKey.manager_deep_penalty_damage && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_deep_penalty_damage')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_deep_penalty_damage} />
+              </div>
+            )}
+          </section>
         </div>
       )}
 
       {tab === 'anomalies' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">
-          Anomaly Detection
-        </h3>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Anomalies</h3>
+            <p className="text-xs text-slate-500 mt-1">Unusual inbound/outbound days vs recent average.</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0"
+            isLoading={insightLoadingKey === 'manager_report_anomalies'}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_report_anomalies'}
+            onClick={() =>
+              handleInsightRequest(
+                'manager_report_anomalies',
+                { anomalies },
+                { startDate: anomalyStart, endDate: anomalyEnd },
+              )
+            }
+          >
+            Insight
+          </Button>
+        </div>
+        <ChartDateFilterBar
+          startDate={anomalyStart}
+          endDate={anomalyEnd}
+          activePreset={anomalyPreset}
+          onStartChange={setAnomalyStart}
+          onEndChange={setAnomalyEnd}
+          onClearPreset={() => setAnomalyPreset(null)}
+          onApplyPreset={(r, preset) => {
+            setAnomalyStart(r.start);
+            setAnomalyEnd(r.end);
+            setAnomalyPreset(preset);
+          }}
+        />
+        {insightsByKey.manager_report_anomalies && (
+          <div className="mb-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+              <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_report_anomalies')}>
+                Clear
+              </Button>
+            </div>
+            <ChatMarkdown role="model" content={insightsByKey.manager_report_anomalies} />
+          </div>
+        )}
         {anomalies.length > 0 ? (
           <ul className="space-y-3">
             {anomalies.map((a, i) => (

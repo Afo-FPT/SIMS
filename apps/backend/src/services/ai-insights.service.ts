@@ -11,6 +11,24 @@ type ReportInsightParams = {
 };
 
 function buildSystemInstruction(chartKey: string, startDate: string, endDate: string): string {
+  if (chartKey === "manager_deep_expiry_stacked") {
+    return [
+      "You are a SIMS warehouse analytics assistant for managers.",
+      "Use ONLY the JSON payload (bucket totals and contractAlerts / zoneLeaseAlerts / focus* fields). Do not invent contract codes or names.",
+      "Respond in English, 2–4 short sentences in one paragraph.",
+      "You MUST mention at least one specific contractCode and customerName from contractAlerts or zoneLeaseAlerts when that array is non-empty (e.g. which contracts are expired or expiring soon and by when).",
+      "If shelfCodes appear for a zone lease, you may reference them as shelf location hints.",
+      `Reporting window: ${startDate} → ${endDate}.`
+    ].join("\n");
+  }
+  if (chartKey.startsWith("manager_deep_")) {
+    return [
+      "Bạn là trợ lý phân tích SIMS cho Manager.",
+      "Chỉ dựa trên JSON dữ liệu đính kèm; không bịa số.",
+      "Trả lời tiếng Việt, đúng 2–3 câu ngắn, một đoạn (không gạch đầu dòng dài).",
+      `Phạm vi thời gian: ${startDate} → ${endDate}.`
+    ].join("\n");
+  }
   return [
     "Bạn là trợ lý phân tích báo cáo vận hành kho của hệ thống SIMS.",
     "Nhiệm vụ của bạn là đọc dữ liệu biểu đồ JSON mà người dùng cung cấp và đưa ra nhận xét hữu ích cho khách hàng.",
