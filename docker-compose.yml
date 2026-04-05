@@ -1,0 +1,65 @@
+# SIMS: MongoDB (local) + backend + frontend
+# Sao chép .env.docker.example -> .env.docker và chỉnh giá trị trước khi chạy: docker compose --env-file .env.docker up --build
+
+services:
+  mongo:
+    # Tag mongo:7 đôi khi không có trên mirror/registry; 7.0 ổn định hơn trên Docker Hub
+    image: mongo:7.0
+    container_name: sims-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - sims_mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: sims
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    image: sims-backend:local
+    container_name: sims-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/sims
+      JWT_SECRET: ${JWT_SECRET:-change-me-use-env-docker}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMAIL_VERIFY_ON_STARTUP: "false"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+        GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    image: sims-frontend:local
+    container_name: sims-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      - backend
+
+volumes:
+  sims_mongo_data:

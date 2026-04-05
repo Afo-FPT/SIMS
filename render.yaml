@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: sims-backend
+    env: docker
+    rootDir: apps/backend
+    dockerfilePath: ./Dockerfile
+    dockerCommand: node --experimental-specifier-resolution=node dist/index.js
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3001"
+      # Required - set in Render dashboard (do not commit secrets)
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      # Optional (email + VNPay + Redis/queues depending on your setup)
+      - key: REDIS_URL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: VNPAY_TMN_CODE
+        sync: false
+      - key: VNPAY_HASH_SECRET
+        sync: false
+      - key: VNPAY_RETURN_URL
+        sync: false
+      - key: VNPAY_URL
+        sync: false
+      # SIMS Assistant (Gemini) — server-side only
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+
+  - type: web
+    name: sims-frontend
+    env: docker
+    rootDir: .
+    dockerfilePath: ./apps/frontend/Dockerfile
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Point this to the backend public URL + /api after backend is created
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+

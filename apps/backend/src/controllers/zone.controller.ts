@@ -1,0 +1,79 @@
+import { Request, Response } from "express";
+import { createZone, listZonesByWarehouse, CreateZoneRequest, updateZone, UpdateZoneRequest } from "../services/zone.service";
+
+export async function createZoneController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { warehouseId } = req.params;
+    const { zoneCode, name, area, description } = req.body;
+    if (!zoneCode || !name || area == null) {
+      return res.status(400).json({ message: "zoneCode, name and area are required" });
+    }
+    const payload: CreateZoneRequest = { zoneCode, name, area: Number(area), description };
+    const zone = await createZone(warehouseId, payload, req.user.userId);
+    res.status(201).json({
+      message: "Zone created successfully",
+      data: zone
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("required") ||
+      error.message.includes("not found") ||
+      error.message.includes("already exists") ||
+      error.message.includes("Invalid") ||
+      error.message.includes("exceeds limit")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
+
+export async function listZonesByWarehouseController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { warehouseId } = req.params;
+    const zones = await listZonesByWarehouse(warehouseId);
+    res.json({
+      message: "Zones retrieved successfully",
+      data: zones
+    });
+  } catch (error: any) {
+    if (error.message.includes("not found") || error.message.includes("Invalid")) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
+
+export async function updateZoneController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const { warehouseId, zoneId } = req.params;
+    const { zoneCode, name, area, description, status } = req.body;
+    const payload: UpdateZoneRequest = { zoneCode, name, area: area == null ? undefined : Number(area), description, status };
+    const zone = await updateZone(warehouseId, zoneId, payload);
+    res.json({
+      message: "Zone updated successfully",
+      data: zone
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("required") ||
+      error.message.includes("not found") ||
+      error.message.includes("already exists") ||
+      error.message.includes("Invalid") ||
+      error.message.includes("does not belong") ||
+      error.message.includes("exceeds limit")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+    res.status(500).json({ message: error.message || "Internal server error" });
+  }
+}
