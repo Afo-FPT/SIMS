@@ -17,7 +17,6 @@ import { Pie, Line, Bar } from 'react-chartjs-2';
 
 import {
   getManagerReport,
-  getApprovalByManager,
   getTopOutboundProducts,
   getProcessingTime,
   getManagerExpiryStackedReport,
@@ -42,10 +41,9 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import type {
   ManagerReportTrendPoint,
-  ManagerReportAnomaly,
   ManagerReportExpiringAndCapacity,
   ManagerReportExpiringContractItem,
-  ApprovalByManagerItem,
+  ManagerReportAnomaly,
   TopOutboundProductItem,
   ProcessingTimeTrendPoint,
   ProcessingTimeBoxPlotItem,
@@ -60,11 +58,9 @@ import type {
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 const INBOUND_COLOR = '#0ea5e9';
 const OUTBOUND_COLOR = '#6366f1';
-const APPROVED_COLOR = '#059669';
-const REJECTED_COLOR = '#dc2626';
 const OUTBOUND_TOP_COLOR = '#0ea5e9';
 const GANTT_COLORS = ['#0ea5e9', '#6366f1', '#22c55e', '#f59e0b', '#14b8a6'];
-type ReportTab = 'summary' | 'deep' | 'approvals' | 'outbound' | 'processing' | 'contracts' | 'anomalies';
+type ReportTab = 'summary' | 'deep' | 'outbound' | 'processing' | 'contracts';
 
 /** Same bucket logic as staff In/Out chart → backend daily | monthly | yearly */
 function inferManagerDeepGranularity(startIso: string, endIso: string): ManagerDeepGranularity {
@@ -75,6 +71,12 @@ function inferManagerDeepGranularity(startIso: string, endIso: string): ManagerD
   if (approxDays <= 45) return 'daily';
   if (approxDays <= 550) return 'monthly';
   return 'yearly';
+}
+
+function expiryBucketLabelForDate(isoDate: string, granularity: ManagerDeepGranularity): string {
+  if (granularity === 'daily') return isoDate;
+  if (granularity === 'monthly') return isoDate.slice(0, 7);
+  return isoDate.slice(0, 4);
 }
 
 const EXPIRY_TABLE_PAGE_SIZE = 10;
@@ -167,10 +169,6 @@ export default function ManagerReportsPage() {
   const [stockEnd, setStockEnd] = useState(initR.end);
   const [stockPreset, setStockPreset] = useState<QuickPreset | null>(null);
 
-  const [approvalStart, setApprovalStart] = useState(initR.start);
-  const [approvalEnd, setApprovalEnd] = useState(initR.end);
-  const [approvalPreset, setApprovalPreset] = useState<QuickPreset | null>(null);
-
   const [outboundStart, setOutboundStart] = useState(initR.start);
   const [outboundEnd, setOutboundEnd] = useState(initR.end);
   const [outboundPreset, setOutboundPreset] = useState<QuickPreset | null>(null);
@@ -183,21 +181,15 @@ export default function ManagerReportsPage() {
   const [contractRiskEnd, setContractRiskEnd] = useState(initR.end);
   const [contractRiskPreset, setContractRiskPreset] = useState<QuickPreset | null>(null);
 
-  const [anomalyStart, setAnomalyStart] = useState(initR.start);
-  const [anomalyEnd, setAnomalyEnd] = useState(initR.end);
-  const [anomalyPreset, setAnomalyPreset] = useState<QuickPreset | null>(null);
-
   const [deepExpiryStart, setDeepExpiryStart] = useState(initR.start);
   const [deepExpiryEnd, setDeepExpiryEnd] = useState(initR.end);
   const [deepExpiryPreset, setDeepExpiryPreset] = useState<QuickPreset | null>(null);
 
-  const [deepPricingStart, setDeepPricingStart] = useState(initR.start);
-  const [deepPricingEnd, setDeepPricingEnd] = useState(initR.end);
-  const [deepPricingPreset, setDeepPricingPreset] = useState<QuickPreset | null>(null);
 
   const [deepPenaltyStart, setDeepPenaltyStart] = useState(initR.start);
   const [deepPenaltyEnd, setDeepPenaltyEnd] = useState(initR.end);
   const [deepPenaltyPreset, setDeepPenaltyPreset] = useState<QuickPreset | null>(null);
+  const deepSnapshotDate = useMemo(() => defaultReportDateRange().end, []);
 
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
@@ -213,16 +205,14 @@ export default function ManagerReportsPage() {
   const [capacityData, setCapacityData] = useState<{ name: string; value: number }[]>([]);
   const [inventoryData, setInventoryData] = useState<{ name: string; qty: number }[]>([]);
   const [trendData, setTrendData] = useState<ManagerReportTrendPoint[]>([]);
-  const [anomalies, setAnomalies] = useState<ManagerReportAnomaly[]>([]);
   const [kpiAnomalies, setKpiAnomalies] = useState<ManagerReportAnomaly[]>([]);
   const [expiringAndCapacity, setExpiringAndCapacity] = useState<ManagerReportExpiringAndCapacity | null>(null);
   const [trendGranularity, setTrendGranularity] = useState<ReportGranularity>('day');
-  const [approvalByManager, setApprovalByManager] = useState<ApprovalByManagerItem[]>([]);
   const [topOutboundProducts, setTopOutboundProducts] = useState<TopOutboundProductItem[]>([]);
   const [processingTimeTrend, setProcessingTimeTrend] = useState<ProcessingTimeTrendPoint[]>([]);
   const [processingTimeBoxPlot, setProcessingTimeBoxPlot] = useState<ProcessingTimeBoxPlotItem[]>([]);
-  const [processingTimeGranularity, setProcessingTimeGranularity] = useState<'week' | 'month'>('week');
-  const [tab, setTab] = useState<ReportTab>('summary');
+  const processingTimeGranularity: 'week' = 'week';
+  const [tab] = useState<ReportTab>('deep');
 
   const [deepExpiryData, setDeepExpiryData] = useState<ExpiryStackedReport | null>(null);
   const [deepExpiryLoading, setDeepExpiryLoading] = useState(false);
@@ -240,6 +230,7 @@ export default function ManagerReportsPage() {
 
   const [deepPenaltyData, setDeepPenaltyData] = useState<PenaltyTopCustomerRow[] | null>(null);
   const [deepPenaltyLoading, setDeepPenaltyLoading] = useState(false);
+  const [deepTopStockData, setDeepTopStockData] = useState<{ name: string; qty: number }[]>([]);
 
   const deepExpiryGranularity = useMemo(
     () => inferManagerDeepGranularity(deepExpiryStart, deepExpiryEnd),
@@ -310,6 +301,49 @@ export default function ManagerReportsPage() {
       ...entries.map(([value, label]) => ({ value, label })),
     ];
   }, [deepPricingData]);
+
+  const selectedExpiryBucket = useMemo(
+    () => deepExpiryData?.buckets?.[expirySelectedBucketIndex] ?? null,
+    [deepExpiryData, expirySelectedBucketIndex],
+  );
+  const expirySummary = useMemo(() => {
+    if (!selectedExpiryBucket) return { contractsAtRisk: 0, zoneLinesAtRisk: 0, total: 0 };
+    const contractsAtRisk = selectedExpiryBucket.contracts.expired + selectedExpiryBucket.contracts.expiringSoon;
+    const zoneLinesAtRisk = selectedExpiryBucket.zoneLeases.expired + selectedExpiryBucket.zoneLeases.expiringSoon;
+    return { contractsAtRisk, zoneLinesAtRisk, total: contractsAtRisk + zoneLinesAtRisk };
+  }, [selectedExpiryBucket]);
+
+  const zonePricingSummary = useMemo(() => {
+    const rows = deepPricingData ?? [];
+    const zoneCount = rows.length;
+    const avgOccupancy = zoneCount
+      ? rows.reduce((s, r) => s + (Number(r.occupancyPercent) || 0), 0) / zoneCount
+      : 0;
+    const avgSuggestedRent = zoneCount
+      ? rows.reduce((s, r) => s + (Number(r.suggestedMonthlyPrice) || 0), 0) / zoneCount
+      : 0;
+    return { zoneCount, avgOccupancy, avgSuggestedRent };
+  }, [deepPricingData]);
+
+  const damageSummary = useMemo(() => {
+    const rows = deepPenaltyData ?? [];
+    const customerCount = rows.length;
+    const totalDamageUnits = rows.reduce((s, r) => s + (Number(r.totalDamageUnits) || 0), 0);
+    const totalAffectedRequests = rows.reduce((s, r) => s + (Number(r.affectedRequestCount) || 0), 0);
+    return { customerCount, totalDamageUnits, totalAffectedRequests };
+  }, [deepPenaltyData]);
+
+  const topStockSummary = useMemo(() => {
+    const rows = deepTopStockData ?? [];
+    const totalQuantity = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const top = rows[0];
+    return {
+      productCount: rows.length,
+      totalQuantity,
+      topProductName: top?.name || '—',
+      topProductQty: Number(top?.qty) || 0,
+    };
+  }, [deepTopStockData]);
 
   const stockChartHeight = Math.max(288, inventoryData.length * 44);
   // Keep stable height to avoid reflow / label jump during polling
@@ -431,12 +465,6 @@ export default function ManagerReportsPage() {
     return {
       responsive: true,
       maintainAspectRatio: false,
-      onClick: (_e: unknown, elements: { index: number }[]) => {
-        if (elements[0]) {
-          setExpirySelectedBucketIndex(elements[0].index);
-          setExpiryDetailPage(1);
-        }
-      },
       plugins: {
         legend: { position: 'bottom' as const },
         tooltip: {
@@ -477,8 +505,13 @@ export default function ManagerReportsPage() {
         },
       },
       scales: {
-        x: { stacked: true },
-        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+        x: { stacked: true, title: { display: true, text: 'Snapshot date' } },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          title: { display: true, text: 'Records' },
+        },
       },
     };
   }, [deepExpiryData]);
@@ -533,9 +566,7 @@ export default function ManagerReportsPage() {
           reportTrend,
           reportSpace,
           reportStock,
-          reportAnom,
           reportContracts,
-          approvalData,
           topOutboundData,
           processingTimeData,
         ] = await Promise.all([
@@ -543,9 +574,7 @@ export default function ManagerReportsPage() {
           getManagerReport(trendStart, trendEnd, trendGranularity),
           getManagerReport(spaceStart, spaceEnd, 'day'),
           getManagerReport(stockStart, stockEnd, 'day'),
-          getManagerReport(anomalyStart, anomalyEnd, 'day'),
           getManagerReport(contractRiskStart, contractRiskEnd, 'day'),
-          getApprovalByManager(approvalStart, approvalEnd),
           getTopOutboundProducts(outboundStart, outboundEnd),
           getProcessingTime(processingStart, processingEnd, processingTimeGranularity),
         ]);
@@ -565,9 +594,13 @@ export default function ManagerReportsPage() {
         setInventoryData(
           (reportStock.inventoryData ?? []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))),
         );
-        setAnomalies(reportAnom.anomalies ?? []);
+        setDeepTopStockData(
+          (reportStock.inventoryData ?? [])
+            .slice()
+            .sort((a, b) => (Number(b.qty) || 0) - (Number(a.qty) || 0))
+            .slice(0, 10),
+        );
         setExpiringAndCapacity(reportContracts.expiringAndCapacity ?? null);
-        setApprovalByManager(approvalData ?? []);
         const nextTopOutbound = normalizeTopOutboundProducts(topOutboundData ?? []);
         const signature = nextTopOutbound
           .map((d) => `${d.itemName}|${d.totalQuantity}|${d.outboundCount}|${d.unit}`)
@@ -620,17 +653,12 @@ export default function ManagerReportsPage() {
     spaceEnd,
     stockStart,
     stockEnd,
-    anomalyStart,
-    anomalyEnd,
     contractRiskStart,
     contractRiskEnd,
-    approvalStart,
-    approvalEnd,
     outboundStart,
     outboundEnd,
     processingStart,
     processingEnd,
-    processingTimeGranularity,
     hasLoaded,
     toast,
   ]);
@@ -659,8 +687,10 @@ export default function ManagerReportsPage() {
 
   useEffect(() => {
     if (!deepExpiryData?.buckets?.length) return;
-    setExpirySelectedBucketIndex(deepExpiryData.buckets.length - 1);
-  }, [deepExpiryData]);
+    const targetLabel = expiryBucketLabelForDate(deepExpiryEnd, deepExpiryData.granularity);
+    const idx = deepExpiryData.buckets.findIndex((b) => b.label === targetLabel);
+    setExpirySelectedBucketIndex(idx >= 0 ? idx : deepExpiryData.buckets.length - 1);
+  }, [deepExpiryData, deepExpiryEnd]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
@@ -668,7 +698,7 @@ export default function ManagerReportsPage() {
     (async () => {
       setDeepPricingLoading(true);
       try {
-        const data = await getManagerZonePricingCombo(deepPricingStart, deepPricingEnd);
+        const data = await getManagerZonePricingCombo(deepSnapshotDate, deepSnapshotDate);
         if (!cancelled) setDeepPricingData(data);
       } catch (e) {
         if (!cancelled) {
@@ -682,7 +712,7 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepPricingStart, deepPricingEnd, toast]);
+  }, [tab, deepSnapshotDate, toast]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
@@ -742,9 +772,6 @@ export default function ManagerReportsPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-          <p className="text-sm text-slate-500 mt-2 max-w-3xl leading-relaxed">
-            Per-section date filters and tabs for summary, deep analytics, approvals, outbound, processing, contracts, and anomalies.
-          </p>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -759,10 +786,6 @@ export default function ManagerReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-        <p className="text-sm text-slate-500 mt-2 max-w-3xl leading-relaxed">
-          Each chart or block has its own date range (and quick presets). Tabs cover summary KPIs, deep analytics, approvals,
-          outbound, processing, contract risk, and anomalies.
-        </p>
       </div>
       {insightError && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
@@ -770,31 +793,10 @@ export default function ManagerReportsPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {[
-          ['summary', 'Summary'],
-          ['deep', 'Deep dive'],
-          ['approvals', 'Approval Rate'],
-          ['outbound', 'Top Outbound Products'],
-          ['processing', 'Processing Time'],
-          ['contracts', 'Contract Risk'],
-          ['anomalies', 'Anomalies'],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id as ReportTab)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
-              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
       {tab === 'summary' && (
         <>
           <ChartDateFilterBar
+            enableToggle
             startDate={kpiStart}
             endDate={kpiEnd}
             activePreset={kpiPreset}
@@ -818,9 +820,9 @@ export default function ManagerReportsPage() {
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
               <div className="mb-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Space utilization</h3>
-                <p className="text-xs text-slate-500 mt-1">Share of capacity in use vs empty.</p>
               </div>
               <ChartDateFilterBar
+                enableToggle
                 startDate={spaceStart}
                 endDate={spaceEnd}
                 activePreset={spacePreset}
@@ -882,9 +884,9 @@ export default function ManagerReportsPage() {
             <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
               <div className="mb-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Stock by category</h3>
-                <p className="text-xs text-slate-500 mt-1">Inventory quantity grouped by product category.</p>
               </div>
               <ChartDateFilterBar
+                enableToggle
                 startDate={stockStart}
                 endDate={stockEnd}
                 activePreset={stockPreset}
@@ -938,9 +940,9 @@ export default function ManagerReportsPage() {
           <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
             <div className="mb-6">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Inbound / outbound trend</h3>
-              <p className="text-xs text-slate-500 mt-1">Request counts bucketed by day or week for this range.</p>
             </div>
             <ChartDateFilterBar
+              enableToggle
               startDate={trendStart}
               endDate={trendEnd}
               activePreset={trendPreset}
@@ -1048,167 +1050,13 @@ export default function ManagerReportsPage() {
         </>
       )}
 
-      {tab === 'approvals' && (
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="mb-6">
-          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Approval rate by manager</h3>
-          <p className="text-xs text-slate-500 mt-1">Inbound and outbound decisions in the window.</p>
-        </div>
-        <ChartDateFilterBar
-          startDate={approvalStart}
-          endDate={approvalEnd}
-          activePreset={approvalPreset}
-          onStartChange={setApprovalStart}
-          onEndChange={setApprovalEnd}
-          onClearPreset={() => setApprovalPreset(null)}
-          onApplyPreset={(r, preset) => {
-            setApprovalStart(r.start);
-            setApprovalEnd(r.end);
-            setApprovalPreset(preset);
-          }}
-        />
-
-        {approvalByManager.length > 0 ? (
-          <>
-            {/* KPI Cards for approval stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <StatCard
-                title="Total Approved"
-                value={approvalByManager.reduce((s, m) => s + m.totalApproved, 0)}
-                unit="requests"
-              />
-              <StatCard
-                title="Total Rejected"
-                value={approvalByManager.reduce((s, m) => s + m.totalRejected, 0)}
-                unit="requests"
-                isWarning={approvalByManager.reduce((s, m) => s + m.totalRejected, 0) > 0}
-              />
-              <StatCard
-                title="Avg Approval Rate"
-                value={
-                  approvalByManager.filter((m) => m.totalDecisions > 0).length > 0
-                    ? `${Math.round(
-                        approvalByManager
-                          .filter((m) => m.totalDecisions > 0)
-                          .reduce((s, m) => s + m.approvalRatePercent, 0) /
-                          approvalByManager.filter((m) => m.totalDecisions > 0).length
-                      )}%`
-                    : '0%'
-                }
-              />
-              <StatCard
-                title="Managers with Decisions"
-                value={approvalByManager.filter((m) => m.totalDecisions > 0).length}
-                unit="managers"
-              />
-            </div>
-
-            {/* Horizontal Bar Chart - by Manager */}
-            <div className="h-[400px] min-h-[200px] relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'manager_approval_by_manager'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_approval_by_manager'}
-                onClick={() =>
-                  handleInsightRequest(
-                    'manager_approval_by_manager',
-                    { approvalByManager },
-                    { startDate: approvalStart, endDate: approvalEnd },
-                  )
-                }
-              >
-                Insight
-              </Button>
-              <Bar
-                data={{
-                  labels: approvalByManager.map((d) => d.managerName),
-                  datasets: [
-                    {
-                      label: 'Approved',
-                      data: approvalByManager.map((d) => d.totalApproved),
-                      backgroundColor: APPROVED_COLOR,
-                      stack: 'a',
-                    },
-                    {
-                      label: 'Rejected',
-                      data: approvalByManager.map((d) => d.totalRejected),
-                      backgroundColor: REJECTED_COLOR,
-                      stack: 'a',
-                    },
-                  ],
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  indexAxis: 'y',
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: {
-                    x: { stacked: true, beginAtZero: true },
-                    y: { stacked: true },
-                  },
-                }}
-              />
-            </div>
-
-            {insightsByKey.manager_approval_by_manager && (
-              <div className="mt-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_approval_by_manager')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.manager_approval_by_manager} />
-              </div>
-            )}
-
-            {/* Summary table */}
-            <div className="mt-6 pt-6 border-t border-slate-100">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Summary by Manager</h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-500 font-bold border-b border-slate-200">
-                      <th className="pb-2 pr-4">Manager</th>
-                      <th className="pb-2 pr-4 text-right">Inbound Approved</th>
-                      <th className="pb-2 pr-4 text-right">Inbound Rejected</th>
-                      <th className="pb-2 pr-4 text-right">Outbound Approved</th>
-                      <th className="pb-2 pr-4 text-right">Outbound Rejected</th>
-                      <th className="pb-2 pr-4 text-right">Approval Rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvalByManager.map((m) => (
-                      <tr key={m.managerId} className="border-b border-slate-50 last:border-0">
-                        <td className="py-2 pr-4 font-medium text-slate-900">{m.managerName}</td>
-                        <td className="py-2 pr-4 text-right text-emerald-600">{m.inboundApproved}</td>
-                        <td className="py-2 pr-4 text-right text-red-600">{m.inboundRejected}</td>
-                        <td className="py-2 pr-4 text-right text-emerald-600">{m.outboundApproved}</td>
-                        <td className="py-2 pr-4 text-right text-red-600">{m.outboundRejected}</td>
-                        <td className="py-2 pr-4 text-right font-bold text-slate-900">{m.approvalRatePercent}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        ) : (
-          <div className="py-12 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
-            No approval data in this period. Managers approve/reject Inbound and Outbound requests.
-          </div>
-        )}
-      </div>
-      )}
-
       {tab === 'outbound' && (
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="mb-6">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Top 10 outbound products</h3>
-          <p className="text-xs text-slate-500 mt-1">Highest volume and shipment count.</p>
         </div>
         <ChartDateFilterBar
+          enableToggle
           startDate={outboundStart}
           endDate={outboundEnd}
           activePreset={outboundPreset}
@@ -1320,9 +1168,9 @@ export default function ManagerReportsPage() {
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <div className="mb-6">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Processing time</h3>
-          <p className="text-xs text-slate-500 mt-1">Hours from request creation to decision.</p>
         </div>
         <ChartDateFilterBar
+          enableToggle
           startDate={processingStart}
           endDate={processingEnd}
           activePreset={processingPreset}
@@ -1338,29 +1186,11 @@ export default function ManagerReportsPage() {
 
         {(processingTimeTrend.length > 0 || processingTimeBoxPlot.some((b) => b.count > 0)) ? (
           <>
-            {/* Granularity toggle */}
-            <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white w-fit mb-6">
-              <button
-                type="button"
-                onClick={() => setProcessingTimeGranularity('week')}
-                className={`px-4 py-2.5 text-sm font-bold transition-colors ${processingTimeGranularity === 'week' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                By week
-              </button>
-              <button
-                type="button"
-                onClick={() => setProcessingTimeGranularity('month')}
-                className={`px-4 py-2.5 text-sm font-bold transition-colors ${processingTimeGranularity === 'month' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                By month
-              </button>
-            </div>
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Line Chart - Trend */}
               <div>
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">
-                  Trend {processingTimeGranularity === 'month' ? '(by month)' : '(by week)'}
+                  Trend
                 </h4>
                 <div className="h-72 relative">
                   <Button
@@ -1476,9 +1306,9 @@ export default function ManagerReportsPage() {
         <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
           <div className="mb-6">
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Contracts &amp; capacity</h3>
-            <p className="text-xs text-slate-500 mt-1">Near-term expiries and utilization snapshot.</p>
           </div>
           <ChartDateFilterBar
+            enableToggle
             startDate={contractRiskStart}
             endDate={contractRiskEnd}
             activePreset={contractRiskPreset}
@@ -1562,10 +1392,9 @@ export default function ManagerReportsPage() {
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
-                <h2 className="text-lg font-black text-slate-900">Expiry status (contracts &amp; zone lines)</h2>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  Stacked counts by snapshot date; red/yellow need action. Hover a column or click it—table lists contract
-                  codes, customers, zone codes, and shelf codes from inventory (StoredItem).
+                <h2 className="text-lg font-black text-slate-900">Contract &amp; Zone Expiry Snapshot</h2>
+                <p className="text-xs text-slate-500">
+                  Updated to {deepExpiryEnd} • Unit: records
                 </p>
               </div>
               <Button
@@ -1603,6 +1432,7 @@ export default function ManagerReportsPage() {
               </Button>
             </div>
             <ChartDateFilterBar
+              enableToggle
               startDate={deepExpiryStart}
               endDate={deepExpiryEnd}
               activePreset={deepExpiryPreset}
@@ -1615,6 +1445,20 @@ export default function ManagerReportsPage() {
                 setDeepExpiryPreset(preset);
               }}
             />
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contracts at risk</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{expirySummary.contractsAtRisk}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Zone lines at risk</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{expirySummary.zoneLinesAtRisk}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total at risk</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{expirySummary.total}</p>
+              </div>
+            </div>
             <div className="relative h-80 w-full">
               {deepExpiryLoading ? (
                 <LoadingSkeleton className="h-full rounded-2xl" />
@@ -1676,7 +1520,7 @@ export default function ManagerReportsPage() {
                   <p className="text-xs font-black uppercase tracking-widest text-slate-500">
                     Detail — period: {deepExpiryData.buckets[expirySelectedBucketIndex]?.label ?? '—'}
                   </p>
-                  <p className="text-xs text-slate-400">Click a bar to change period</p>
+                  <p className="text-xs text-slate-400">Detail follows the selected To date</p>
                 </div>
                 <div className="max-w-sm">
                   <Select
@@ -1805,9 +1649,8 @@ export default function ManagerReportsPage() {
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Zone fill vs suggested rent</h2>
-                <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-                  See how full each zone is compared side by side with a suggested monthly rent, so you can spot crowded
-                  areas and where pricing might deserve another look.
+                <p className="text-xs text-slate-500">
+                  Current snapshot ({deepSnapshotDate}) • Unit: occupancy (%) and monthly rent (VND)
                 </p>
               </div>
               <Button
@@ -1820,26 +1663,27 @@ export default function ManagerReportsPage() {
                   handleInsightRequest(
                     'manager_deep_zone_pricing',
                     deepPricingData,
-                    { startDate: deepPricingStart, endDate: deepPricingEnd },
+                    { startDate: deepSnapshotDate, endDate: deepSnapshotDate },
                   )
                 }
               >
                 Insight
               </Button>
             </div>
-            <ChartDateFilterBar
-              startDate={deepPricingStart}
-              endDate={deepPricingEnd}
-              activePreset={deepPricingPreset}
-              onStartChange={setDeepPricingStart}
-              onEndChange={setDeepPricingEnd}
-              onClearPreset={() => setDeepPricingPreset(null)}
-              onApplyPreset={(r, preset) => {
-                setDeepPricingStart(r.start);
-                setDeepPricingEnd(r.end);
-                setDeepPricingPreset(preset);
-              }}
-            />
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Zones</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{zonePricingSummary.zoneCount}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Avg occupancy</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{Math.round(zonePricingSummary.avgOccupancy)}%</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Avg suggested rent</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{formatZonePricingVnd(zonePricingSummary.avgSuggestedRent)}</p>
+              </div>
+            </div>
             <div className="relative h-80 w-full">
               {deepPricingLoading ? (
                 <LoadingSkeleton className="h-full rounded-2xl" />
@@ -1874,8 +1718,27 @@ export default function ManagerReportsPage() {
                     responsive: true,
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { position: 'bottom' } },
+                    plugins: {
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        callbacks: {
+                          title: (items) => {
+                            const idx = items[0]?.dataIndex ?? 0;
+                            const row = deepPricingData[idx];
+                            return row?.zoneCode ?? '';
+                          },
+                          afterBody: (items) => {
+                            const idx = items[0]?.dataIndex ?? 0;
+                            const row = deepPricingData[idx];
+                            return [`Warehouse: ${row?.warehouseName || 'Unknown warehouse'}`];
+                          },
+                        },
+                      },
+                    },
                     scales: {
+                      x: {
+                        title: { display: true, text: 'Zone code' },
+                      },
                       y: {
                         type: 'linear',
                         position: 'left',
@@ -1993,13 +1856,129 @@ export default function ManagerReportsPage() {
             )}
           </section>
 
-          {/* 3. Penalty horizontal bar */}
+          {/* 3. Top stock products */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 pr-2">
+                <h2 className="text-lg font-black text-slate-900">Top 10 Products by Inventory Volume</h2>
+                <p className="text-xs text-slate-500">Current stock snapshot • Unit: quantity in bins/shelves</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                isLoading={insightLoadingKey === 'manager_deep_top_stock_products'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_deep_top_stock_products'}
+                onClick={() =>
+                  handleInsightRequest(
+                    'manager_deep_top_stock_products',
+                    {
+                      topProducts: deepTopStockData,
+                      totalQuantity: topStockSummary.totalQuantity,
+                    },
+                    { startDate: deepSnapshotDate, endDate: deepSnapshotDate },
+                  )
+                }
+              >
+                Insight
+              </Button>
+            </div>
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Products in chart</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{topStockSummary.productCount}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total quantity</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{topStockSummary.totalQuantity}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Highest product qty</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{topStockSummary.topProductQty}</p>
+              </div>
+            </div>
+            <div className="relative h-80 w-full">
+              {deepTopStockData.length > 0 ? (
+                <Bar
+                  data={{
+                    labels: deepTopStockData.map((r) => (r.name.length > 20 ? `${r.name.slice(0, 20)}...` : r.name)),
+                    datasets: [
+                      {
+                        label: 'Stored quantity',
+                        data: deepTopStockData.map((r) => r.qty),
+                        backgroundColor: '#6366f1',
+                        borderColor: '#4f46e5',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        maxBarThickness: 36,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'bottom' },
+                      tooltip: {
+                        callbacks: {
+                          title: (ctx) => {
+                            const idx = ctx[0]?.dataIndex ?? 0;
+                            return deepTopStockData[idx]?.name ?? '';
+                          },
+                          label: (ctx) => `Quantity: ${Number(ctx.raw || 0)}`,
+                          afterLabel: (ctx) => {
+                            const idx = ctx.dataIndex;
+                            const row = deepTopStockData[idx];
+                            if (!row) return '';
+                            return `Share: ${((row.qty / Math.max(topStockSummary.totalQuantity, 1)) * 100).toFixed(1)}%`;
+                          },
+                        },
+                      },
+                    },
+                    scales: {
+                      x: {
+                        title: { display: true, text: 'Product name (or SKU)' },
+                        ticks: { autoSkip: false, maxRotation: 35, minRotation: 0 },
+                      },
+                      y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0 },
+                        title: { display: true, text: 'Total stored quantity' },
+                      },
+                    },
+                  }}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                  No inventory data for this range.
+                </div>
+              )}
+            </div>
+            {topStockSummary.topProductName !== '—' && (
+              <p className="mt-3 text-xs text-slate-500">
+                Top product: <span className="font-semibold text-slate-700">{topStockSummary.topProductName}</span>
+              </p>
+            )}
+            {insightsByKey.manager_deep_top_stock_products && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+                  <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_deep_top_stock_products')}>
+                    Clear
+                  </Button>
+                </div>
+                <ChatMarkdown role="model" content={insightsByKey.manager_deep_top_stock_products} />
+              </div>
+            )}
+          </section>
+
+          {/* 4. Penalty horizontal bar */}
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Damage exposure by customer</h2>
-                <p className="mt-0.5 text-sm text-slate-500">
-                  Top customers by total damage units on request line items in the reporting window.
+                <p className="text-xs text-slate-500">
+                  Updated to {deepPenaltyEnd} • Unit: damaged units
                 </p>
               </div>
               <Button
@@ -2020,6 +1999,7 @@ export default function ManagerReportsPage() {
               </Button>
             </div>
             <ChartDateFilterBar
+              enableToggle
               startDate={deepPenaltyStart}
               endDate={deepPenaltyEnd}
               activePreset={deepPenaltyPreset}
@@ -2032,9 +2012,23 @@ export default function ManagerReportsPage() {
                 setDeepPenaltyPreset(preset);
               }}
             />
+            <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Customers</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{damageSummary.customerCount}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total damage units</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{damageSummary.totalDamageUnits}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Affected requests</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{damageSummary.totalAffectedRequests}</p>
+              </div>
+            </div>
             <div
               className="relative w-full"
-              style={{ height: `${Math.max(280, (deepPenaltyData?.length ?? 5) * 40 + 80)}px` }}
+              style={{ height: `${Math.max(260, (deepPenaltyData?.length ?? 5) * 36 + 56)}px` }}
             >
               {deepPenaltyLoading ? (
                 <LoadingSkeleton className="h-full min-h-[280px] rounded-2xl" />
@@ -2051,15 +2045,17 @@ export default function ManagerReportsPage() {
                         backgroundColor: 'rgba(239, 68, 68, 0.65)',
                         borderColor: '#b91c1c',
                         borderWidth: 1,
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.82,
+                        maxBarThickness: 28,
                       },
                     ],
                   }}
                   options={{
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                      legend: { display: false },
+                      legend: { display: true, position: 'bottom' },
                       tooltip: {
                         callbacks: {
                           afterLabel: (ctx) => {
@@ -2070,10 +2066,14 @@ export default function ManagerReportsPage() {
                       },
                     },
                     scales: {
-                      x: {
+                      y: {
                         beginAtZero: true,
                         ticks: { precision: 0 },
-                        title: { display: true, text: 'Units' },
+                        title: { display: true, text: 'Damage units' },
+                      },
+                      x: {
+                        ticks: { autoSkip: false, maxRotation: 40, minRotation: 0 },
+                        title: { display: true, text: 'Customer' },
                       },
                     },
                   }}
@@ -2084,6 +2084,41 @@ export default function ManagerReportsPage() {
                 </div>
               )}
             </div>
+            {deepPenaltyData && deepPenaltyData.length > 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Damage detail by item</p>
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full min-w-[840px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
+                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Top damaged items</th>
+                        <th className="px-3 py-2 text-right">Total damage units</th>
+                        <th className="px-3 py-2 text-right">Affected requests</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deepPenaltyData.map((row, idx) => (
+                        <tr key={`${row.customerId}-${idx}`} className="border-b border-slate-100">
+                          <td className="px-3 py-2 font-medium text-slate-800">{row.customerName}</td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {row.topDamagedItems && row.topDamagedItems.length > 0 ? (
+                              row.topDamagedItems
+                                .map((it) => `${it.itemName} (${it.damageUnits})`)
+                                .join(', ')
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-800">{row.totalDamageUnits}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-800">{row.affectedRequestCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {insightsByKey.manager_deep_penalty_damage && (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
                 <div className="mb-2 flex items-center justify-between gap-3">
@@ -2099,89 +2134,6 @@ export default function ManagerReportsPage() {
         </div>
       )}
 
-      {tab === 'anomalies' && (
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Anomalies</h3>
-            <p className="text-xs text-slate-500 mt-1">Unusual inbound/outbound days vs recent average.</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="shrink-0"
-            isLoading={insightLoadingKey === 'manager_report_anomalies'}
-            disabled={insightLoadingKey !== null && insightLoadingKey !== 'manager_report_anomalies'}
-            onClick={() =>
-              handleInsightRequest(
-                'manager_report_anomalies',
-                { anomalies },
-                { startDate: anomalyStart, endDate: anomalyEnd },
-              )
-            }
-          >
-            Insight
-          </Button>
-        </div>
-        <ChartDateFilterBar
-          startDate={anomalyStart}
-          endDate={anomalyEnd}
-          activePreset={anomalyPreset}
-          onStartChange={setAnomalyStart}
-          onEndChange={setAnomalyEnd}
-          onClearPreset={() => setAnomalyPreset(null)}
-          onApplyPreset={(r, preset) => {
-            setAnomalyStart(r.start);
-            setAnomalyEnd(r.end);
-            setAnomalyPreset(preset);
-          }}
-        />
-        {insightsByKey.manager_report_anomalies && (
-          <div className="mb-6 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('manager_report_anomalies')}>
-                Clear
-              </Button>
-            </div>
-            <ChatMarkdown role="model" content={insightsByKey.manager_report_anomalies} />
-          </div>
-        )}
-        {anomalies.length > 0 ? (
-          <ul className="space-y-3">
-            {anomalies.map((a, i) => (
-              <li
-                key={`${a.date}-${a.type}-${i}`}
-                className={`flex flex-wrap items-start gap-3 p-4 rounded-2xl border ${
-                  a.severity === 'high' ? 'bg-red-50/50 border-red-200' : 'bg-amber-50/50 border-amber-200'
-                }`}
-              >
-                <span className="material-symbols-outlined shrink-0 text-slate-600">
-                  {a.type === 'inbound' ? 'inbox' : 'outbox'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-slate-900">{a.message}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {a.date} · {a.type} = {a.value} · {a.severity === 'high' ? 'High' : 'Low'}
-                  </p>
-                </div>
-                <span
-                  className={`text-xs font-black uppercase tracking-widest px-2.5 py-1 rounded-lg ${
-                    a.severity === 'high' ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'
-                  }`}
-                >
-                  {a.severity === 'high' ? 'High' : 'Low'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="py-8 text-center text-slate-500 text-sm font-medium rounded-2xl bg-slate-50 border border-dashed border-slate-200">
-            No anomalies detected in this period
-          </div>
-        )}
-      </div>
-      )}
     </div>
   );
 }

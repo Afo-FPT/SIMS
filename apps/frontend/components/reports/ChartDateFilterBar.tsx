@@ -1,10 +1,9 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { Input } from '../ui/Input';
 import {
   PRESET_LABELS,
-  formatReportRangeSummary,
   rollingPresetRange,
   toIsoDate,
   type QuickPreset,
@@ -20,22 +19,42 @@ export type ChartDateFilterBarProps = {
   onEndChange: (v: string) => void;
   onClearPreset: () => void;
   onApplyPreset: (range: { start: string; end: string }, preset: QuickPreset) => void;
+  enableToggle?: boolean;
+  initialCollapsed?: boolean;
 };
 
 export function ChartDateFilterBar(props: ChartDateFilterBarProps) {
-  const { startDate, endDate, activePreset, onStartChange, onEndChange, onClearPreset, onApplyPreset } = props;
+  const {
+    startDate,
+    endDate,
+    activePreset,
+    onStartChange,
+    onEndChange,
+    onClearPreset,
+    onApplyPreset,
+    enableToggle = false,
+    initialCollapsed = false,
+  } = props;
   const idBase = useId();
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const presets: QuickPreset[] = ['7d', '2w', '1m', '1y'];
   return (
     <div className="mb-5 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50/90 to-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Date range</p>
-          <p className="text-sm font-medium text-slate-600 tabular-nums sm:text-right">
-            {formatReportRangeSummary(startDate, endDate)}
-          </p>
+          {enableToggle && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              {collapsed ? 'Show filter' : 'Hide filter'}
+            </button>
+          )}
         </div>
 
+        {!collapsed && (
         <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch lg:justify-between lg:gap-6">
           <div className="flex flex-wrap items-end gap-4">
             <div className="min-w-[9.5rem] flex-1 space-y-1 sm:flex-none sm:min-w-[10.5rem]">
@@ -78,8 +97,8 @@ export function ChartDateFilterBar(props: ChartDateFilterBarProps) {
                 <button
                   key={key}
                   type="button"
-                  title="Sets To forward from From (e.g. 7 days = From … From+6); To capped at today if needed"
-                  onClick={() => onApplyPreset(rollingPresetRange(startDate, key), key)}
+                  title="Sets both dates; end is today (local)"
+                  onClick={() => onApplyPreset(rollingPresetRange(key), key)}
                   className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors sm:text-sm ${
                     activePreset === key
                       ? 'bg-primary text-white shadow-sm'
@@ -92,12 +111,8 @@ export function ChartDateFilterBar(props: ChartDateFilterBarProps) {
             </div>
           </div>
         </div>
+        )}
 
-        <p className="text-xs leading-relaxed text-slate-400">
-          Quick ranges count forward from <span className="font-semibold text-slate-500">From</span> (Last 7 days = 7 calendar
-          days starting on that date). If the window would end after today, <span className="font-semibold text-slate-500">To</span>{' '}
-          stops at today. Chart bucket size (day / month / year) still follows the span length.
-        </p>
       </div>
     </div>
   );

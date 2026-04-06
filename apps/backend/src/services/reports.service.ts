@@ -814,6 +814,7 @@ export interface PenaltyTopCustomerRow {
   customerName: string;
   totalDamageUnits: number;
   affectedRequestCount: number;
+  topDamagedItems: { itemName: string; damageUnits: number }[];
 }
 
 function parseYMDLocal(s: string): Date {
@@ -1244,6 +1245,46 @@ export async function getManagerPenaltyTopCustomers(
     .lean();
   const nameMap = new Map(users.map((u) => [u._id.toString(), u.name || "Unknown"]));
 
+  const itemBreakdownAgg = await StorageRequestDetail.aggregate([
+    {
+      $lookup: {
+        from: "storagerequests",
+        localField: "requestId",
+        foreignField: "_id",
+        as: "req"
+      }
+    },
+    { $unwind: "$req" },
+    {
+      $match: {
+        "req.createdAt": { $gte: start, $lte: end },
+        "req.customerId": { $in: ids },
+        damageQuantity: { $gt: 0 }
+      }
+    },
+    {
+      $group: {
+        _id: { customerId: "$req.customerId", itemName: "$itemName" },
+        damageUnits: { $sum: "$damageQuantity" }
+      }
+    },
+    { $sort: { "_id.customerId": 1, damageUnits: -1 } }
+  ]);
+  const topItemsByCustomerId = new Map<string, { itemName: string; damageUnits: number }[]>();
+  for (const row of itemBreakdownAgg as Array<{
+    _id: { customerId: Types.ObjectId; itemName: string };
+    damageUnits: number;
+  }>) {
+    const customerId = String(row._id.customerId);
+    const current = topItemsByCustomerId.get(customerId) || [];
+    if (current.length >= 5) continue;
+    current.push({
+      itemName: String(row._id.itemName || "Unknown item"),
+      damageUnits: Number(row.damageUnits) || 0
+    });
+    topItemsByCustomerId.set(customerId, current);
+  }
+
   return agg.map(
     (a: {
       customerId: Types.ObjectId;
@@ -1253,7 +1294,8 @@ export async function getManagerPenaltyTopCustomers(
       customerId: a.customerId.toString(),
       customerName: nameMap.get(a.customerId.toString()) || "Unknown",
       totalDamageUnits: a.totalDamageUnits,
-      affectedRequestCount: a.affectedRequestCount
+      affectedRequestCount: a.affectedRequestCount,
+      topDamagedItems: topItemsByCustomerId.get(a.customerId.toString()) || []
     })
   );
 }

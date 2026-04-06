@@ -265,4 +265,5 @@ export interface PenaltyTopCustomerRow {
   customerName: string;
   totalDamageUnits: number;
   affectedRequestCount: number;
+  topDamagedItems: Array<{ itemName: string; damageUnits: number }>;
 }

@@ -1,8 +1,4 @@
-/**
- * Quick ranges extend forward from the current From date (inclusive).
- * Example: From 20 Jan + Last 7 days → 20 Jan … 26 Jan (7 calendar days).
- * To is capped at today when the forward window would pass today.
- */
+/** Quick ranges: both dates set, end anchored to today (local). */
 export type QuickPreset = '7d' | '2w' | '1m' | '1y';
 
 export const PRESET_LABELS: Record<QuickPreset, string> = {
@@ -42,46 +38,27 @@ export function defaultReportDateRange(): { start: string; end: string } {
   return { start: toIsoDate(start), end: toIsoDate(end) };
 }
 
-/**
- * From stays as `anchorStartIso`. To moves forward by the preset length (inclusive days for 7d/2w).
- * If that To is after today (local), To is set to today. If that would make To before From, To = From.
- */
-export function rollingPresetRange(anchorStartIso: string, preset: QuickPreset): { start: string; end: string } {
-  const parts = anchorStartIso.split('-').map((x) => parseInt(x, 10));
-  const y = parts[0];
-  const mo = parts[1];
-  const d = parts[2];
-  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) {
-    return defaultReportDateRange();
-  }
-  const start = new Date(y, mo - 1, d, 12, 0, 0, 0);
-  const end = new Date(start);
+/** Rolling window ending today (local calendar). */
+export function rollingPresetRange(preset: QuickPreset): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 12, 0, 0, 0);
   switch (preset) {
     case '7d':
-      end.setDate(end.getDate() + 6);
+      start.setDate(start.getDate() - 6);
       break;
     case '2w':
-      end.setDate(end.getDate() + 13);
+      start.setDate(start.getDate() - 13);
       break;
     case '1m':
-      end.setMonth(end.getMonth() + 1);
+      start.setMonth(start.getMonth() - 1);
       break;
     case '1y':
-      end.setFullYear(end.getFullYear() + 1);
+      start.setFullYear(start.getFullYear() - 1);
       break;
     default:
       break;
   }
-  const startIso = toIsoDate(start);
-  let endIso = toIsoDate(end);
-  const todayIso = toIsoDate(new Date());
-  if (endIso > todayIso) {
-    endIso = todayIso;
-  }
-  if (startIso > endIso) {
-    endIso = startIso;
-  }
-  return { start: startIso, end: endIso };
+  return { start: toIsoDate(start), end: toIsoDate(end) };
 }
 
 export function formatReportRangeSummary(startIso: string, endIso: string): string {
