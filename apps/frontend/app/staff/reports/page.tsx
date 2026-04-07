@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Chart as ChartJSComponent } from 'react-chartjs-2';
+import { Pie, Bar } from 'react-chartjs-2';
 import {
   ArcElement,
   BarElement,
@@ -11,65 +11,37 @@ import {
   LinearScale,
   Tooltip as ChartTooltip,
 } from 'chart.js';
-import { Pie, Bar } from 'react-chartjs-2';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
-import { Input } from '../../../components/ui/Input';
+import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Button } from '../../../components/ui/Button';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
+import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
-ChartJSCore.register(
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  ChartLegend,
-  LinearScale,
-  ChartTooltip,
-);
 
-ChartJSCore.defaults.animation = {
-  duration: 1200,
-  easing: 'easeOutCubic',
-};
-ChartJSCore.defaults.animations = {
-  x: { duration: 900, from: 0 },
-  y: { duration: 900, from: 0 },
-  radius: { duration: 900, from: 0 },
-} as any;
-ChartJSCore.defaults.transitions.show = {
-  animations: {
-    x: { from: 0 },
-    y: { from: 0 },
-  },
-} as any;
-type ReportTab = 'performance' | 'history' | 'discrepancy' | 'cycle' | 'workload';
-
-function dayKey(ts: string): string {
-  return new Date(ts).toLocaleDateString('en-GB', { weekday: 'short' });
-}
+ChartJSCore.register(ArcElement, BarElement, CategoryScale, ChartLegend, LinearScale, ChartTooltip);
 
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
 export default function StaffReportsPage() {
+  const init = useMemo(() => defaultReportDateRange(), []);
   const [loading, setLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 90);
-    return toIsoDate(d);
-  });
-  const [endDate, setEndDate] = useState(() => toIsoDate(new Date()));
-  const [activeQuickRange, setActiveQuickRange] = useState<'30' | '90'>('90');
-  const [tab, setTab] = useState<ReportTab>('performance');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const [historyStartDate, setHistoryStartDate] = useState(init.start);
+  const [historyEndDate, setHistoryEndDate] = useState(init.end);
+  const [historyPreset, setHistoryPreset] = useState<QuickPreset | null>('1m');
+
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
+
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
@@ -77,9 +49,9 @@ export default function StaffReportsPage() {
   const aiStartDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
-    return d.toISOString().slice(0, 10);
+    return toIsoDate(d);
   }, []);
-  const aiEndDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const aiEndDate = useMemo(() => toIsoDate(new Date()), []);
 
   async function handleInsightRequest(chartKey: string, data: unknown) {
     try {
@@ -96,7 +68,6 @@ export default function StaffReportsPage() {
 
   function clearInsight(chartKey: string) {
     setInsightsByKey((prev) => {
-      if (!prev[chartKey]) return prev;
       const next = { ...prev };
       delete next[chartKey];
       return next;
@@ -107,173 +78,178 @@ export default function StaffReportsPage() {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-    async function run() {
+    async function run(isInitial: boolean) {
       try {
-        if (!hasLoaded) setLoading(true);
-        setError(null);
+        if (isInitial) {
+          setLoading(true);
+          setError(null);
+        }
         const [req, cc] = await Promise.all([listStorageRequests(), getCycleCounts()]);
         if (cancelled) return;
-        setRequests(req);
-        setCycleCounts(cc);
+        setRequests(req || []);
+        setCycleCounts(cc || []);
+        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
+        if (!cancelled && isInitial) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
-        if (!cancelled) {
+        if (!cancelled && isInitial) {
           setLoading(false);
-          setHasLoaded(true);
         }
       }
     }
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void run();
-      }
-    };
-
-    void run();
+    void run(true);
     pollTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void run();
-      }
-    }, 30000);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+      if (document.visibilityState === 'visible') void run(false);
+    }, 15000);
 
     return () => {
       cancelled = true;
       if (pollTimer) clearInterval(pollTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [hasLoaded]);
+  }, []);
 
-  const filteredRequests = useMemo(() => {
-    const from = new Date(startDate).getTime();
-    const to = new Date(endDate).getTime() + 86399999;
+  const historyRequests = useMemo(() => {
+    const from = new Date(historyStartDate).getTime();
+    const to = new Date(historyEndDate).getTime() + 86399999;
     return requests.filter((r) => {
       const t = new Date(r.updated_at || r.created_at).getTime();
       return t >= from && t <= to;
     });
-  }, [requests, startDate, endDate]);
+  }, [requests, historyStartDate, historyEndDate]);
 
-  const filteredCycleCounts = useMemo(() => {
-    const from = new Date(startDate).getTime();
-    const to = new Date(endDate).getTime() + 86399999;
+  const historyCycleCounts = useMemo(() => {
+    const from = new Date(historyStartDate).getTime();
+    const to = new Date(historyEndDate).getTime() + 86399999;
     return cycleCounts.filter((c) => {
       const t = new Date(c.updated_at || c.created_at).getTime();
       return t >= from && t <= to;
     });
-  }, [cycleCounts, startDate, endDate]);
-
-  const completion = useMemo(() => {
-    const total = filteredRequests.length + filteredCycleCounts.length;
-    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length + filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
-    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length + filteredCycleCounts.filter((c) => c.status === 'STAFF_SUBMITTED').length;
-    const pending = Math.max(0, total - completed - inProgress);
-    const ratio = total === 0 ? 0 : Math.round((completed / total) * 100);
-    return { total, completed, inProgress, pending, ratio };
-  }, [filteredRequests, filteredCycleCounts]);
+  }, [cycleCounts, historyStartDate, historyEndDate]);
 
   const inOutPerDay = useMemo(() => {
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const base = weekdays.map((d) => ({ day: d, inbound: 0, outbound: 0, cycle: 0 }));
-    const byDay = new Map(base.map((d) => [d.day, d]));
-    filteredRequests.forEach((r) => {
-      const day = dayKey(r.updated_at || r.created_at);
-      const row = byDay.get(day);
+    const fromDate = new Date(historyStartDate);
+    const toDate = new Date(historyEndDate);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const base: Array<{ iso: string; day: string; inbound: number; outbound: number; cycle: number }> = [];
+
+    for (let t = fromDate.getTime(); t <= toDate.getTime(); t += dayMs) {
+      const dt = new Date(t);
+      const iso = dt.toISOString().slice(0, 10);
+      const day = dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+      base.push({ iso, day, inbound: 0, outbound: 0, cycle: 0 });
+    }
+    const byDay = new Map(base.map((d) => [d.iso, d]));
+
+    historyRequests.forEach((r) => {
+      const iso = new Date(r.updated_at || r.created_at).toISOString().slice(0, 10);
+      const row = byDay.get(iso);
       if (!row) return;
-      const qty = r.items.reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
+      const qty = (r.items || []).reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
       if (r.request_type === 'IN') row.inbound += qty;
       else row.outbound += qty;
     });
-    filteredCycleCounts.forEach((c) => {
-      const day = dayKey(c.updated_at || c.created_at);
-      const row = byDay.get(day);
+
+    historyCycleCounts.forEach((c) => {
+      const iso = new Date(c.updated_at || c.created_at).toISOString().slice(0, 10);
+      const row = byDay.get(iso);
       if (!row) return;
       row.cycle += (c.items || c.target_items || []).length;
     });
-    return base;
-  }, [filteredRequests, filteredCycleCounts]);
 
-  const operationHistory = useMemo(() => {
-    return inOutPerDay.map((d, index) => ({
-      ...d,
-      seq: index + 1,
-      totalOps: d.inbound + d.outbound + d.cycle,
-    }));
-  }, [inOutPerDay]);
+    return base.map(({ day, inbound, outbound, cycle }) => ({ day, inbound, outbound, cycle }));
+  }, [historyRequests, historyCycleCounts, historyStartDate, historyEndDate]);
 
   const discrepancySummary = useMemo(() => {
-    const damaged = filteredRequests.reduce((sum, r) => sum + r.items.reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
-    const mismatch = filteredCycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
-    const location = filteredRequests.filter((r) => r.status === 'REJECTED').length;
+    const damaged = requests.reduce((sum, r) => sum + (r.items || []).reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
+    const mismatch = cycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
+    const location = requests.filter((r) => r.status === 'REJECTED').length;
     return [
       { name: 'Damaged', value: damaged },
       { name: 'Quantity mismatch', value: mismatch },
       { name: 'Location/flow issue', value: location },
     ];
-  }, [filteredRequests, filteredCycleCounts]);
+  }, [requests, cycleCounts]);
 
-  const cycleAccuracy = useMemo(() => {
-    return filteredCycleCounts.map((c) => {
+  const realtimeCycleAccuracy = useMemo(() => {
+    return cycleCounts.map((c) => {
       const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
       const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
       const accuracy = system === 0 ? 100 : Math.max(0, Math.round(100 - (Math.abs(system - actual) / system) * 100));
       return {
-        id: c.cycle_count_id.slice(-6).toUpperCase(),
+        id: String(c.cycle_count_id).slice(-6).toUpperCase(),
         system,
         actual,
         accuracy,
       };
     });
-  }, [filteredCycleCounts]);
+  }, [cycleCounts]);
 
-  const taskTypeDistribution = useMemo(() => {
-    const inbound = filteredRequests.filter((r) => r.request_type === 'IN').length;
-    const outbound = filteredRequests.filter((r) => r.request_type === 'OUT').length;
-    const cycleCount = filteredCycleCounts.length;
+  const realtimeTaskTypeDistribution = useMemo(() => {
+    const inbound = requests.filter((r) => r.request_type === 'IN').length;
+    const outbound = requests.filter((r) => r.request_type === 'OUT').length;
+    const cycleCount = cycleCounts.length;
     return [
       { name: 'Inbound tasks', value: inbound },
       { name: 'Outbound tasks', value: outbound },
       { name: 'Cycle count tasks', value: cycleCount },
     ];
-  }, [filteredRequests, filteredCycleCounts]);
+  }, [requests, cycleCounts]);
 
-  const workloadByStatus = useMemo(() => {
-    const requestPending = filteredRequests.filter((r) => r.status === 'PENDING').length;
-    const requestInProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
-    const requestCompleted = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
+  const realtimeWorkloadByStatus = useMemo(() => {
+    const requestPending = requests.filter((r) => r.status === 'PENDING').length;
+    const requestInProgress = requests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const requestCompleted = requests.filter((r) => r.status === 'COMPLETED').length;
 
-    const cyclePending = filteredCycleCounts.filter((c) => c.status === 'PENDING').length;
-    const cycleInProgress = filteredCycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
-    const cycleCompleted = filteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+    const cyclePending = cycleCounts.filter((c) => c.status === 'PENDING').length;
+    const cycleInProgress = cycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
+    const cycleCompleted = cycleCounts.filter((c) => c.status === 'CONFIRMED').length;
 
     return [
       { status: 'Pending', requests: requestPending, cycleCounts: cyclePending },
       { status: 'In progress', requests: requestInProgress, cycleCounts: cycleInProgress },
       { status: 'Completed', requests: requestCompleted, cycleCounts: cycleCompleted },
     ];
-  }, [filteredRequests, filteredCycleCounts]);
+  }, [requests, cycleCounts]);
 
-  const quickRangeClass = (key: '30' | '90') =>
-    `px-4 py-2.5 text-sm font-bold transition-colors ${
-      activeQuickRange === key ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-50'
-    }`;
+  const historyKpis = useMemo(() => {
+    const inboundOrders = historyRequests.filter((r) => r.request_type === 'IN').length;
+    const outboundOrders = historyRequests.filter((r) => r.request_type === 'OUT').length;
+    const cycleTasks = historyCycleCounts.length;
+    const movedUnits = inOutPerDay.reduce((sum, d) => sum + d.inbound + d.outbound, 0);
+    return { inboundOrders, outboundOrders, cycleTasks, movedUnits };
+  }, [historyRequests, historyCycleCounts, inOutPerDay]);
 
-  const applyQuickRange = (days: 30 | 90) => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - days);
-    setStartDate(toIsoDate(start));
-    setEndDate(toIsoDate(end));
-    setActiveQuickRange(days === 30 ? '30' : '90');
-  };
+  const issueKpis = useMemo(() => {
+    const totalIssues = discrepancySummary.reduce((sum, item) => sum + item.value, 0);
+    const topIssue = discrepancySummary.reduce((top, item) => (item.value > top.value ? item : top), discrepancySummary[0] ?? { name: 'N/A', value: 0 });
+    return { totalIssues, topIssue };
+  }, [discrepancySummary]);
+
+  const cycleKpis = useMemo(() => {
+    if (realtimeCycleAccuracy.length === 0) return { avgAccuracy: 0, checkedCycles: 0, highAccuracy: 0, lowAccuracy: 0 };
+    const checkedCycles = realtimeCycleAccuracy.length;
+    const avgAccuracy = Math.round(realtimeCycleAccuracy.reduce((sum, item) => sum + item.accuracy, 0) / checkedCycles);
+    const highAccuracy = realtimeCycleAccuracy.filter((item) => item.accuracy >= 95).length;
+    const lowAccuracy = realtimeCycleAccuracy.filter((item) => item.accuracy < 80).length;
+    return { avgAccuracy, checkedCycles, highAccuracy, lowAccuracy };
+  }, [realtimeCycleAccuracy]);
+
+  const workloadKpis = useMemo(() => {
+    const pendingTotal = realtimeWorkloadByStatus.find((d) => d.status === 'Pending');
+    const inProgressTotal = realtimeWorkloadByStatus.find((d) => d.status === 'In progress');
+    const completedTotal = realtimeWorkloadByStatus.find((d) => d.status === 'Completed');
+    const totalPending = (pendingTotal?.requests ?? 0) + (pendingTotal?.cycleCounts ?? 0);
+    const totalInProgress = (inProgressTotal?.requests ?? 0) + (inProgressTotal?.cycleCounts ?? 0);
+    const totalCompleted = (completedTotal?.requests ?? 0) + (completedTotal?.cycleCounts ?? 0);
+    return { totalPending, totalInProgress, totalCompleted };
+  }, [realtimeWorkloadByStatus]);
 
   if (loading) {
     return (
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
-          <p className="text-slate-500 mt-1">Personal performance, operations history, discrepancies, and cycle-count quality</p>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -286,430 +262,201 @@ export default function StaffReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
-        <p className="text-slate-500 mt-1">Personal performance, operations history, discrepancies, and cycle-count quality</p>
+        <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
-            <p className="text-sm text-slate-500 mt-1">Adjust time range for all staff report modules</p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <button type="button" onClick={() => applyQuickRange(30)} className={quickRangeClass('30')}>
-                Last 30 days
-              </button>
-              <button type="button" onClick={() => applyQuickRange(90)} className={quickRangeClass('90')}>
-                Last 90 days
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
+      {insightError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{insightError}</div>}
 
-      <div className="flex flex-wrap gap-2">
-        {[
-          ['performance', 'Performance'],
-          ['history', 'Operation History'],
-          ['discrepancy', 'Discrepancy'],
-          ['cycle', 'Cycle Count'],
-          ['workload', 'Task Workload Overview'],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id as ReportTab)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
-              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
-            }`}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-4 text-lg font-black text-slate-900">Personal Operation History Report</h2>
+        <ChartDateFilterBar
+          enableToggle
+          initialCollapsed
+          startDate={historyStartDate}
+          endDate={historyEndDate}
+          activePreset={historyPreset}
+          onStartChange={setHistoryStartDate}
+          onEndChange={setHistoryEndDate}
+          onClearPreset={() => setHistoryPreset(null)}
+          onApplyPreset={(range, preset) => {
+            setHistoryStartDate(range.start);
+            setHistoryEndDate(range.end);
+            setHistoryPreset(preset);
+          }}
+        />
+        <div className="mb-4 flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            isLoading={insightLoadingKey === 'staff_operation_history_bar'}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_bar'}
+            onClick={() => handleInsightRequest('staff_operation_history_bar', { inOutPerDay })}
           >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'performance' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Personal Daily Performance Report</h2>
-        {insightError && (
-          <div className="mb-4 text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
-            {insightError}
-          </div>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <KpiCard title="Completed today" value={completion.completed} />
-          <KpiCard title="In progress" value={completion.inProgress} />
-          <KpiCard title="Pending" value={completion.pending} />
-          <KpiCard title="Completion rate" value={`${completion.ratio}%`} />
+            Insight
+          </Button>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+          <KpiCard title="Inbound orders" value={historyKpis.inboundOrders} />
+          <KpiCard title="Outbound orders" value={historyKpis.outboundOrders} />
+          <KpiCard title="Cycle tasks" value={historyKpis.cycleTasks} />
+          <KpiCard title="Moved units" value={historyKpis.movedUnits} />
+        </div>
+        <div className="h-72">
+          <Bar
+            data={{
+              labels: inOutPerDay.map((d) => d.day),
+              datasets: [
+                { label: 'Inbound', data: inOutPerDay.map((d) => d.inbound), backgroundColor: '#0ea5e9', stack: 'ops' },
+                { label: 'Outbound', data: inOutPerDay.map((d) => d.outbound), backgroundColor: '#6366f1', stack: 'ops' },
+                { label: 'Cycle count', data: inOutPerDay.map((d) => d.cycle), backgroundColor: '#22c55e', stack: 'ops' },
+              ],
+            }}
+            options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true, ticks: { autoSkip: false } }, y: { stacked: true, beginAtZero: true } } }}
+          />
+        </div>
+        {insightsByKey.staff_operation_history_bar && <InsightPanel content={insightsByKey.staff_operation_history_bar} onClear={() => clearInsight('staff_operation_history_bar')} />}
+      </section>
+
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-black text-slate-900">Discrepancy & Issue Summary Report</h2>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_daily_performance'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_daily_performance'}
-              onClick={() =>
-                handleInsightRequest('staff_daily_performance', {
-                  completion,
-                  inOutPerDay,
-                })
-              }
+              isLoading={insightLoadingKey === 'staff_discrepancy_summary'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_discrepancy_summary'}
+              onClick={() => handleInsightRequest('staff_discrepancy_summary', { discrepancySummary })}
             >
               Insight
             </Button>
-            <Bar
-              data={{
-                labels: inOutPerDay.map((d) => d.day),
-                datasets: [
-                  {
-                    label: 'Inbound',
-                    data: inOutPerDay.map((d) => d.inbound),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Outbound',
-                    data: inOutPerDay.map((d) => d.outbound),
-                    backgroundColor: '#6366f1',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { x: { ticks: { autoSkip: false } }, y: { beginAtZero: true } },
-              }}
-            />
           </div>
-          <div className="flex items-center justify-center">
-            <div className="w-56">
-              <div className="relative h-4 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full bg-emerald-500" style={{ width: `${completion.ratio}%` }} />
-              </div>
-              <p className="text-center mt-3 text-2xl font-black text-slate-900">{completion.ratio}%</p>
-              <p className="text-center text-sm text-slate-500">Gauge: completion rate</p>
-            </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <KpiCard title="Total issues" value={issueKpis.totalIssues} />
+            <KpiCard title="Top issue" value={issueKpis.topIssue.name} />
+            <KpiCard title="Top issue count" value={issueKpis.topIssue.value} />
+            <KpiCard title="Issue categories" value={discrepancySummary.length} />
           </div>
-        </div>
-        {insightsByKey.staff_daily_performance && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_daily_performance')}>
-                Clear
-              </Button>
-            </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_daily_performance} />
-          </div>
-        )}
-      </section>
-      )}
-
-      {tab === 'history' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Personal Operation History Report</h2>
-        <div className="grid grid-cols-1 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_operation_history_bar'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_bar'}
-              onClick={() =>
-                handleInsightRequest('staff_operation_history_bar', {
-                  operationHistory,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Bar
-              data={{
-                labels: operationHistory.map((d) => d.day),
-                datasets: [
-                  {
-                    label: 'Inbound',
-                    data: operationHistory.map((d) => d.inbound),
-                    backgroundColor: '#0ea5e9',
-                    stack: 'ops',
-                  },
-                  {
-                    label: 'Outbound',
-                    data: operationHistory.map((d) => d.outbound),
-                    backgroundColor: '#6366f1',
-                    stack: 'ops',
-                  },
-                  {
-                    label: 'Cycle count',
-                    data: operationHistory.map((d) => d.cycle),
-                    backgroundColor: '#22c55e',
-                    stack: 'ops',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: {
-                  x: { stacked: true, ticks: { autoSkip: false } },
-                  y: { stacked: true, beginAtZero: true },
-                },
-              }}
-            />
- 
-          </div>
-        </div>
-        {insightsByKey.staff_operation_history_bar && (
-          <div className="mt-4 space-y-3">
-            {insightsByKey.staff_operation_history_bar && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_operation_history_bar')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_operation_history_bar} />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-      )}
-
-      {tab === 'discrepancy' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Discrepancy & Issue Summary Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="h-72">
             <Pie
               data={{
                 labels: discrepancySummary.map((d) => d.name),
-                datasets: [
-                  {
-                    data: discrepancySummary.map((d) => d.value),
-                    backgroundColor: discrepancySummary.map((_, i) => COLORS[i % COLORS.length]),
-                  },
-                ],
+                datasets: [{ data: discrepancySummary.map((d) => d.value), backgroundColor: discrepancySummary.map((_, i) => COLORS[i % COLORS.length]) }],
               }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-              }}
+              options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
             />
           </div>
-          <div className="h-72">
-            <Bar
-              data={{
-                labels: discrepancySummary.map((d) => d.name),
-                datasets: [
-                  {
-                    label: 'Count',
-                    data: discrepancySummary.map((d) => d.value),
-                    backgroundColor: '#f59e0b',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
-          </div>
-        </div>
-        {(insightsByKey.staff_discrepancy_pie || insightsByKey.staff_discrepancy_bar) && (
-          <div className="mt-4 space-y-3">
-            {insightsByKey.staff_discrepancy_pie && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_pie')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_pie} />
-              </div>
-            )}
-            {insightsByKey.staff_discrepancy_bar && (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                  <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_discrepancy_bar')}>
-                    Clear
-                  </Button>
-                </div>
-                <ChatMarkdown role="model" content={insightsByKey.staff_discrepancy_bar} />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-      )}
+          {insightsByKey.staff_discrepancy_summary && <InsightPanel content={insightsByKey.staff_discrepancy_summary} onClear={() => clearInsight('staff_discrepancy_summary')} />}
+        </section>
 
-      {tab === 'cycle' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Cycle Count Execution Report</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-black text-slate-900">Task Workload Overview</h2>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_cycle_count_execution'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_cycle_count_execution'}
-              onClick={() =>
-                handleInsightRequest('staff_cycle_count_execution', {
-                  cycleAccuracy,
-                })
-              }
+              isLoading={insightLoadingKey === 'staff_warehouse_health'}
+              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_warehouse_health'}
+              onClick={() => handleInsightRequest('staff_warehouse_health', { taskTypeDistribution: realtimeTaskTypeDistribution, workloadByStatus: realtimeWorkloadByStatus })}
             >
               Insight
             </Button>
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <KpiCard title="Pending workload" value={workloadKpis.totalPending} />
+            <KpiCard title="In-progress workload" value={workloadKpis.totalInProgress} />
+            <KpiCard title="Completed workload" value={workloadKpis.totalCompleted} />
+            <KpiCard title="Task types" value={realtimeTaskTypeDistribution.length} />
+          </div>
+          <div className="h-72">
+            <Pie
+              data={{
+                labels: realtimeWorkloadByStatus.map((d) => d.status),
+                datasets: [{
+                  label: 'Workload',
+                  data: realtimeWorkloadByStatus.map((d) => d.requests + d.cycleCounts),
+                  backgroundColor: ['#f59e0b', '#0ea5e9', '#22c55e'],
+                }],
+              }}
+              options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            />
+          </div>
+          {insightsByKey.staff_warehouse_health && <InsightPanel content={insightsByKey.staff_warehouse_health} onClear={() => clearInsight('staff_warehouse_health')} />}
+        </section>
+      </div>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-black text-slate-900">Cycle Count Execution Report</h2>
+          <Button
+            variant="outline"
+            size="sm"
+            isLoading={insightLoadingKey === 'staff_cycle_count_execution'}
+            disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_cycle_count_execution'}
+            onClick={() => handleInsightRequest('staff_cycle_count_execution', { cycleAccuracy: realtimeCycleAccuracy })}
+          >
+            Insight
+          </Button>
+        </div>
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
+          <KpiCard title="Checked cycles" value={cycleKpis.checkedCycles} />
+          <KpiCard title="Average accuracy" value={`${cycleKpis.avgAccuracy}%`} />
+          <KpiCard title=">= 95% accuracy" value={cycleKpis.highAccuracy} />
+          <KpiCard title="< 80% accuracy" value={cycleKpis.lowAccuracy} />
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="h-72">
             <Bar
               data={{
-                labels: cycleAccuracy.map((d) => d.id),
+                labels: realtimeCycleAccuracy.map((d) => d.id),
                 datasets: [
-                  {
-                    label: 'System',
-                    data: cycleAccuracy.map((d) => d.system),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Actual',
-                    data: cycleAccuracy.map((d) => d.actual),
-                    backgroundColor: '#22c55e',
-                  },
+                  { label: 'System', data: realtimeCycleAccuracy.map((d) => d.system), backgroundColor: '#0ea5e9' },
+                  { label: 'Actual', data: realtimeCycleAccuracy.map((d) => d.actual), backgroundColor: '#22c55e' },
                 ],
               }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
+              options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }}
             />
           </div>
           <div className="space-y-3">
-            {cycleAccuracy.slice(0, 6).map((row) => (
+            {realtimeCycleAccuracy.slice(0, 6).map((row) => (
               <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between mb-2">
+                <div className="mb-2 flex items-center justify-between">
                   <p className="font-bold text-slate-900">Cycle {row.id}</p>
                   <p className="text-sm font-bold text-slate-700">{row.accuracy}%</p>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                   <div className={`${row.accuracy >= 95 ? 'bg-emerald-500' : row.accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'} h-full`} style={{ width: `${row.accuracy}%` }} />
                 </div>
               </div>
             ))}
           </div>
         </div>
-        {insightsByKey.staff_cycle_count_execution && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_cycle_count_execution')}>
-                Clear
-              </Button>
-            </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_cycle_count_execution} />
-          </div>
-        )}
+        {insightsByKey.staff_cycle_count_execution && <InsightPanel content={insightsByKey.staff_cycle_count_execution} onClear={() => clearInsight('staff_cycle_count_execution')} />}
       </section>
-      )}
-
-      {tab === 'workload' && (
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <h2 className="text-lg font-black text-slate-900 mb-4">Task Workload Overview</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="h-72 relative">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute -top-10 right-0 z-10"
-              isLoading={insightLoadingKey === 'staff_warehouse_health'}
-              disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_warehouse_health'}
-              onClick={() =>
-                handleInsightRequest('staff_warehouse_health', {
-                  taskTypeDistribution,
-                  completion,
-                })
-              }
-            >
-              Insight
-            </Button>
-            <Pie
-              data={{
-                labels: taskTypeDistribution.map((d) => d.name),
-                datasets: [
-                  {
-                    data: taskTypeDistribution.map((d) => d.value),
-                    backgroundColor: taskTypeDistribution.map((_, i) => COLORS[i % COLORS.length]),
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-              }}
-            />
-          </div>
-          <div className="h-72">
-            <Bar
-              data={{
-                labels: workloadByStatus.map((d) => d.status),
-                datasets: [
-                  {
-                    label: 'Storage requests',
-                    data: workloadByStatus.map((d) => d.requests),
-                    backgroundColor: '#0ea5e9',
-                  },
-                  {
-                    label: 'Cycle counts',
-                    data: workloadByStatus.map((d) => d.cycleCounts),
-                    backgroundColor: '#22c55e',
-                  },
-                ],
-              }}
-              options={{
-                maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
-                scales: { y: { beginAtZero: true } },
-              }}
-            />
-          </div>
-        </div>
-        {insightsByKey.staff_warehouse_health && (
-          <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-              <Button variant="ghost" size="sm" onClick={() => clearInsight('staff_warehouse_health')}>
-                Clear
-              </Button>
-            </div>
-            <ChatMarkdown role="model" content={insightsByKey.staff_warehouse_health} />
-          </div>
-        )}
-      </section>
-      )}
     </div>
   );
 }
 
 function KpiCard({ title, value }: { title: string; value: string | number }) {
+  const isLongText = typeof value === 'string' && value.length >= 14;
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
-      <p className="text-xs uppercase font-black tracking-wider text-slate-500">{title}</p>
-      <p className="text-2xl font-black text-slate-900 mt-1">{value}</p>
+      <p className="text-xs font-black uppercase tracking-wider text-slate-500">{title}</p>
+      <p className={`mt-1 font-black text-slate-900 ${isLongText ? 'text-lg' : 'text-2xl'}`}>{value}</p>
+    </div>
+  );
+}
+
+function InsightPanel({ content, onClear }: { content: string; onClear: () => void }) {
+  return (
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
+        <Button variant="ghost" size="sm" onClick={onClear}>
+          Clear
+        </Button>
+      </div>
+      <ChatMarkdown role="model" content={content} />
     </div>
   );
 }

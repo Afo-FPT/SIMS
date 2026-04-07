@@ -3,6 +3,7 @@ import Notification, { type NotificationType } from "../models/Notification";
 import Contract from "../models/Contract";
 import User from "../models/User";
 import { emitToUser } from "../realtime/socket";
+import { scheduleManagerReportsInvalidate } from "../realtime/manager-reports-invalidate";
 import { enqueueEmail } from "../queues/email.queue";
 import { resolveNotificationRecipients, type NotificationEventType } from "./notification-recipient.service";
 
@@ -173,6 +174,8 @@ export async function notifyStorageRequestEvent(params: {
           await enqueueEmail({ to: u.email, subject, html, text });
         })
     );
+
+    scheduleManagerReportsInvalidate();
   } catch (err) {
     console.error("[Notification] notifyStorageRequestEvent failed", err);
   }
@@ -229,6 +232,8 @@ export async function notifyContractExpiredForCustomer(params: {
         meta: doc.meta
       });
     }
+
+    scheduleManagerReportsInvalidate();
   } catch (err) {
     console.error("[Notification] notifyContractExpiredForCustomer failed", err);
   }
@@ -282,6 +287,8 @@ export async function notifyContractTerminatedForCustomer(params: {
         meta: doc.meta
       });
     }
+
+    scheduleManagerReportsInvalidate();
   } catch (err) {
     console.error("[Notification] notifyContractTerminatedForCustomer failed", err);
   }

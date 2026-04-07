@@ -26,6 +26,7 @@ import {
 } from '../../../lib/reports.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
 import { useToastHelpers } from '../../../lib/toast';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 import {
   parseLocalDateStart,
   parseLocalDateEndOfDay,
@@ -213,6 +214,8 @@ export default function ManagerReportsPage() {
   const [processingTimeBoxPlot, setProcessingTimeBoxPlot] = useState<ProcessingTimeBoxPlotItem[]>([]);
   const processingTimeGranularity: 'week' = 'week';
   const [tab] = useState<ReportTab>('deep');
+  /** Bumped when Socket.IO signals operational data changed → refetch report APIs */
+  const [reportsRealtimeVersion, setReportsRealtimeVersion] = useState(0);
 
   const [deepExpiryData, setDeepExpiryData] = useState<ExpiryStackedReport | null>(null);
   const [deepExpiryLoading, setDeepExpiryLoading] = useState(false);
@@ -635,7 +638,7 @@ export default function ManagerReportsPage() {
       if (document.visibilityState === 'visible') {
         void fetchData();
       }
-    }, 30000);
+    }, 15000);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
@@ -661,6 +664,7 @@ export default function ManagerReportsPage() {
     processingEnd,
     hasLoaded,
     toast,
+    reportsRealtimeVersion,
   ]);
 
   useEffect(() => {
@@ -683,7 +687,7 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepExpiryStart, deepExpiryEnd, deepExpiryGranularity, toast]);
+  }, [tab, deepExpiryStart, deepExpiryEnd, deepExpiryGranularity, toast, reportsRealtimeVersion]);
 
   useEffect(() => {
     if (!deepExpiryData?.buckets?.length) return;
@@ -712,7 +716,7 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepSnapshotDate, toast]);
+  }, [tab, deepSnapshotDate, toast, reportsRealtimeVersion]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
@@ -734,7 +738,34 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepPenaltyStart, deepPenaltyEnd, toast]);
+  }, [tab, deepPenaltyStart, deepPenaltyEnd, toast, reportsRealtimeVersion]);
+
+  useEffect(() => {
+    const socket = getNotificationSocket();
+    if (!socket) return;
+
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        debounce = null;
+        setReportsRealtimeVersion((v) => v + 1);
+      }, 350);
+    };
+
+    const onChanged = () => bump();
+    const onConnect = () => bump();
+
+    socket.on('reports:data-changed', onChanged);
+    socket.on('connect', onConnect);
+
+    return () => {
+      if (debounce) clearTimeout(debounce);
+      socket.off('reports:data-changed', onChanged);
+      socket.off('connect', onConnect);
+    };
+  }, []);
 
   async function handleInsightRequest(
     chartKey: string,

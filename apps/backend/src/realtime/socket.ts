@@ -38,6 +38,7 @@ export function initSocket(server: HttpServer) {
       return;
     }
     socket.join(`user:${u.userId}`);
+    socket.join(`role:${u.role}`);
   });
 
   return io;
@@ -51,5 +52,10 @@ export function getIO(): Server {
 export function emitToUser(userId: string, event: string, payload: any) {
   if (!io) return;
   io.to(`user:${userId}`).emit(event, payload);
+}
+
+export function emitToRole(role: JwtPayload["role"], event: string, payload: any) {
+  if (!io) return;
+  io.to(`role:${role}`).emit(event, payload);
 }
 

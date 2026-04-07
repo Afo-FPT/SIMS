@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import User from "../models/User";
+import Contract from "../models/Contract";
 import {
   getAllUsers,
   getUserById,
@@ -135,6 +136,23 @@ export const deleteUserAccount = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+/**
+ * Admin overview: active contracts count + AI (Gemini) env flag for status indicators.
+ * GET /api/users/dashboard-snapshot
+ */
+export const getAdminDashboardSnapshot = async (_req: Request, res: Response) => {
+  try {
+    const activeContracts = await Contract.countDocuments({ status: "active" });
+    const key = process.env.GEMINI_API_KEY;
+    const geminiConfigured = typeof key === "string" && key.trim().length > 0;
+    res.json({
+      data: { activeContracts, geminiConfigured }
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
 

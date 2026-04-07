@@ -98,6 +98,22 @@ export async function getAdminStats(): Promise<AdminStats> {
   };
 }
 
+export async function getAdminDashboardSnapshot(): Promise<{
+  activeContracts: number;
+  geminiConfigured: boolean;
+}> {
+  const res = await fetchWithAuth('/users/dashboard-snapshot', { method: 'GET' });
+  const body = await res.json();
+  if (!res.ok) {
+    throw new Error(body.message || 'Failed to load dashboard snapshot');
+  }
+  const d = (body.data ?? {}) as { activeContracts?: number; geminiConfigured?: boolean };
+  return {
+    activeContracts: typeof d.activeContracts === 'number' ? d.activeContracts : 0,
+    geminiConfigured: Boolean(d.geminiConfigured),
+  };
+}
+
 export async function listUsers(params: ListUsersParams = {}): Promise<{ items: AdminUser[]; total: number }> {
   let users = await fetchAllBackendUsers();
 
