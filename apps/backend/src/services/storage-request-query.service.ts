@@ -26,6 +26,8 @@ export interface StorageRequestViewDTO {
   status: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
   approved_by?: string;
   approved_at?: Date;
+  customer_confirmed_at?: Date;
+  assigned_staff?: Array<{ user_id: string; name: string; email: string }>;
   created_at: Date;
   updated_at: Date;
   items: Array<{
@@ -121,6 +123,23 @@ export async function listStorageRequests(
     : [];
   const customerNameById = new Map(customers.map((u: any) => [u._id.toString(), u.name]));
 
+  // Preload assigned staff names
+  const assignedStaffIds = Array.from(
+    new Set(
+      requests
+        .flatMap((r: any) => (r.assignedStaffIds || []).map((id: any) => id?.toString?.()))
+        .filter(Boolean)
+    )
+  );
+  const assignedStaffUsers = assignedStaffIds.length
+    ? await User.find({ _id: { $in: assignedStaffIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name email")
+        .lean()
+    : [];
+  const assignedStaffById = new Map(
+    assignedStaffUsers.map((u: any) => [u._id.toString(), { name: u.name, email: u.email }])
+  );
+
   const requestIds = requests.map((r: any) => r._id);
   const details = await StorageRequestDetail.find({ requestId: { $in: requestIds } })
     .populate("shelfId", "shelfCode zoneId")
@@ -171,6 +190,15 @@ export async function listStorageRequests(
       status: r.status,
       approved_by: r.approvedBy?.toString?.(),
       approved_at: r.approvedAt,
+      customer_confirmed_at: r.customerConfirmedAt,
+      assigned_staff: (r.assignedStaffIds || [])
+        .map((id: any) => id?.toString?.())
+        .filter(Boolean)
+        .map((id: string) => ({
+          user_id: id,
+          name: assignedStaffById.get(id)?.name ?? id,
+          email: assignedStaffById.get(id)?.email ?? "",
+        })),
       created_at: r.createdAt,
       updated_at: r.updatedAt,
       items: ds.map((d: any) => {
@@ -239,6 +267,15 @@ export async function getStorageRequestById(
   const customer = await User.findById((req as any).customerId)
     .select("name")
     .lean();
+  const assignedStaffIds = ((req as any).assignedStaffIds || []).map((id: any) => id.toString());
+  const assignedStaffUsers = assignedStaffIds.length
+    ? await User.find({ _id: { $in: assignedStaffIds.map((id: string) => new Types.ObjectId(id)) } })
+        .select("_id name email")
+        .lean()
+    : [];
+  const assignedStaffById = new Map(
+    assignedStaffUsers.map((u: any) => [u._id.toString(), { name: u.name, email: u.email }])
+  );
 
   const details = await StorageRequestDetail.find({ requestId: req._id })
     .populate("shelfId", "shelfCode zoneId")
@@ -277,6 +314,12 @@ export async function getStorageRequestById(
     status: (req as any).status,
     approved_by: (req as any).approvedBy?.toString?.(),
     approved_at: (req as any).approvedAt,
+    customer_confirmed_at: (req as any).customerConfirmedAt,
+    assigned_staff: assignedStaffIds.map((id: string) => ({
+      user_id: id,
+      name: assignedStaffById.get(id)?.name ?? id,
+      email: assignedStaffById.get(id)?.email ?? "",
+    })),
     created_at: (req as any).createdAt,
     updated_at: (req as any).updatedAt,
     items: details.map((d: any) => {

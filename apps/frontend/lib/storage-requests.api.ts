@@ -58,6 +58,12 @@ export interface StorageRequestView {
   status: 'PENDING' | 'APPROVED' | 'DONE_BY_STAFF' | 'COMPLETED' | 'REJECTED';
   created_at: string;
   updated_at: string;
+  customer_confirmed_at?: string;
+  assigned_staff?: Array<{
+    user_id: string;
+    name: string;
+    email: string;
+  }>;
   items: Array<{
     request_detail_id: string;
     shelf_id?: string;

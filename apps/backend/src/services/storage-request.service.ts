@@ -3,11 +3,10 @@ import StorageRequest from "../models/StorageRequest";
 import StorageRequestDetail from "../models/StorageRequestDetail";
 import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
+import StaffWarehouse from "../models/StaffWarehouse";
 import { notifyStorageRequestEvent } from "./notification.service";
-import { getAllowedStaffIdsForWarehouse } from "./staff-warehouse.service";
 import {
-  assertCustomerMayCreateStorageRequest,
-  assertManagerMayAssignStorageRequest
+  assertCustomerMayCreateStorageRequest
 } from "./contract-rules.service";
 
 function normalizeObjectIdString(value: any): string | null {
@@ -243,6 +242,30 @@ async function validateContractOwnership(
   return contract;
 }
 
+async function getAssignedStaffForContractWarehouse(contractId: string): Promise<Types.ObjectId> {
+  const contract = await Contract.findById(contractId).select("warehouseId");
+  if (!contract) throw new Error("Contract not found");
+
+  const mapping = await StaffWarehouse.findOne({ warehouseId: contract.warehouseId })
+    .select("staffId")
+    .lean();
+  if (!mapping?.staffId) {
+    throw new Error("No staff is assigned to this warehouse yet");
+  }
+  const User = (await import("../models/User")).default;
+  const staff = await User.findOne({
+    _id: (mapping as any).staffId,
+    role: "staff",
+    isActive: true,
+  })
+    .select("_id")
+    .lean();
+  if (!staff) {
+    throw new Error("Assigned warehouse staff is inactive or invalid");
+  }
+  return new Types.ObjectId((staff as any)._id.toString());
+}
+
 async function validateZoneBelongsToContract(
   contractId: string,
   zoneId: string
@@ -318,8 +341,13 @@ export async function createInboundRequest(
     requestedZoneId: new Types.ObjectId(normalizedZoneId),
     requestType: "IN",
     reference: data.reference?.trim() || undefined,
-    status: "PENDING"
+    status: "APPROVED"
   });
+
+  const assignedStaffId = await getAssignedStaffForContractWarehouse(data.contractId);
+  request.assignedStaffIds = [assignedStaffId];
+  request.approvedAt = new Date();
+  await request.save();
 
   // Create request details
   const requestDetails = await Promise.all(
@@ -393,8 +421,13 @@ export async function createOutboundRequest(
     customerId: new Types.ObjectId(customerId),
     requestType: "OUT",
     reference: data.reference?.trim() || undefined,
-    status: "PENDING"
+    status: "APPROVED"
   });
+
+  const assignedStaffId = await getAssignedStaffForContractWarehouse(data.contractId);
+  request.assignedStaffIds = [assignedStaffId];
+  request.approvedAt = new Date();
+  await request.save();
 
   // Create request details
   const requestDetails = await Promise.all(
@@ -445,58 +478,8 @@ export async function assignStorageRequest(
   staffIds: string[],
   managerId: string
 ): Promise<{ request_id: string; status: string; assigned_staff_ids: string[] }> {
-  if (!Types.ObjectId.isValid(requestId)) throw new Error("Invalid request id");
-  if (!Types.ObjectId.isValid(managerId)) throw new Error("Invalid manager id");
-  if (!staffIds || !Array.isArray(staffIds) || staffIds.length === 0) {
-    throw new Error("staffIds is required and must be a non-empty array");
-  }
-
-  const request = await StorageRequest.findById(requestId);
-  if (!request) throw new Error("Storage request not found");
-  if (request.status !== "PENDING") {
-    throw new Error("Only PENDING requests can be assigned. Current status: " + request.status);
-  }
-
-  const User = (await import("../models/User")).default;
-  const objectIds = staffIds.map((id) => {
-    if (!Types.ObjectId.isValid(id)) throw new Error("Invalid staff id: " + id);
-    return new Types.ObjectId(id);
-  });
-  const staffUsers = await User.find({
-    _id: { $in: objectIds },
-    role: "staff",
-    isActive: true
-  })
-    .select("_id")
-    .lean();
-  const foundIds = new Set(staffUsers.map((u: any) => u._id.toString()));
-  for (const id of staffIds) {
-    if (!foundIds.has(id)) throw new Error("User is not an active staff: " + id);
-  }
-
-  // Enforce warehouse-scoped staffing: staff assigned by manager must be configured for
-  // the warehouse of this request's contract.
-  const contract = await Contract.findById(request.contractId).select("warehouseId status").lean();
-  if (!contract) throw new Error("Contract not found");
-  assertManagerMayAssignStorageRequest(contract as any, request.requestType as "IN" | "OUT");
-  const allowed = await getAllowedStaffIdsForWarehouse(contract.warehouseId.toString(), staffIds);
-  const missing = staffIds.filter((id) => !allowed.has(id));
-  if (missing.length > 0) {
-    throw new Error("not allowed: One or more staff members are not permitted to handle tasks for this warehouse");
-  }
-
-  request.status = "APPROVED";
-  request.approvedBy = new Types.ObjectId(managerId);
-  request.approvedAt = new Date();
-  request.assignedStaffIds = objectIds;
-  await request.save();
-
-  // Notifications (best-effort)
-  notifyStorageRequestEvent({ eventType: "REQUEST_ASSIGNED", requestId: request._id.toString(), actorUserId: managerId });
-
-  return {
-    request_id: request._id.toString(),
-    status: request.status,
-    assigned_staff_ids: (request.assignedStaffIds || []).map((id) => id.toString())
-  };
+  void requestId;
+  void staffIds;
+  void managerId;
+  throw new Error("Manual assignment is disabled. Requests are auto-assigned by warehouse staff mapping.");
 }

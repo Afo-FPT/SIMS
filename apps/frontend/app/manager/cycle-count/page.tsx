@@ -253,9 +253,12 @@ export default function ManagerCycleCountPage() {
               <TableHeader>Contract</TableHeader>
               <TableHeader>Customer</TableHeader>
               <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Assigned Staff</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Requested at</TableHeader>
               <TableHeader>Deadline</TableHeader>
+              <TableHeader>Executed At</TableHeader>
+              <TableHeader>Last Updated</TableHeader>
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
@@ -266,6 +269,11 @@ export default function ManagerCycleCountPage() {
                   </TableCell>
                   <TableCell className="text-slate-700">{cc.customer_name}</TableCell>
                   <TableCell className="text-slate-700">{cc.warehouse_name}</TableCell>
+                  <TableCell className="text-slate-700">
+                    {cc.assigned_staff?.length
+                      ? cc.assigned_staff.map((s) => s.name).join(', ')
+                      : '—'}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -300,6 +308,20 @@ export default function ManagerCycleCountPage() {
                           timeStyle: 'short',
                         })
                       : '—'}
+                  </TableCell>
+                  <TableCell className="text-slate-600 text-sm">
+                    {cc.completed_at
+                      ? new Date(cc.completed_at).toLocaleString('vi-VN', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })
+                      : '—'}
+                  </TableCell>
+                  <TableCell className="text-slate-600 text-sm">
+                    {new Date(cc.updated_at).toLocaleString('vi-VN', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-2">

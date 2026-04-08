@@ -9,9 +9,19 @@ export interface StaffWithWarehouse {
 }
 
 export interface TransferStaffWarehouseResponse {
-  user_id: string;
   warehouse_id: string;
   warehouse_name: string;
+  staff_id: string;
+  staff_name: string;
+  staff_email: string;
+}
+
+export interface WarehouseWithAssignedStaff {
+  warehouse_id: string;
+  warehouse_name: string;
+  staff_id: string | null;
+  staff_name: string | null;
+  staff_email: string | null;
 }
 
 export async function listStaffWithWarehouse(params?: {
@@ -28,12 +38,32 @@ export async function listStaffWithWarehouse(params?: {
 }
 
 export async function transferStaffWarehouse(
-  staffId: string,
-  warehouseId: string
+  warehouseId: string,
+  staffId: string
 ): Promise<TransferStaffWarehouseResponse> {
-  return apiJson<TransferStaffWarehouseResponse>(`/staff-warehouses/staffs/${staffId}/warehouse`, {
+  return apiJson<TransferStaffWarehouseResponse>(`/staff-warehouses/warehouses/${warehouseId}/staff`, {
     method: 'PATCH',
-    body: JSON.stringify({ warehouseId }),
+    body: JSON.stringify({ staffId }),
+  });
+}
+
+export async function listWarehousesWithAssignedStaff(params?: {
+  search?: string;
+}): Promise<WarehouseWithAssignedStaff[]> {
+  const qs = new URLSearchParams();
+  if (params?.search?.trim()) qs.set('search', params.search.trim());
+  const query = qs.toString();
+  return apiJson<WarehouseWithAssignedStaff[]>(`/staff-warehouses/warehouses${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  });
+}
+
+export async function unassignStaffFromWarehouse(warehouseId: string): Promise<{
+  warehouse_id: string;
+  warehouse_name: string;
+}> {
+  return apiJson(`/staff-warehouses/warehouses/${warehouseId}/staff`, {
+    method: 'DELETE',
   });
 }
 

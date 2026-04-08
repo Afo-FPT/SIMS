@@ -24,10 +24,10 @@ const StaffWarehouseSchema = new Schema<IStaffWarehouse>(
 );
 
 // Business rule:
-// - A warehouse can have many staff.
-// - A staff can belong to only one warehouse.
-StaffWarehouseSchema.index({ staffId: 1 }, { unique: true });
-StaffWarehouseSchema.index({ warehouseId: 1 });
+// - A staff can belong to many warehouses.
+// - A warehouse can have only one staff.
+StaffWarehouseSchema.index({ warehouseId: 1 }, { unique: true });
+StaffWarehouseSchema.index({ staffId: 1 });
 
 const StaffWarehouse = mongoose.model<IStaffWarehouse>("StaffWarehouse", StaffWarehouseSchema);
 

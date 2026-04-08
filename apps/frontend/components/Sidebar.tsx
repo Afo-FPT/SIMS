@@ -46,8 +46,8 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           },
           {
             section: 'Operations', items: [
-              { id: 'INBOUND_REQUESTS', label: 'Assign Inbound Tasks', icon: 'inbox' },
-              { id: 'OUTBOUND_REQUESTS', label: 'Assign Outbound Tasks', icon: 'outbox' },
+              { id: 'INBOUND_REQUESTS', label: 'Inbound Tasks', icon: 'inbox' },
+              { id: 'OUTBOUND_REQUESTS', label: 'Outbound Tasks', icon: 'outbox' },
               { id: 'TASKS', label: 'Tasks', icon: 'assignment_turned_in' },
               { id: 'CYCLE_COUNT', label: 'Cycle Count', icon: 'fact_check' },
               { id: 'WAREHOUSES', label: 'Warehouses', icon: 'warehouse' },

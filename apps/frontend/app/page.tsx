@@ -5,7 +5,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listContractPackages, type ContractPackage } from '../lib/contract-packages.api';
 import { clearAuth, getAuthState } from '../lib/auth';
-import AuthResetOnLoad from '../components/AuthResetOnLoad';
 
 function dashboardPathForRole(role: string | null): string | null {
   if (!role) return null;
@@ -78,7 +77,6 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-primary/10 selection:text-primary overflow-x-hidden">
-      <AuthResetOnLoad />
       {/* Background Decor */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
         <div className="absolute -top-[20%] -left-[10%] size-[600px] bg-primary/5 rounded-full blur-[120px]"></div>

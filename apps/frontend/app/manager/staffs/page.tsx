@@ -8,38 +8,43 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { useToastHelpers } from '../../../lib/toast';
-import { listWarehouses } from '../../../lib/manager.api';
-import { listStaffWithWarehouse, transferStaffWarehouse, type StaffWithWarehouse } from '../../../lib/staff-warehouses.api';
+import {
+  listStaffWithWarehouse,
+  listWarehousesWithAssignedStaff,
+  transferStaffWarehouse,
+  unassignStaffFromWarehouse,
+  type StaffWithWarehouse,
+  type WarehouseWithAssignedStaff,
+} from '../../../lib/staff-warehouses.api';
 
-type WarehouseOption = { id: string; name: string; status?: string };
+type StaffOption = { id: string; name: string; email: string };
 
 export default function ManagerStaffsPage() {
   const toast = useToastHelpers();
-  const [staffs, setStaffs] = useState<StaffWithWarehouse[]>([]);
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [rows, setRows] = useState<WarehouseWithAssignedStaff[]>([]);
+  const [staffs, setStaffs] = useState<StaffOption[]>([]);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [warehouseFilter, setWarehouseFilter] = useState('');
-  const [nextWarehouseByStaff, setNextWarehouseByStaff] = useState<Record<string, string>>({});
-  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [nextStaffByWarehouse, setNextStaffByWarehouse] = useState<Record<string, string>>({});
+  const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [savingStaffId, setSavingStaffId] = useState<string | null>(null);
+  const [savingWarehouseId, setSavingWarehouseId] = useState<string | null>(null);
 
-  const loadStaffs = async () => {
+  const loadRows = async () => {
     try {
       setLoading(true);
       setError(null);
-      const staffRows = await listStaffWithWarehouse({ search: searchQuery, warehouseId: warehouseFilter || undefined });
-      setStaffs(staffRows);
+      const warehouseRows = await listWarehousesWithAssignedStaff({ search: searchQuery });
+      setRows(warehouseRows);
       const draft: Record<string, string> = {};
-      for (const row of staffRows) {
-        draft[row.user_id] = row.warehouse_id ?? '';
+      for (const row of warehouseRows) {
+        draft[row.warehouse_id] = row.staff_id ?? '';
       }
-      setNextWarehouseByStaff(draft);
-      setEditingStaffId(null);
+      setNextStaffByWarehouse(draft);
+      setEditingWarehouseId(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load staffs');
+      setError(e instanceof Error ? e.message : 'Failed to load warehouse assignments');
     } finally {
       setLoading(false);
     }
@@ -48,12 +53,14 @@ export default function ManagerStaffsPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const warehouseRows = await listWarehouses().catch(() => []);
+      const staffRows = await listStaffWithWarehouse().catch(() => []);
       if (cancelled) return;
-      setWarehouses(
-        (warehouseRows as any[])
-          .filter((w) => (w.status ?? 'ACTIVE') === 'ACTIVE')
-          .map((w) => ({ id: w.id, name: w.name, status: w.status }))
+      setStaffs(
+        (staffRows as StaffWithWarehouse[]).map((s) => ({
+          id: s.user_id,
+          name: s.name,
+          email: s.email,
+        }))
       );
     })();
     return () => {
@@ -65,50 +72,44 @@ export default function ManagerStaffsPage() {
     let cancelled = false;
     const t = setTimeout(() => {
       if (cancelled) return;
-      void loadStaffs();
+      void loadRows();
     }, 150);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, warehouseFilter]);
+  }, [searchQuery]);
 
-  const warehouseOptions = useMemo(
-    () => [{ value: '', label: 'All warehouses' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))],
-    [warehouses]
+  const staffOptions = useMemo(
+    () => [{ value: '', label: 'Select staff' }, ...staffs.map((s) => ({ value: s.id, label: `${s.name} (${s.email})` }))],
+    [staffs]
   );
 
   if (loading) return <LoadingSkeleton className="h-64 w-full" />;
-  if (error) return <ErrorState title="Failed to load staffs" message={error} onRetry={loadStaffs} />;
+  if (error) return <ErrorState title="Failed to load assignments" message={error} onRetry={loadRows} />;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staffs</h1>
         <p className="text-slate-500 mt-1">
-          Quản lý warehouse cho staff. Một staff chỉ thuộc một warehouse, một warehouse có thể có nhiều staff.
+          Assign exactly one staff to each warehouse. A staff can be assigned to many warehouses.
         </p>
       </div>
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <Input
-            label="Search staff"
+            label="Search warehouse"
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder="Name or email"
+            placeholder="Warehouse name"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 setSearchQuery(searchDraft.trim());
               }
             }}
-          />
-          <Select
-            label="Filter warehouse"
-            value={warehouseFilter}
-            onChange={(e) => setWarehouseFilter(e.target.value)}
-            options={warehouseOptions}
           />
         </div>
       </section>
@@ -116,77 +117,75 @@ export default function ManagerStaffsPage() {
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm overflow-hidden">
         <Table>
           <TableHead>
-            <TableHeader>Staff</TableHeader>
-            <TableHeader>Email</TableHeader>
             <TableHeader>Warehouse</TableHeader>
+            <TableHeader>Assigned staff</TableHeader>
             <TableHeader className="text-right">Action</TableHeader>
           </TableHead>
           <TableBody>
-            {staffs.length === 0 ? (
+            {rows.length === 0 ? (
               <TableRow>
-                <td colSpan={4} className="px-6 py-4 text-slate-500">No active staff found.</td>
+                <td colSpan={3} className="px-6 py-4 text-slate-500">No warehouses found.</td>
               </TableRow>
             ) : (
-              staffs.map((s) => (
-                <TableRow key={s.user_id}>
-                  <TableCell className="font-bold text-slate-900">{s.name}</TableCell>
-                  <TableCell className="text-slate-600">{s.email}</TableCell>
+              rows.map((row) => (
+                <TableRow key={row.warehouse_id}>
+                  <TableCell className="font-bold text-slate-900">{row.warehouse_name}</TableCell>
                   <TableCell>
-                    {editingStaffId === s.user_id ? (
+                    {editingWarehouseId === row.warehouse_id ? (
                       <Select
-                        value={nextWarehouseByStaff[s.user_id] ?? ''}
+                        value={nextStaffByWarehouse[row.warehouse_id] ?? ''}
                         onChange={(e) =>
-                          setNextWarehouseByStaff((prev) => ({
+                          setNextStaffByWarehouse((prev) => ({
                             ...prev,
-                            [s.user_id]: e.target.value,
+                            [row.warehouse_id]: e.target.value,
                           }))
                         }
-                        options={[
-                          { value: '', label: 'Select warehouse' },
-                          ...warehouses.map((w) => ({ value: w.id, label: w.name })),
-                        ]}
+                        options={staffOptions}
                       />
                     ) : (
-                      <span className="text-slate-700">{s.warehouse_name ?? '—'}</span>
+                      <span className="text-slate-700">
+                        {row.staff_name ? `${row.staff_name} (${row.staff_email})` : '—'}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {editingStaffId === s.user_id ? (
+                    {editingWarehouseId === row.warehouse_id ? (
                       <div className="inline-flex gap-2">
                         <Button
                           size="sm"
-                          isLoading={savingStaffId === s.user_id}
+                          isLoading={savingWarehouseId === row.warehouse_id}
                           disabled={
-                            savingStaffId === s.user_id ||
-                            !nextWarehouseByStaff[s.user_id] ||
-                            nextWarehouseByStaff[s.user_id] === s.warehouse_id
+                            savingWarehouseId === row.warehouse_id ||
+                            !nextStaffByWarehouse[row.warehouse_id] ||
+                            nextStaffByWarehouse[row.warehouse_id] === row.staff_id
                           }
                           onClick={async () => {
-                            const targetWarehouseId = nextWarehouseByStaff[s.user_id];
-                            if (!targetWarehouseId) {
-                              toast.warning('Please select warehouse');
+                            const targetStaffId = nextStaffByWarehouse[row.warehouse_id];
+                            if (!targetStaffId) {
+                              toast.warning('Please select staff');
                               return;
                             }
                             try {
-                              setSavingStaffId(s.user_id);
-                              const updated = await transferStaffWarehouse(s.user_id, targetWarehouseId);
-                              setStaffs((prev) =>
+                              setSavingWarehouseId(row.warehouse_id);
+                              const updated = await transferStaffWarehouse(row.warehouse_id, targetStaffId);
+                              setRows((prev) =>
                                 prev.map((row) =>
-                                  row.user_id === s.user_id
+                                  row.warehouse_id === updated.warehouse_id
                                     ? {
                                         ...row,
-                                        warehouse_id: updated.warehouse_id,
-                                        warehouse_name: updated.warehouse_name,
+                                        staff_id: updated.staff_id,
+                                        staff_name: updated.staff_name,
+                                        staff_email: updated.staff_email,
                                       }
                                     : row
                                 )
                               );
-                              setEditingStaffId(null);
-                              toast.success('Staff warehouse updated');
+                              setEditingWarehouseId(null);
+                              toast.success('Warehouse assignment updated');
                             } catch (e) {
-                              toast.error(e instanceof Error ? e.message : 'Failed to update staff warehouse');
+                              toast.error(e instanceof Error ? e.message : 'Failed to update assignment');
                             } finally {
-                              setSavingStaffId(null);
+                              setSavingWarehouseId(null);
                             }
                           }}
                         >
@@ -196,22 +195,55 @@ export default function ManagerStaffsPage() {
                           size="sm"
                           variant="ghost"
                           onClick={() => {
-                            setNextWarehouseByStaff((prev) => ({ ...prev, [s.user_id]: s.warehouse_id ?? '' }));
-                            setEditingStaffId(null);
+                            setNextStaffByWarehouse((prev) => ({
+                              ...prev,
+                              [row.warehouse_id]: row.staff_id ?? '',
+                            }));
+                            setEditingWarehouseId(null);
                           }}
                         >
                           Cancel
                         </Button>
                       </div>
                     ) : (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={!!editingStaffId}
-                        onClick={() => setEditingStaffId(s.user_id)}
-                      >
-                        Edit
-                      </Button>
+                      <div className="inline-flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!!editingWarehouseId}
+                          onClick={() => setEditingWarehouseId(row.warehouse_id)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={!!editingWarehouseId || !row.staff_id || savingWarehouseId === row.warehouse_id}
+                          isLoading={savingWarehouseId === row.warehouse_id}
+                          onClick={async () => {
+                            if (!row.staff_id) return;
+                            try {
+                              setSavingWarehouseId(row.warehouse_id);
+                              await unassignStaffFromWarehouse(row.warehouse_id);
+                              setRows((prev) =>
+                                prev.map((it) =>
+                                  it.warehouse_id === row.warehouse_id
+                                    ? { ...it, staff_id: null, staff_name: null, staff_email: null }
+                                    : it
+                                )
+                              );
+                              setNextStaffByWarehouse((prev) => ({ ...prev, [row.warehouse_id]: '' }));
+                              toast.success('Staff removed from warehouse');
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : 'Failed to remove assignment');
+                            } finally {
+                              setSavingWarehouseId(null);
+                            }
+                          }}
+                        >
+                          Unassign
+                        </Button>
+                      </div>
                     )}
                   </TableCell>
                 </TableRow>

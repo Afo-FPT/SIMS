@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
-import { listStaffWithWarehouseController, transferStaffWarehouseController } from "../controllers/staff-warehouse.controller";
+import {
+  assignStaffToWarehouseController,
+  listStaffWithWarehouseController,
+  listWarehousesWithAssignedStaffController,
+  unassignStaffFromWarehouseController,
+} from "../controllers/staff-warehouse.controller";
 
 const router = Router();
 
@@ -16,15 +21,37 @@ router.get(
 );
 
 /**
- * PATCH /api/staff-warehouses/staffs/:staffId/warehouse
+ * GET /api/staff-warehouses/warehouses
  * Authorization: Manager only
- * Body: { warehouseId: string }
  */
-router.patch(
-  "/staffs/:staffId/warehouse",
+router.get(
+  "/warehouses",
   authenticate,
   authorizeRoles("manager"),
-  transferStaffWarehouseController
+  listWarehousesWithAssignedStaffController
+);
+
+/**
+ * PATCH /api/staff-warehouses/warehouses/:warehouseId/staff
+ * Authorization: Manager only
+ * Body: { staffId: string }
+ */
+router.patch(
+  "/warehouses/:warehouseId/staff",
+  authenticate,
+  authorizeRoles("manager"),
+  assignStaffToWarehouseController
+);
+
+/**
+ * DELETE /api/staff-warehouses/warehouses/:warehouseId/staff
+ * Authorization: Manager only
+ */
+router.delete(
+  "/warehouses/:warehouseId/staff",
+  authenticate,
+  authorizeRoles("manager"),
+  unassignStaffFromWarehouseController
 );
 
 export default router;

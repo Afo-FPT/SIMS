@@ -52,14 +52,26 @@ export async function listActiveStaffWithWarehouse(params: {
   if (staffs.length === 0) return [];
 
   const staffIds = staffs.map((s: any) => s._id);
-  const mappings = await StaffWarehouse.find({ staffId: { $in: staffIds } }).select("staffId warehouseId").lean();
-  const mappingByStaff = new Map<string, string>();
+  let mappings: any[] = [];
+  if (warehouseId) {
+    if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouse id");
+    mappings = await StaffWarehouse.find({
+      warehouseId: new Types.ObjectId(warehouseId),
+      staffId: { $in: staffIds },
+    })
+      .select("staffId warehouseId")
+      .lean();
+  } else {
+    mappings = await StaffWarehouse.find({ staffId: { $in: staffIds } }).select("staffId warehouseId").lean();
+  }
+
+  const mappedStaffIds = new Set<string>();
   const warehouseIds = new Set<string>();
-  for (const m of mappings as any[]) {
+  for (const m of mappings) {
     const sid = m.staffId.toString();
     const wid = m.warehouseId?.toString();
     if (!wid) continue;
-    mappingByStaff.set(sid, wid);
+    mappedStaffIds.add(sid);
     warehouseIds.add(wid);
   }
 
@@ -73,8 +85,10 @@ export async function listActiveStaffWithWarehouse(params: {
     warehouseNameById.set(w._id.toString(), w.name);
   }
 
-  const rows = staffs.map((s: any) => {
-    const wid = mappingByStaff.get(s._id.toString()) ?? null;
+  const rows = staffs
+    .filter((s: any) => (!warehouseId ? true : mappedStaffIds.has(s._id.toString())))
+    .map((s: any) => {
+    const wid = warehouseId || null;
     return {
       user_id: s._id.toString(),
       name: s.name,
@@ -84,38 +98,123 @@ export async function listActiveStaffWithWarehouse(params: {
     };
   });
 
-  if (warehouseId) {
-    if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouse id");
-    return rows.filter((r) => r.warehouse_id === warehouseId);
-  }
-
   return rows;
 }
 
-export async function transferStaffWarehouse(
-  staffId: string,
-  warehouseId: string
-): Promise<{ user_id: string; warehouse_id: string; warehouse_name: string }> {
+export async function listWarehousesWithAssignedStaff(params: {
+  search?: string;
+}): Promise<
+  Array<{
+    warehouse_id: string;
+    warehouse_name: string;
+    staff_id: string | null;
+    staff_name: string | null;
+    staff_email: string | null;
+  }>
+> {
+  const search = (params.search ?? "").trim();
+  const warehouseQuery: any = {};
+  if (search) {
+    warehouseQuery.name = { $regex: search, $options: "i" };
+  }
+
+  const warehouses = await Warehouse.find(warehouseQuery)
+    .select("_id name")
+    .sort({ name: 1 })
+    .lean();
+  if (warehouses.length === 0) return [];
+
+  const warehouseIds = warehouses.map((w: any) => w._id);
+  const mappings = await StaffWarehouse.find({ warehouseId: { $in: warehouseIds } })
+    .select("warehouseId staffId")
+    .lean();
+
+  const staffIds = Array.from(new Set(mappings.map((m: any) => m.staffId?.toString()).filter(Boolean)));
+  const staffs = staffIds.length
+    ? await User.find({ _id: { $in: staffIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name email role isActive")
+        .lean()
+    : [];
+  const staffById = new Map<string, any>();
+  for (const s of staffs as any[]) {
+    if (s.role === "staff" && s.isActive) {
+      staffById.set(s._id.toString(), s);
+    }
+  }
+
+  const mappingByWarehouse = new Map<string, string>();
+  for (const m of mappings as any[]) {
+    const wid = m.warehouseId?.toString();
+    const sid = m.staffId?.toString();
+    if (!wid || !sid) continue;
+    mappingByWarehouse.set(wid, sid);
+  }
+
+  return warehouses.map((w: any) => {
+    const sid = mappingByWarehouse.get(w._id.toString()) ?? null;
+    const staff = sid ? staffById.get(sid) : null;
+    return {
+      warehouse_id: w._id.toString(),
+      warehouse_name: w.name,
+      staff_id: staff?._id?.toString?.() ?? null,
+      staff_name: staff?.name ?? null,
+      staff_email: staff?.email ?? null,
+    };
+  });
+}
+
+export async function assignStaffToWarehouse(
+  warehouseId: string,
+  staffId: string
+): Promise<{
+  warehouse_id: string;
+  warehouse_name: string;
+  staff_id: string;
+  staff_name: string;
+  staff_email: string;
+}> {
   if (!Types.ObjectId.isValid(staffId)) throw new Error("Invalid staff id");
   if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouse id");
 
-  const staff = await User.findOne({ _id: new Types.ObjectId(staffId), role: "staff", isActive: true }).select("_id");
+  const staff = await User.findOne({ _id: new Types.ObjectId(staffId), role: "staff", isActive: true })
+    .select("_id name email")
+    .lean();
   if (!staff) throw new Error("Staff not found or inactive");
 
-  const warehouse = await Warehouse.findById(warehouseId).select("_id name");
+  const warehouse = await Warehouse.findById(warehouseId).select("_id name").lean();
   if (!warehouse) throw new Error("Warehouse not found");
 
-  // IMPORTANT:
-  // A staff can belong to only one warehouse. We must delete existing mappings for this staff
-  // first to avoid violating unique indexes in existing DB data.
-  await StaffWarehouse.deleteMany({ staffId: new Types.ObjectId(staffId) });
-  await StaffWarehouse.create({
-    staffId: new Types.ObjectId(staffId),
-    warehouseId: new Types.ObjectId(warehouseId),
-  });
+  await StaffWarehouse.findOneAndUpdate(
+    { warehouseId: new Types.ObjectId(warehouseId) },
+    {
+      $set: {
+        warehouseId: new Types.ObjectId(warehouseId),
+        staffId: new Types.ObjectId(staffId),
+      },
+    },
+    { upsert: true, new: true }
+  );
 
   return {
-    user_id: staffId,
+    warehouse_id: warehouseId,
+    warehouse_name: (warehouse as any).name,
+    staff_id: staffId,
+    staff_name: (staff as any).name,
+    staff_email: (staff as any).email,
+  };
+}
+
+export async function unassignStaffFromWarehouse(
+  warehouseId: string
+): Promise<{ warehouse_id: string; warehouse_name: string }> {
+  if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouse id");
+
+  const warehouse = await Warehouse.findById(warehouseId).select("_id name").lean();
+  if (!warehouse) throw new Error("Warehouse not found");
+
+  await StaffWarehouse.deleteOne({ warehouseId: new Types.ObjectId(warehouseId) });
+
+  return {
     warehouse_id: warehouseId,
     warehouse_name: (warehouse as any).name,
   };
