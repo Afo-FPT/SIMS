@@ -98,8 +98,8 @@ export default function ManagerWarehouseDetailPage() {
     length: '',
     width: '',
     description: '',
-    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+  const [togglingWarehouseStatus, setTogglingWarehouseStatus] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,7 +307,6 @@ export default function ManagerWarehouseDetailPage() {
         length: String(warehouse.length),
         width: String(warehouse.width),
         description: warehouse.description ?? '',
-        status: warehouse.status,
       });
     }
   }, [warehouse, editingInfo]);
@@ -442,17 +441,31 @@ export default function ManagerWarehouseDetailPage() {
         width: widthNum,
         description: infoForm.description.trim() || undefined,
       });
-      let next = updated;
-      if (infoForm.status && infoForm.status !== warehouse.status) {
-        next = await updateWarehouseStatus(warehouse.id, infoForm.status);
-      }
-      setWarehouse(next);
+      setWarehouse(updated);
       toast.success('Warehouse information updated');
       setEditingInfo(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update warehouse');
     } finally {
       setSavingInfo(false);
+    }
+  };
+
+  const handleSetWarehouseVisibility = async (next: 'ACTIVE' | 'INACTIVE') => {
+    if (!warehouse || warehouse.status === next) return;
+    try {
+      setTogglingWarehouseStatus(true);
+      const updated = await updateWarehouseStatus(warehouse.id, next);
+      setWarehouse(updated);
+      toast.success(
+        next === 'ACTIVE'
+          ? 'Warehouse is active and visible to customers on rent requests.'
+          : 'Warehouse is inactive and hidden from customers on rent requests.'
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update warehouse status');
+    } finally {
+      setTogglingWarehouseStatus(false);
     }
   };
 
@@ -560,7 +573,6 @@ export default function ManagerWarehouseDetailPage() {
             Detailed management for this warehouse: zones and shelves.
           </p>
         </div>
-        <Badge variant={warehouse.status === 'ACTIVE' ? 'success' : 'warning'}>{warehouse.status}</Badge>
       </div>
 
       {/* Warehouse info */}
@@ -631,15 +643,6 @@ export default function ManagerWarehouseDetailPage() {
               onChange={(e) => setInfoForm((p) => ({ ...p, width: e.target.value }))}
               required
             />
-            <Select
-              label="Status"
-              value={infoForm.status}
-              onChange={(e) => setInfoForm((p) => ({ ...p, status: e.target.value as 'ACTIVE' | 'INACTIVE' }))}
-              options={[
-                { value: 'ACTIVE', label: 'ACTIVE' },
-                { value: 'INACTIVE', label: 'INACTIVE' },
-              ]}
-            />
             <div className="md:col-span-2 lg:col-span-3">
               <Input
                 label="Description (optional)"
@@ -659,7 +662,6 @@ export default function ManagerWarehouseDetailPage() {
                     length: String(warehouse.length),
                     width: String(warehouse.width),
                     description: warehouse.description ?? '',
-                    status: warehouse.status,
                   });
                 }}
               >
@@ -1171,6 +1173,43 @@ export default function ManagerWarehouseDetailPage() {
               )}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Manage: visibility — at bottom of page (active/inactive for rent requests) */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-2">Manage warehouse</h2>
+        <p className="text-sm text-slate-600 mb-4">
+          Only <strong className="text-slate-800">active</strong> warehouses appear in the customer rent-requests list.
+          New warehouses start as inactive until you activate them here.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {warehouse.status === 'INACTIVE' ? (
+            <Button
+              type="button"
+              onClick={() => handleSetWarehouseVisibility('ACTIVE')}
+              isLoading={togglingWarehouseStatus}
+              disabled={togglingWarehouseStatus}
+            >
+              Activate warehouse
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleSetWarehouseVisibility('INACTIVE')}
+              isLoading={togglingWarehouseStatus}
+              disabled={togglingWarehouseStatus}
+            >
+              Deactivate warehouse
+            </Button>
+          )}
+        </div>
+        <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-slate-500">Status</span>
+          <Badge variant={warehouse.status === 'ACTIVE' ? 'success' : 'warning'}>
+            {warehouse.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+          </Badge>
         </div>
       </section>
 

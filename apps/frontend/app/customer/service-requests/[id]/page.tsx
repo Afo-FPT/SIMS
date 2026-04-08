@@ -110,7 +110,7 @@ export default function CustomerServiceRequestDetailPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-slate-500 text-sm">
-            <Link href="/customer/service-requests" className="hover:underline">
+            <Link href="/customer/service-requests?tab=tracking" className="hover:underline">
               Service Requests
             </Link>
             <span className="material-symbols-outlined text-base">chevron_right</span>
@@ -122,7 +122,10 @@ export default function CustomerServiceRequestDetailPage() {
           <p className="text-slate-500 mt-1">Inbound / Outbound request details and confirmation.</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => router.back()}>
+          <Button
+            variant="secondary"
+            onClick={() => router.push('/customer/service-requests?tab=tracking')}
+          >
             Back
           </Button>
           {canConfirm && (
@@ -180,6 +183,11 @@ export default function CustomerServiceRequestDetailPage() {
             <span className="font-bold text-slate-700">{totals.actual}</span>
           </div>
         </div>
+        <p className="text-xs text-slate-500">
+          <strong className="text-slate-600">Before / After:</strong> quantity of this product on the shelf line before and
+          after staff completed the {data.request_type === 'IN' ? 'inbound' : 'outbound'} (recorded when the request is
+          processed). Older requests may show &quot;—&quot;.
+        </p>
 
         {data.items.length === 0 ? (
           <p className="text-slate-500 text-sm py-6">No items in this request.</p>
@@ -194,9 +202,15 @@ export default function CustomerServiceRequestDetailPage() {
                   {data.request_type === 'IN' && (
                     <th className="px-4 py-3 text-right font-bold text-slate-600">Qty/unit</th>
                   )}
+                  <th className="px-4 py-3 text-left font-bold text-slate-600">Shelf</th>
                   <th className="px-4 py-3 text-right font-bold text-slate-600">Requested</th>
                   <th className="px-4 py-3 text-right font-bold text-slate-600">Actual</th>
-                  <th className="px-4 py-3 text-left font-bold text-slate-600">Shelf</th>
+                  <th className="px-4 py-3 text-right font-bold text-slate-600" title="On shelf before this operation">
+                    Before
+                  </th>
+                  <th className="px-4 py-3 text-right font-bold text-slate-600" title="On shelf after this operation">
+                    After
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -210,11 +224,17 @@ export default function CustomerServiceRequestDetailPage() {
                         {it.quantity_per_unit != null ? it.quantity_per_unit : '—'}
                       </td>
                     )}
+                    <td className="px-4 py-3 text-slate-600">{it.shelf_code ?? it.shelf_id ?? '—'}</td>
                     <td className="px-4 py-3 text-right font-medium">{it.quantity_requested}</td>
                     <td className="px-4 py-3 text-right">
                       {it.quantity_actual != null ? it.quantity_actual : '—'}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{it.shelf_code ?? it.shelf_id ?? '—'}</td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {it.quantity_on_hand_before != null ? it.quantity_on_hand_before : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-700">
+                      {it.quantity_on_hand_after != null ? it.quantity_on_hand_after : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -222,6 +242,81 @@ export default function CustomerServiceRequestDetailPage() {
           </div>
         )}
       </section>
+
+      {(() => {
+        const lossReasonLabel: Record<string, string> = {
+          damage: 'Damage in transit',
+          damage_storage: 'Storage damage',
+          shortage: 'Shortage on receipt',
+          quality: 'Quality not met',
+          expired: 'Expired',
+          damage_picking: 'Damage during picking',
+          location_error: 'Location not found',
+          other: 'Other',
+        };
+        const lossItems = data.items.filter((it) => {
+          const req = it.quantity_requested;
+          const actual = it.quantity_actual ?? 0;
+          const damage = it.damage_quantity ?? 0;
+          return actual < req || damage > 0;
+        });
+        if (lossItems.length === 0) return null;
+        return (
+          <section className="border border-amber-200 rounded-3xl bg-amber-50/50 p-6 shadow-sm">
+            <h2 className="text-lg font-black text-amber-900 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-xl">warning</span>
+              Shortage / damage reasons
+            </h2>
+            <p className="text-sm text-amber-900/80 mb-4">
+              Staff-recorded reasons when actual quantity differs from the request (inbound/outbound).
+            </p>
+            <ul className="space-y-4">
+              {lossItems.map((it) => {
+                const req = it.quantity_requested;
+                const actual = it.quantity_actual ?? 0;
+                const damage = it.damage_quantity ?? 0;
+                const short = Math.max(0, req - actual);
+                const reasonText = it.loss_reason ? (lossReasonLabel[it.loss_reason] ?? it.loss_reason) : null;
+                return (
+                  <li
+                    key={it.request_detail_id}
+                    className="text-sm border-b border-amber-100 pb-4 last:border-0 last:pb-0"
+                  >
+                    <p className="font-bold text-slate-900">{it.item_name}</p>
+                    <div className="mt-2 space-y-1 text-slate-700">
+                      {short > 0 && (
+                        <p>
+                          <span className="text-amber-800 font-semibold">Shortage:</span> {short} {it.unit}{' '}
+                          (requested {req}, actual {actual})
+                        </p>
+                      )}
+                      {damage > 0 && (
+                        <p>
+                          <span className="text-amber-800 font-semibold">Damaged / unusable:</span> {damage}{' '}
+                          {it.unit}
+                        </p>
+                      )}
+                      {reasonText && (
+                        <p>
+                          <span className="text-slate-600 font-semibold">Reason code:</span> {reasonText}
+                        </p>
+                      )}
+                      {it.loss_notes && (
+                        <p>
+                          <span className="text-slate-600 font-semibold">Staff note:</span> {it.loss_notes}
+                        </p>
+                      )}
+                      {!reasonText && !it.loss_notes && (short > 0 || damage > 0) && (
+                        <p className="text-slate-500 italic">No additional reason note from staff.</p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })()}
     </div>
   );
 }

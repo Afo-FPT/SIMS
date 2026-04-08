@@ -75,10 +75,14 @@ export async function searchAndFilterWarehousesController(
     // Extract query parameters
     const { search, status, page, limit } = req.query;
 
+    // Customers may only list active warehouses (rent requests); ignore status query for other roles.
+    const effectiveStatus: "ACTIVE" | "INACTIVE" | undefined =
+      req.user.role === "customer" ? "ACTIVE" : (status as "ACTIVE" | "INACTIVE" | undefined);
+
     // Prepare DTO
     const params: SearchFilterWarehouseParams = {
       search: search as string,
-      status: status as "ACTIVE" | "INACTIVE" | undefined,
+      status: effectiveStatus,
       page: page ? Number(page) : undefined,
       limit: limit ? Number(limit) : undefined
     };

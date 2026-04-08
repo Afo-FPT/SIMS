@@ -41,6 +41,10 @@ export interface StorageRequestViewDTO {
     volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    /** Shelf stock for this SKU line before completion (staff snapshot) */
+    quantity_on_hand_before?: number;
+    /** Shelf stock after completion */
+    quantity_on_hand_after?: number;
     damage_quantity?: number;
     loss_reason?: string;
     loss_notes?: string;
@@ -184,6 +188,8 @@ export async function listStorageRequests(
           volume_per_unit_m3: d.volumePerUnitM3,
           quantity_requested: d.quantityRequested,
           quantity_actual: d.quantityActual,
+          quantity_on_hand_before: d.quantityOnHandBefore,
+          quantity_on_hand_after: d.quantityOnHandAfter,
           damage_quantity: d.damageQuantity,
           loss_reason: d.lossReason,
           loss_notes: d.lossNotes
@@ -288,6 +294,8 @@ export async function getStorageRequestById(
         volume_per_unit_m3: d.volumePerUnitM3,
         quantity_requested: d.quantityRequested,
         quantity_actual: d.quantityActual,
+        quantity_on_hand_before: d.quantityOnHandBefore,
+        quantity_on_hand_after: d.quantityOnHandAfter,
         damage_quantity: d.damageQuantity,
         loss_reason: d.lossReason,
         loss_notes: d.lossNotes

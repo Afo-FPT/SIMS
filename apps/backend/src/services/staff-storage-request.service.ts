@@ -293,7 +293,7 @@ export async function staffCompleteStorageRequest(
       }
     }
 
-    // Apply quantityActual updates + StoredItem adjustments
+    // Apply quantityActual updates + StoredItem adjustments (snapshot before/after stock on shelf)
     for (const it of dto.items) {
       const detail = detailById.get(it.requestDetailId)!;
       const unit = (detail as any).unit || "pcs";
@@ -320,9 +320,34 @@ export async function staffCompleteStorageRequest(
       if (it.lossNotes != null && typeof it.lossNotes === "string") {
         (detail as any).lossNotes = it.lossNotes.trim() || undefined;
       }
-      await detail.save({ session });
 
-      if (it.quantityActual <= 0) continue;
+      if (!detail.shelfId) {
+        throw new Error("Shelf is required on line item to complete storage request");
+      }
+
+      const shelfOid = detail.shelfId as Types.ObjectId;
+
+      if (it.quantityActual <= 0) {
+        const q = await getTotalStoredQuantity({
+          contractId: request.contractId,
+          shelfId: shelfOid,
+          itemName: detail.itemName,
+          unit,
+          session
+        });
+        (detail as any).quantityOnHandBefore = q;
+        (detail as any).quantityOnHandAfter = q;
+        await detail.save({ session });
+        continue;
+      }
+
+      const beforeQty = await getTotalStoredQuantity({
+        contractId: request.contractId,
+        shelfId: shelfOid,
+        itemName: detail.itemName,
+        unit,
+        session
+      });
 
       if (request.requestType === "IN") {
         const update: any = {
@@ -360,6 +385,17 @@ export async function staffCompleteStorageRequest(
           session
         });
       }
+
+      const afterQty = await getTotalStoredQuantity({
+        contractId: request.contractId,
+        shelfId: shelfOid,
+        itemName: detail.itemName,
+        unit,
+        session
+      });
+      (detail as any).quantityOnHandBefore = beforeQty;
+      (detail as any).quantityOnHandAfter = afterQty;
+      await detail.save({ session });
     }
 
     request.status = "DONE_BY_STAFF";

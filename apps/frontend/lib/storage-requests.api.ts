@@ -70,6 +70,9 @@ export interface StorageRequestView {
     volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    /** Shelf stock before/after staff completed IN/OUT (when recorded) */
+    quantity_on_hand_before?: number;
+    quantity_on_hand_after?: number;
     damage_quantity?: number;
     loss_reason?: string;
     loss_notes?: string;

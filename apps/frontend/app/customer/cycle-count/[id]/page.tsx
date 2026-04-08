@@ -125,7 +125,7 @@ export default function CustomerCycleCountDetailPage() {
     <div className="space-y-8">
       <div className="flex items-center gap-4">
         <Link
-          href="/customer/service-requests"
+          href="/customer/service-requests?tab=tracking"
           className="text-slate-500 hover:text-primary font-bold flex items-center gap-1"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -292,6 +292,54 @@ export default function CustomerCycleCountDetailPage() {
           </Table>
         </section>
       )}
+
+      {hasItems &&
+        data.items!.some((i) => (i.discrepancy ?? 0) !== 0) && (
+          <section className="border border-amber-200 rounded-3xl bg-amber-50/50 p-6 shadow-sm">
+            <h2 className="text-lg font-black text-amber-900 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-xl">inventory_2</span>
+              Shortage / variance reasons (inventory check)
+            </h2>
+            <p className="text-sm text-amber-900/80 mb-4">
+              Lines where counted quantity differs from system quantity. Staff may leave a note explaining damage,
+              shrinkage, or counting notes.
+            </p>
+            <ul className="space-y-4">
+              {data.items!
+                .filter((i) => (i.discrepancy ?? 0) !== 0)
+                .map((item) => {
+                  const disc = item.discrepancy ?? 0;
+                  return (
+                    <li
+                      key={`${item.stored_item_id}-${item.shelf_id}`}
+                      className="text-sm border-b border-amber-100 pb-4 last:border-0 last:pb-0"
+                    >
+                      <p className="font-bold text-slate-900">
+                        {item.item_name}{' '}
+                        <span className="font-mono text-slate-500">({item.shelf_code})</span>
+                      </p>
+                      <div className="mt-2 space-y-1 text-slate-700">
+                        <p>
+                          <span className="text-slate-600 font-semibold">System qty:</span> {item.system_quantity}{' '}
+                          {item.unit} · <span className="text-slate-600 font-semibold">Counted:</span>{' '}
+                          {item.counted_quantity ?? '—'} ·{' '}
+                          <span className="text-amber-800 font-semibold">Variance:</span> {disc > 0 ? '+' : ''}
+                          {disc}
+                        </p>
+                        {item.note && item.note.trim() ? (
+                          <p>
+                            <span className="text-slate-600 font-semibold">Reason / note:</span> {item.note}
+                          </p>
+                        ) : (
+                          <p className="text-slate-500 italic">No staff note on this line.</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        )}
 
       {!hasItems && (
         <p className="text-slate-500 text-sm">

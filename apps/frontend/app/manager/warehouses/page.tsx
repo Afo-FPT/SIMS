@@ -75,7 +75,7 @@ export default function ManagerWarehousesPage() {
         width,
         description: warehouseDescription || undefined,
       });
-      toast.success('Warehouse created successfully');
+      toast.success('Warehouse created (inactive). Open Manage to activate when it is ready for customers.');
       setWarehouses((prev) => [newWarehouse, ...prev]);
       setWarehouseName('');
       setWarehouseAddress('');

@@ -305,11 +305,17 @@ export default function ServiceRequestsPage() {
   }, [type, contractId]);
 
   // Open request detail from URL (Topbar notification -> /service-requests?requestId=...)
+  // ?tab=tracking opens "Track requests" (return from detail page uses this).
   useEffect(() => {
     const rid = searchParams.get('requestId');
-    if (!rid) return;
-    setMainTab('list');
-    setDetailRequestId(rid);
+    if (rid) {
+      setMainTab('list');
+      setDetailRequestId(rid);
+      return;
+    }
+    if (searchParams.get('tab') === 'tracking') {
+      setMainTab('list');
+    }
   }, [searchParams]);
 
   // Load stored items for Inventory Checking "By SKU list" (SKUs của contract từ BE)
@@ -470,13 +476,59 @@ export default function ServiceRequestsPage() {
     COMPLETED: 'Completed',
     REJECTED: 'Rejected',
   };
-  const formatDate = (s: string) => {
+
+  /** DD/MM/YYYY for request tracking tables and detail modal */
+  const formatTrackingDate = (s: string) => {
     try {
-      return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return s;
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
     } catch {
       return s;
     }
   };
+
+  const cycleCountStatusLabel: Record<string, string> = {
+    PENDING_MANAGER_APPROVAL: 'Pending manager approval',
+    ASSIGNED_TO_STAFF: 'Waiting for staff count',
+    STAFF_SUBMITTED: 'Staff submitted results',
+    ADJUSTMENT_REQUESTED: 'Adjustment requested',
+    CONFIRMED: 'Confirmed',
+    RECOUNT_REQUIRED: 'Recount required',
+    REJECTED: 'Rejected',
+  };
+
+  function cycleCountStatusPillClass(status: string): string {
+    switch (status) {
+      case 'PENDING_MANAGER_APPROVAL':
+        return 'bg-amber-100 text-amber-800';
+      case 'ASSIGNED_TO_STAFF':
+        return 'bg-sky-100 text-sky-800';
+      case 'STAFF_SUBMITTED':
+        return 'bg-violet-100 text-violet-800';
+      case 'ADJUSTMENT_REQUESTED':
+        return 'bg-orange-100 text-orange-800';
+      case 'CONFIRMED':
+        return 'bg-emerald-100 text-emerald-800';
+      case 'RECOUNT_REQUIRED':
+        return 'bg-rose-100 text-rose-800';
+      case 'REJECTED':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-slate-100 text-slate-700';
+    }
+  }
+
+  function formatCycleCountStatus(status: string): string {
+    const label = cycleCountStatusLabel[status];
+    if (label) return label;
+    const fallback = status.replace(/_/g, ' ').trim().toLowerCase();
+    if (!fallback) return status;
+    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+  }
 
   const addInboundRow = () => {
     setInboundItems((prev) => [
@@ -848,6 +900,7 @@ export default function ServiceRequestsPage() {
                     <tr className="border-b border-slate-200">
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Reference</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Type</th>
+                      <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Warehouse</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Created</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Status</th>
                       <th className="px-6 py-4 text-xs font-black text-slate-500 uppercase">Action</th>
@@ -860,7 +913,10 @@ export default function ServiceRequestsPage() {
                         <td className="px-6 py-4 text-slate-700">
                           {r.request_type === 'IN' ? 'Inbound' : 'Outbound'}
                         </td>
-                        <td className="px-6 py-4 text-slate-700">{formatDate(r.created_at)}</td>
+                        <td className="px-6 py-4 text-slate-700 max-w-[14rem]">
+                          <span className="font-medium text-slate-900">{r.warehouse_name ?? '—'}</span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-700">{formatTrackingDate(r.created_at)}</td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
@@ -878,7 +934,7 @@ export default function ServiceRequestsPage() {
                         </td>
                         <td className="px-6 py-4">
                           <Link
-                            href={`/customer/service-requests/${r.request_id}`}
+                            href={`/customer/service-requests/${r.request_id}?tab=tracking`}
                             className="text-sm font-bold text-primary hover:underline"
                           >
                             View details
@@ -952,10 +1008,18 @@ export default function ServiceRequestsPage() {
                       <tr key={cc.cycle_count_id} className="border-b border-slate-100 hover:bg-slate-50/50">
                         <td className="px-6 py-4 font-bold text-slate-900">{cc.contract_code}</td>
                         <td className="px-6 py-4 text-slate-700">{cc.warehouse_name || '—'}</td>
-                        <td className="px-6 py-4 text-slate-700">{cc.status}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${cycleCountStatusPillClass(
+                              cc.status
+                            )}`}
+                          >
+                            {formatCycleCountStatus(cc.status)}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 text-slate-700">
                           {cc.counting_deadline
-                            ? formatDate(cc.counting_deadline)
+                            ? formatTrackingDate(cc.counting_deadline)
                             : '—'}
                         </td>
                         <td className="px-6 py-4">
@@ -1525,12 +1589,12 @@ export default function ServiceRequestsPage() {
                 </span>
                 <span className="text-slate-400">|</span>
                 <span className="text-slate-500">Created:</span>
-                <span>{formatDate(detailRequest.created_at)}</span>
+                <span>{formatTrackingDate(detailRequest.created_at)}</span>
                 {detailRequest.updated_at && (
                   <>
                     <span className="text-slate-400">|</span>
                     <span className="text-slate-500">Updated:</span>
-                    <span>{formatDate(detailRequest.updated_at)}</span>
+                    <span>{formatTrackingDate(detailRequest.updated_at)}</span>
                   </>
                 )}
               </div>
@@ -1552,9 +1616,14 @@ export default function ServiceRequestsPage() {
                         {detailRequest.request_type === 'IN' && (
                           <th className="px-4 py-3 text-right font-bold text-slate-600">Qty/unit</th>
                         )}
+                        {detailRequest.request_type === 'IN' && (
+                          <th className="px-4 py-3 text-right font-bold text-slate-600">m³/unit</th>
+                        )}
+                        <th className="px-4 py-3 text-left font-bold text-slate-600">Shelf</th>
                         <th className="px-4 py-3 text-right font-bold text-slate-600">Requested</th>
                         <th className="px-4 py-3 text-right font-bold text-slate-600">Actual</th>
-                        <th className="px-4 py-3 text-left font-bold text-slate-600">Shelf</th>
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">Before</th>
+                        <th className="px-4 py-3 text-right font-bold text-slate-600">After</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1573,11 +1642,17 @@ export default function ServiceRequestsPage() {
                               {it.volume_per_unit_m3 != null ? it.volume_per_unit_m3 : '—'}
                             </td>
                           )}
+                          <td className="px-4 py-3 text-slate-600">{it.shelf_code ?? it.shelf_id ?? '—'}</td>
                           <td className="px-4 py-3 text-right font-medium">{it.quantity_requested}</td>
                           <td className="px-4 py-3 text-right">
                             {it.quantity_actual != null ? it.quantity_actual : '—'}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{it.shelf_code ?? it.shelf_id ?? '—'}</td>
+                          <td className="px-4 py-3 text-right text-slate-700">
+                            {it.quantity_on_hand_before != null ? it.quantity_on_hand_before : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-700">
+                            {it.quantity_on_hand_after != null ? it.quantity_on_hand_after : '—'}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
