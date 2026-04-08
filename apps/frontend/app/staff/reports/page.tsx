@@ -286,7 +286,7 @@ export default function StaffReportsPage() {
         />
         <div className="mb-4 flex justify-end">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             isLoading={insightLoadingKey === 'staff_operation_history_bar'}
             disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_operation_history_bar'}
@@ -322,7 +322,7 @@ export default function StaffReportsPage() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-black text-slate-900">Discrepancy & Issue Summary Report</h2>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               isLoading={insightLoadingKey === 'staff_discrepancy_summary'}
               disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_discrepancy_summary'}
@@ -353,7 +353,7 @@ export default function StaffReportsPage() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-black text-slate-900">Task Workload Overview</h2>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               isLoading={insightLoadingKey === 'staff_warehouse_health'}
               disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_warehouse_health'}
@@ -389,7 +389,7 @@ export default function StaffReportsPage() {
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Cycle Count Execution Report</h2>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             isLoading={insightLoadingKey === 'staff_cycle_count_execution'}
             disabled={insightLoadingKey !== null && insightLoadingKey !== 'staff_cycle_count_execution'}
