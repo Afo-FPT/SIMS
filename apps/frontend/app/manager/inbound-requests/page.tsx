@@ -107,14 +107,14 @@ export default function ManagerInboundRequestsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge
-                      color={
+                      variant={
                         r.status === 'COMPLETED'
-                          ? 'green'
+                          ? 'success'
                           : r.status === 'REJECTED'
-                          ? 'red'
+                          ? 'error'
                           : r.status === 'DONE_BY_STAFF'
-                          ? 'blue'
-                          : 'orange'
+                          ? 'info'
+                          : 'warning'
                       }
                     >
                       {r.status}
