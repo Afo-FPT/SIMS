@@ -1,28 +1,26 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Chart as ChartJSComponent } from 'react-chartjs-2';
 import {
   ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJSCore,
   Legend as ChartLegend,
-  LineElement,
   LinearScale,
-  PointElement,
   Tooltip as ChartTooltip,
 } from 'chart.js';
-import { Pie, Line, Bar } from 'react-chartjs-2';
+import { Pie, Bar } from 'react-chartjs-2';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
-import { Input } from '../../../components/ui/Input';
 import { Button } from '../../../components/ui/Button';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
+import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
+import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -31,9 +29,7 @@ ChartJSCore.register(
   BarElement,
   CategoryScale,
   ChartLegend,
-  LineElement,
   LinearScale,
-  PointElement,
   ChartTooltip,
 );
 
@@ -53,58 +49,19 @@ ChartJSCore.defaults.transitions.show = {
   },
 } as any;
 
-type ReportTab =
-  | 'io_history'
-  | 'turnover'
-  | 'discrepancy'
-  | 'request_status'
-  | 'top_products';
-
-type HistoryGranularity = 'day' | 'week' | 'month';
-
-function monthKey(ts: string): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function dayKey(ts: string): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function weekKey(ts: string): string {
-  const d = new Date(ts);
-  const day = d.getDay() || 7;
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - day + 1);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const date = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${date}`;
-}
-
-function toWeekLabel(weekStart: string): string {
-  const start = new Date(`${weekStart}T00:00:00`);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return `${start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })} - ${end.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-  })}`;
-}
-
 export default function CustomerReportsPage() {
+  const init = useMemo(() => defaultReportDateRange(), []);
   const [loading, setLoading] = useState(true);
-  const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<ReportTab>('io_history');
-  const [historyGranularity, setHistoryGranularity] = useState<HistoryGranularity>('day');
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [ioStartDate, setIoStartDate] = useState(init.start);
+  const [ioEndDate, setIoEndDate] = useState(init.end);
+  const [ioPreset, setIoPreset] = useState<QuickPreset | null>('1m');
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
@@ -117,10 +74,12 @@ export default function CustomerReportsPage() {
     let cancelled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-    async function run() {
+    async function run(isInitial: boolean) {
       try {
-        if (!hasLoaded) setLoading(true);
-        setError(null);
+        if (isInitial) {
+          setLoading(true);
+          setError(null);
+        }
         const [items, req, cc] = await Promise.all([
           listMyStoredItems(),
           listStorageRequests(),
@@ -130,105 +89,78 @@ export default function CustomerReportsPage() {
         setStoredItems(items);
         setRequests(req);
         setCycleCounts(cc);
+        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load reports');
+        if (!cancelled && isInitial) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
-        if (!cancelled) {
+        if (!cancelled && isInitial) {
           setLoading(false);
-          setHasLoaded(true);
         }
       }
     }
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void run();
-      }
-    };
-
-    void run();
+    void run(true);
     pollTimer = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        void run();
+        void run(false);
       }
-    }, 30000);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    }, 15000);
 
     return () => {
       cancelled = true;
       if (pollTimer) clearInterval(pollTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [hasLoaded]);
+  }, []);
 
-  useEffect(() => {
-    setInsightsByKey({});
-    setInsightLoadingKey(null);
-    setInsightError(null);
-  }, [startDate, endDate, tab]);
-
-  const filteredRequests = useMemo(() => {
-    if (!startDate || !endDate) return requests;
-    const from = new Date(startDate);
-    const to = new Date(endDate);
+  function filterRequestsByRange(source: any[], start: string, end: string) {
+    if (!start || !end) return source;
+    const from = new Date(start);
+    const to = new Date(end);
     to.setHours(23, 59, 59, 999);
-    return requests.filter((r) => {
+    return source.filter((r) => {
       const t = new Date(r.updated_at || r.created_at);
       return t >= from && t <= to;
     });
-  }, [requests, startDate, endDate]);
+  }
 
-  const filteredCycleCounts = useMemo(() => {
-    if (!startDate || !endDate) return cycleCounts;
-    const from = new Date(startDate);
-    const to = new Date(endDate);
+  function filterCycleCountsByRange(source: any[], start: string, end: string) {
+    if (!start || !end) return source;
+    const from = new Date(start);
+    const to = new Date(end);
     to.setHours(23, 59, 59, 999);
-    return cycleCounts.filter((c) => {
+    return source.filter((c) => {
       const t = new Date(c.updated_at || c.created_at);
       return t >= from && t <= to;
     });
-  }, [cycleCounts, startDate, endDate]);
+  }
+
+  const ioRequests = useMemo(() => filterRequestsByRange(requests, ioStartDate, ioEndDate), [requests, ioStartDate, ioEndDate]);
+  const discrepancyCycleCounts = useMemo(() => cycleCounts, [cycleCounts]);
 
   const ioTrend = useMemo(() => {
     const map = new Map<string, { key: string; periodLabel: string; inbound: number; outbound: number }>();
-    filteredRequests.forEach((r) => {
+    const fromDate = new Date(ioStartDate);
+    const toDate = new Date(ioEndDate);
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let t = fromDate.getTime(); t <= toDate.getTime(); t += dayMs) {
+      const d = new Date(t);
+      const key = dayKey(d.toISOString());
+      map.set(key, { key, periodLabel: key, inbound: 0, outbound: 0 });
+    }
+    ioRequests.forEach((r) => {
       const ts = r.updated_at || r.created_at;
-      const key = historyGranularity === 'day' ? dayKey(ts) : historyGranularity === 'week' ? weekKey(ts) : monthKey(ts);
-      const periodLabel = historyGranularity === 'week' ? toWeekLabel(key) : key;
-      if (!map.has(key)) map.set(key, { key, periodLabel, inbound: 0, outbound: 0 });
+      const key = dayKey(ts);
+      if (!map.has(key)) map.set(key, { key, periodLabel: key, inbound: 0, outbound: 0 });
       const row = map.get(key)!;
       const qty = r.items.reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
       if (r.request_type === 'IN') row.inbound += qty;
       else row.outbound += qty;
     });
-    const maxPoints = historyGranularity === 'day' ? 14 : 12;
-    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key)).slice(-maxPoints);
-  }, [filteredRequests, historyGranularity]);
-
-  const turnoverByProduct = useMemo(() => {
-    const inMap = new Map<string, number>();
-    const outMap = new Map<string, number>();
-    filteredRequests.forEach((r) => {
-      r.items.forEach((i: any) => {
-        const qty = i.quantity_actual ?? i.quantity_requested ?? 0;
-        if (r.request_type === 'IN') inMap.set(i.item_name, (inMap.get(i.item_name) || 0) + qty);
-        else outMap.set(i.item_name, (outMap.get(i.item_name) || 0) + qty);
-      });
-    });
-    return storedItems.slice(0, 12).map((item) => {
-      const inQty = inMap.get(item.item_name) || 0;
-      const outQty = outMap.get(item.item_name) || 0;
-      const avgStock = Math.max(1, item.quantity);
-      return {
-        item: item.item_name,
-        stock: item.quantity,
-        turnover: Number(((inQty + outQty) / avgStock).toFixed(2)),
-      };
-    });
-  }, [filteredRequests, storedItems]);
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }, [ioRequests, ioStartDate, ioEndDate]);
 
   const discrepancyRows = useMemo(() => {
-    return filteredCycleCounts.map((c) => {
+    return discrepancyCycleCounts.map((c) => {
       const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
       const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
       return {
@@ -239,7 +171,7 @@ export default function CustomerReportsPage() {
         status: c.status,
       };
     });
-  }, [filteredCycleCounts]);
+  }, [discrepancyCycleCounts]);
 
   const discrepancyPie = useMemo(() => {
     const under = discrepancyRows.filter((r) => r.actual < r.system).length;
@@ -253,21 +185,21 @@ export default function CustomerReportsPage() {
   }, [discrepancyRows]);
 
   const requestStatusSummary = useMemo(() => {
-    const pending = filteredRequests.filter((r) => r.status === 'PENDING').length;
-    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
-    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
-    const rejected = filteredRequests.filter((r) => r.status === 'REJECTED').length;
+    const pending = requests.filter((r) => r.status === 'PENDING').length;
+    const inProgress = requests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const completed = requests.filter((r) => r.status === 'COMPLETED').length;
+    const rejected = requests.filter((r) => r.status === 'REJECTED').length;
     return [
       { name: 'Pending', value: pending },
       { name: 'In progress', value: inProgress },
       { name: 'Completed', value: completed },
       { name: 'Rejected', value: rejected },
     ];
-  }, [filteredRequests]);
+  }, [requests]);
 
   const topProductsByQuantity = useMemo(() => {
     const map = new Map<string, { item: string; inbound: number; outbound: number }>();
-    filteredRequests.forEach((r) => {
+    requests.forEach((r) => {
       (r.items || []).forEach((i: any) => {
         const key = i.item_name || 'Unknown';
         if (!map.has(key)) map.set(key, { item: key, inbound: 0, outbound: 0 });
@@ -281,7 +213,7 @@ export default function CustomerReportsPage() {
       .map((r) => ({ ...r, total: r.inbound + r.outbound }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [filteredRequests]);
+  }, [requests]);
 
   const pieAnimatedOptions = useMemo(
     () => ({
@@ -295,16 +227,41 @@ export default function CustomerReportsPage() {
       animations: {
         numbers: { duration: 1200, easing: 'easeOutCubic' as const },
       },
-      plugins: { legend: { position: 'bottom' as const } },
+      plugins: {
+        title: { display: true, text: 'Distribution overview', color: '#0f172a', font: { size: 13, weight: 'bold' as const } },
+        subtitle: { display: true, text: 'Current period data • Unit: requests', color: '#64748b' },
+        legend: { position: 'bottom' as const },
+        tooltip: {
+          callbacks: {
+            label: (ctx: any) => `${ctx.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}`,
+          },
+        },
+      },
     }),
     [],
   );
 
-  async function handleInsightRequest(chartKey: string, data: unknown) {
+  const ioSummary = useMemo(() => {
+    const totalInbound = ioTrend.reduce((s, d) => s + d.inbound, 0);
+    const totalOutbound = ioTrend.reduce((s, d) => s + d.outbound, 0);
+    return { totalInbound, totalOutbound, periods: ioTrend.length };
+  }, [ioTrend]);
+
+  const topProductsSummary = useMemo(() => {
+    const totalMoved = topProductsByQuantity.reduce((s, d) => s + d.total, 0);
+    return { totalMoved, productCount: topProductsByQuantity.length };
+  }, [topProductsByQuantity]);
+
+  async function handleInsightRequest(chartKey: string, data: unknown, range?: { startDate: string; endDate: string }) {
     try {
       setInsightError(null);
       setInsightLoadingKey(chartKey);
-      const res = await requestReportInsight({ chartKey, startDate, endDate, data });
+      const res = await requestReportInsight({
+        chartKey,
+        startDate: range?.startDate ?? init.start,
+        endDate: range?.endDate ?? init.end,
+        data,
+      });
       setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
     } catch (e) {
       setInsightError(e instanceof Error ? e.message : 'Failed to generate insight');
@@ -326,8 +283,7 @@ export default function CustomerReportsPage() {
     return (
       <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-          <p className="text-slate-500 mt-1">Track your warehouse operations and inventory performance in one place</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Customer Reports</h1>
         </div>
         <LoadingSkeleton className="h-64 rounded-3xl" />
       </div>
@@ -338,8 +294,8 @@ export default function CustomerReportsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Reports</h1>
-        <p className="text-slate-500 mt-1">Track your warehouse operations and inventory performance in one place</p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Customer Reports</h1>
+        <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
       </div>
       {insightError && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
@@ -348,128 +304,47 @@ export default function CustomerReportsPage() {
       )}
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-black text-slate-900">Report Filters</h2>
-            <p className="text-sm text-slate-500 mt-1">Select date range for report data</p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">From date</p>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-auto bg-white" />
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Inbound/Outbound History Report</h2>
+              <p className="mt-1 text-sm text-slate-500">Unit: quantity</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">To date</p>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-auto bg-white" />
-            </div>
-            <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <button
-                type="button"
-                onClick={() => {
-                  const end = new Date();
-                  const start = new Date();
-                  start.setDate(start.getDate() - 30);
-                  setStartDate(start.toISOString().slice(0, 10));
-                  setEndDate(end.toISOString().slice(0, 10));
-                }}
-                className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Last 30 days
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const end = new Date();
-                  const start = new Date();
-                  start.setDate(start.getDate() - 90);
-                  setStartDate(start.toISOString().slice(0, 10));
-                  setEndDate(end.toISOString().slice(0, 10));
-                }}
-                className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
-              >
-                Last 90 days
-              </button>
-            </div>
-            <Button onClick={() => window.location.reload()}>Refresh</Button>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap gap-2">
-        {[
-          ['io_history', 'Inbound/Outbound History'],
-          ['turnover', 'Inventory Level & Turnover'],
-          ['discrepancy', 'Checking & Discrepancy'],
-          ['request_status', 'Request Status Overview'],
-          ['top_products', 'Top Products by Quantity'],
-        ].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id as ReportTab)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${
-              tab === id ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === 'io_history' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-lg font-black text-slate-900">Inbound/Outbound History Report</h2>
-            <div className="mt-2 flex items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Granularity</p>
-              <select
-                value={historyGranularity}
-                onChange={(e) => setHistoryGranularity(e.target.value as HistoryGranularity)}
-                className="h-9 rounded-lg border border-slate-200 px-3 text-sm bg-white"
-              >
-                <option value="day">By day</option>
-                <option value="week">By week</option>
-                <option value="month">By month</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72 relative">
+            <div className="flex gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'io_history_line'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_line'}
-                onClick={() => handleInsightRequest('io_history_line', { ioTrend, historyGranularity })}
+                isLoading={insightLoadingKey === 'io_history'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history'}
+                onClick={() => handleInsightRequest('io_history', { ioTrend }, { startDate: ioStartDate, endDate: ioEndDate })}
               >
                 Insight
               </Button>
-              <Line
-                data={{
-                  labels: ioTrend.map((d) => d.periodLabel),
-                  datasets: [
-                    { label: 'Inbound', data: ioTrend.map((d) => d.inbound), borderColor: '#0ea5e9', backgroundColor: '#0ea5e9', tension: 0.3 },
-                    { label: 'Outbound', data: ioTrend.map((d) => d.outbound), borderColor: '#6366f1', backgroundColor: '#6366f1', tension: 0.3 },
-                  ],
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
             </div>
+          </div>
+          <div className="mt-3">
+            <ChartDateFilterBar
+              enableToggle
+              initialCollapsed
+              startDate={ioStartDate}
+              endDate={ioEndDate}
+              activePreset={ioPreset}
+              onStartChange={setIoStartDate}
+              onEndChange={setIoEndDate}
+              onClearPreset={() => setIoPreset(null)}
+              onApplyPreset={(range, preset) => {
+                setIoStartDate(range.start);
+                setIoEndDate(range.end);
+                setIoPreset(preset);
+              }}
+            />
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <KpiCard title="Total inbound" value={ioSummary.totalInbound.toLocaleString('en-US')} />
+            <KpiCard title="Total outbound" value={ioSummary.totalOutbound.toLocaleString('en-US')} />
+            <KpiCard title="Periods shown" value={ioSummary.periods} />
+          </div>
+          <div className="grid grid-cols-1 gap-6">
             <div className="h-72 relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'io_history_bar'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history_bar'}
-                onClick={() => handleInsightRequest('io_history_bar', { ioTrend, historyGranularity })}
-              >
-                Insight
-              </Button>
               <Bar
                 data={{
                   labels: ioTrend.map((d) => d.periodLabel),
@@ -480,155 +355,57 @@ export default function CustomerReportsPage() {
                 }}
                 options={{
                   maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
-            </div>
-          </div>
-          {insightsByKey.io_history_line && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('io_history_line')}>
-                  Clear
-                </Button>
-              </div>
-              <ChatMarkdown role="model" content={insightsByKey.io_history_line} />
-            </div>
-          )}
-          {insightsByKey.io_history_bar && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('io_history_bar')}>
-                  Clear
-                </Button>
-              </div>
-              <ChatMarkdown role="model" content={insightsByKey.io_history_bar} />
-            </div>
-          )}
-        </section>
-      )}
-
-      {tab === 'turnover' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Level & Turnover Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72 relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'turnover_line'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'turnover_line'}
-                onClick={() => handleInsightRequest('turnover_line', { turnoverByProduct })}
-              >
-                Insight
-              </Button>
-              <ChartJSComponent
-                type="line"
-                data={{
-                  labels: turnoverByProduct.map((d) => d.item),
-                  datasets: [
-                    {
-                      label: 'Stock',
-                      data: turnoverByProduct.map((d) => d.stock),
-                      borderColor: '#0ea5e9',
-                      backgroundColor: '#0ea5e9',
-                      yAxisID: 'y',
-                      tension: 0.3,
-                    },
-                    {
-                      label: 'Turnover',
-                      data: turnoverByProduct.map((d) => d.turnover),
-                      borderColor: '#f59e0b',
-                      backgroundColor: '#f59e0b',
-                      yAxisID: 'y1',
-                      tension: 0.3,
-                    },
-                  ],
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
+                  plugins: {
+                    title: { display: true, text: 'Inbound/outbound comparison', color: '#0f172a', font: { size: 13, weight: 'bold' } },
+                    subtitle: { display: true, text: `Range: ${ioStartDate} -> ${ioEndDate} • Unit: quantity`, color: '#64748b' },
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
+                  },
                   scales: {
-                    y: { position: 'left', beginAtZero: true },
-                    y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } },
+                    x: { title: { display: true, text: 'Day' } },
+                    y: { beginAtZero: true, title: { display: true, text: 'Quantity (units)' } },
                   },
                 }}
               />
             </div>
-            <div className="h-72 relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'turnover_bar'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'turnover_bar'}
-                onClick={() => handleInsightRequest('turnover_bar', { turnoverByProduct })}
-              >
-                Insight
-              </Button>
-              <Bar
-                data={{
-                  labels: turnoverByProduct.map((d) => d.item),
-                  datasets: [
-                    {
-                      label: 'Turnover',
-                      data: turnoverByProduct.map((d) => d.turnover),
-                      backgroundColor: '#f59e0b',
-                    },
-                  ],
-                }}
-                options={{
-                  maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
-            </div>
           </div>
-          {insightsByKey.turnover_line && (
+          {insightsByKey.io_history && (
             <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
               <div className="flex items-center justify-between gap-3 mb-2">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('turnover_line')}>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('io_history')}>
                   Clear
                 </Button>
               </div>
-              <ChatMarkdown role="model" content={insightsByKey.turnover_line} />
-            </div>
-          )}
-          {insightsByKey.turnover_bar && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('turnover_bar')}>
-                  Clear
-                </Button>
-              </div>
-              <ChatMarkdown role="model" content={insightsByKey.turnover_bar} />
+              <ChatMarkdown role="model" content={insightsByKey.io_history} />
             </div>
           )}
         </section>
-      )}
 
-      {tab === 'discrepancy' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Inventory Checking & Discrepancy Report</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72 relative">
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Inventory Checking & Discrepancy Report</h2>
+              <p className="mt-1 text-sm text-slate-500">Unit: quantity difference</p>
+            </div>
+            <div className="flex gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'discrepancy_bar'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy_bar'}
-                onClick={() => handleInsightRequest('discrepancy_bar', { discrepancyRows })}
+                isLoading={insightLoadingKey === 'discrepancy'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy'}
+                onClick={() => handleInsightRequest('discrepancy', { discrepancyRows, discrepancyPie })}
               >
                 Insight
               </Button>
+            </div>
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <KpiCard title="Cycle checks" value={discrepancyRows.length} />
+            <KpiCard title="Total discrepancy" value={totalFormat(discrepancyRows.reduce((s, r) => s + r.discrepancy, 0))} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-72 relative">
               <Bar
                 data={{
                   labels: discrepancyRows.map((d) => d.id),
@@ -639,22 +416,19 @@ export default function CustomerReportsPage() {
                 }}
                 options={{
                   maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true } },
+                  plugins: {
+                    title: { display: true, text: 'System vs actual by cycle', color: '#0f172a', font: { size: 13, weight: 'bold' } },
+                    subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: quantity`, color: '#64748b' },
+                    legend: { position: 'bottom' },
+                  },
+                  scales: {
+                    x: { title: { display: true, text: 'Cycle ID' } },
+                    y: { beginAtZero: true, title: { display: true, text: 'Quantity (units)' } },
+                  },
                 }}
               />
             </div>
             <div className="h-72 relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'discrepancy_pie'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy_pie'}
-                onClick={() => handleInsightRequest('discrepancy_pie', { discrepancyPie })}
-              >
-                Insight
-              </Button>
               <Pie
                 data={{
                   labels: discrepancyPie.map((d) => d.name),
@@ -669,46 +443,43 @@ export default function CustomerReportsPage() {
               />
             </div>
           </div>
-          {insightsByKey.discrepancy_bar && (
+          {insightsByKey.discrepancy && (
             <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
               <div className="flex items-center justify-between gap-3 mb-2">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('discrepancy_bar')}>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('discrepancy')}>
                   Clear
                 </Button>
               </div>
-              <ChatMarkdown role="model" content={insightsByKey.discrepancy_bar} />
-            </div>
-          )}
-          {insightsByKey.discrepancy_pie && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('discrepancy_pie')}>
-                  Clear
-                </Button>
-              </div>
-              <ChatMarkdown role="model" content={insightsByKey.discrepancy_pie} />
+              <ChatMarkdown role="model" content={insightsByKey.discrepancy} />
             </div>
           )}
         </section>
-      )}
 
-      {tab === 'request_status' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Request Status Overview</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="h-72 relative">
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Request Status Report</h2>
+              <p className="mt-1 text-sm text-slate-500">Unit: requests</p>
+            </div>
+            <div className="flex gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'request_status_pie'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status_pie'}
-                onClick={() => handleInsightRequest('request_status_pie', { requestStatusSummary })}
+                isLoading={insightLoadingKey === 'request_status'}
+                disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status'}
+                onClick={() => handleInsightRequest('request_status', { requestStatusSummary })}
               >
                 Insight
               </Button>
+            </div>
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <KpiCard title="Total requests" value={requestStatusSummary.reduce((s, r) => s + r.value, 0)} />
+            <KpiCard title="Completed" value={requestStatusSummary.find((r) => r.name === 'Completed')?.value ?? 0} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-72 relative">
               <Pie
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
@@ -723,16 +494,6 @@ export default function CustomerReportsPage() {
               />
             </div>
             <div className="h-72 relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute -top-10 right-0 z-10"
-                isLoading={insightLoadingKey === 'request_status_bar'}
-                disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status_bar'}
-                onClick={() => handleInsightRequest('request_status_bar', { requestStatusSummary })}
-              >
-                Insight
-              </Button>
               <Bar
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
@@ -746,51 +507,54 @@ export default function CustomerReportsPage() {
                 }}
                 options={{
                   maintainAspectRatio: false,
-                  plugins: { legend: { position: 'bottom' } },
-                  scales: { y: { beginAtZero: true } },
+                  plugins: {
+                    title: { display: true, text: 'Request status count', color: '#0f172a', font: { size: 13, weight: 'bold' } },
+                    subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: requests`, color: '#64748b' },
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: (ctx: any) => `${ctx.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
+                  },
+                  scales: {
+                    x: { title: { display: true, text: 'Status' } },
+                    y: { beginAtZero: true, title: { display: true, text: 'Requests (count)' } },
+                  },
                 }}
               />
             </div>
           </div>
-          {insightsByKey.request_status_pie && (
+          {insightsByKey.request_status && (
             <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
               <div className="flex items-center justify-between gap-3 mb-2">
                 <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('request_status_pie')}>
+                <Button variant="ghost" size="sm" onClick={() => clearInsight('request_status')}>
                   Clear
                 </Button>
               </div>
-              <ChatMarkdown role="model" content={insightsByKey.request_status_pie} />
-            </div>
-          )}
-          {insightsByKey.request_status_bar && (
-            <div className="mt-4 bg-slate-50 border border-slate-200 p-4 rounded-2xl text-sm">
-              <div className="flex items-center justify-between gap-3 mb-2">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Insight</p>
-                <Button variant="ghost" size="sm" onClick={() => clearInsight('request_status_bar')}>
-                  Clear
-                </Button>
-              </div>
-              <ChatMarkdown role="model" content={insightsByKey.request_status_bar} />
+              <ChatMarkdown role="model" content={insightsByKey.request_status} />
             </div>
           )}
         </section>
-      )}
 
-      {tab === 'top_products' && (
-        <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Top Products by Quantity</h2>
-          <div className="h-72 relative">
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Top Products by Quantity</h2>
+              <p className="mt-1 text-sm text-slate-500">Unit: quantity</p>
+            </div>
             <Button
               variant="ghost"
               size="sm"
-              className="absolute -top-10 right-0 z-10"
               isLoading={insightLoadingKey === 'top_products'}
               disabled={insightLoadingKey !== null && insightLoadingKey !== 'top_products'}
               onClick={() => handleInsightRequest('top_products', { topProductsByQuantity })}
             >
               Insight
             </Button>
+          </div>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <KpiCard title="Products shown" value={topProductsSummary.productCount} />
+            <KpiCard title="Total moved quantity" value={totalFormat(topProductsSummary.totalMoved)} />
+          </div>
+          <div className="h-72 relative">
             <Bar
               data={{
                 labels: topProductsByQuantity.map((d) => d.item),
@@ -811,9 +575,17 @@ export default function CustomerReportsPage() {
               }}
               options={{
                 maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom' } },
+                plugins: {
+                  title: { display: true, text: 'Top moved products', color: '#0f172a', font: { size: 13, weight: 'bold' } },
+                  subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: quantity`, color: '#64748b' },
+                  legend: { position: 'bottom' },
+                  tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
+                },
                 indexAxis: 'y',
-                scales: { x: { stacked: true, beginAtZero: true }, y: { stacked: true } },
+                scales: {
+                  x: { stacked: true, beginAtZero: true, title: { display: true, text: 'Quantity (units)' } },
+                  y: { stacked: true, title: { display: true, text: 'Product' } },
+                },
               }}
             />
           </div>
@@ -829,8 +601,20 @@ export default function CustomerReportsPage() {
             </div>
           )}
         </section>
-      )}
     </div>
   );
+}
+
+function KpiCard({ title, value }: { title: string; value: string | number }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <p className="text-xs font-black uppercase tracking-wider text-slate-500">{title}</p>
+      <p className="mt-1 text-2xl font-black text-slate-900">{value}</p>
+    </div>
+  );
+}
+
+function totalFormat(value: number): string {
+  return value.toLocaleString('en-US');
 }
 

@@ -153,6 +153,7 @@ export default function ManagerReportsPage() {
   const [loading, setLoading] = useState(true);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const initR = defaultReportDateRange();
   const [kpiStart, setKpiStart] = useState(initR.start);
   const [kpiEnd, setKpiEnd] = useState(initR.end);
@@ -614,6 +615,7 @@ export default function ManagerReportsPage() {
         }
         setProcessingTimeTrend(processingTimeData?.trendData ?? []);
         setProcessingTimeBoxPlot(processingTimeData?.boxPlotData ?? []);
+        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load reports');
@@ -817,6 +819,7 @@ export default function ManagerReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
+        <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
       </div>
       {insightError && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
@@ -1425,7 +1428,7 @@ export default function ManagerReportsPage() {
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Contract &amp; Zone Expiry Snapshot</h2>
                 <p className="text-xs text-slate-500">
-                  Updated to {deepExpiryEnd} • Unit: records
+                  Unit: records
                 </p>
               </div>
               <Button
@@ -1680,9 +1683,7 @@ export default function ManagerReportsPage() {
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Zone fill vs suggested rent</h2>
-                <p className="text-xs text-slate-500">
-                  Current snapshot ({deepSnapshotDate}) • Unit: occupancy (%) and monthly rent (VND)
-                </p>
+                <p className="text-xs text-slate-500">Unit: occupancy (%) and monthly rent (VND)</p>
               </div>
               <Button
                 variant="ghost"
@@ -1892,7 +1893,7 @@ export default function ManagerReportsPage() {
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Top 10 Products by Inventory Volume</h2>
-                <p className="text-xs text-slate-500">Current stock snapshot • Unit: quantity in bins/shelves</p>
+                <p className="text-xs text-slate-500">Unit: quantity in bins/shelves</p>
               </div>
               <Button
                 variant="ghost"
@@ -2009,7 +2010,7 @@ export default function ManagerReportsPage() {
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Damage exposure by customer</h2>
                 <p className="text-xs text-slate-500">
-                  Updated to {deepPenaltyEnd} • Unit: damaged units
+                  Unit: damaged units
                 </p>
               </div>
               <Button
