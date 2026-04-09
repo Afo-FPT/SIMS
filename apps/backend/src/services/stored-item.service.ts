@@ -178,6 +178,7 @@ export async function getMyStoredProductsInZoneOrWarehouse(params: {
   const items = await StoredItem.find({
     contractId: { $in: contractIds },
     shelfId: { $in: shelfIds },
+    quantity: { $gt: 0 }
   })
     .select("itemName quantity unit updatedAt shelfId")
     .lean();
@@ -275,6 +276,7 @@ export async function getMyStoredItems(
   if (contractIds.length === 0) return [];
 
   const query: any = { contractId: { $in: contractIds } };
+  query.quantity = { $gt: 0 };
   if (allowedShelfIds && allowedShelfIds.length > 0) {
     query.shelfId = { $in: allowedShelfIds };
   }

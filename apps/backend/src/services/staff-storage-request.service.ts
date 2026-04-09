@@ -137,12 +137,10 @@ async function decreaseStoredQuantity(params: {
     const newQty = doc.quantity - take;
     remaining -= take;
 
-    if (newQty <= 0) {
-      await StoredItem.deleteOne({ _id: doc._id }).session(params.session);
-    } else {
-      doc.quantity = newQty;
-      await doc.save({ session: params.session });
-    }
+    // Keep zero-quantity rows instead of hard-deleting.
+    // This avoids dangling-reference issues in report/query flows that still rely on item identity.
+    doc.quantity = Math.max(0, newQty);
+    await doc.save({ session: params.session });
   }
 
   if (remaining > 0) {
