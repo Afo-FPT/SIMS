@@ -27,7 +27,34 @@ import staffWarehouseRoutes from "./routes/staff-warehouse.routes";
 
 const app = express();
 
-app.use(cors());
+const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "https://sims-63i8.onrender.com"
+];
+
+const configuredOrigins = [
+  process.env.FRONTEND_URL,
+  ...(process.env.FRONTEND_ORIGINS || "").split(",")
+]
+  .map((v) => v?.trim())
+  .filter((v): v is string => !!v);
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...configuredOrigins]));
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser/server-to-server requests (no Origin header)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
