@@ -71,7 +71,7 @@ export default function CustomerCycleCountDetailPage() {
     try {
       setConfirming(true);
       await confirmCycleCount(id);
-      toast.success('Cycle count confirmed (no inventory adjustment)');
+      toast.success('Cycle count confirmed and inventory updated');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Confirm failed');
@@ -85,7 +85,7 @@ export default function CustomerCycleCountDetailPage() {
     try {
       setAdjusting(true);
       await requestInventoryAdjustment(id, adjustReason);
-      toast.success('Inventory adjustment request submitted');
+      toast.success('Recount request submitted');
       setAdjustModalOpen(false);
       setAdjustReason('');
       await load();
@@ -118,14 +118,11 @@ export default function CustomerCycleCountDetailPage() {
 
   const hasItems = data.items && data.items.length > 0;
   const canCustomerAct = data.status === 'STAFF_SUBMITTED';
-  const hasDiscrepancy =
-    !!data.items && data.items.some((i) => (i.discrepancy ?? 0) !== 0);
-
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-4">
         <Link
-          href="/customer/service-requests"
+          href="/customer/service-requests?tab=tracking"
           className="text-slate-500 hover:text-primary font-bold flex items-center gap-1"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -151,6 +148,8 @@ export default function CustomerCycleCountDetailPage() {
                   ? 'info'
                   : data.status === 'STAFF_SUBMITTED'
                     ? 'warning'
+                    : data.status === 'RECOUNT_REQUIRED'
+                      ? 'info'
                     : data.status === 'ADJUSTMENT_REQUESTED'
                       ? 'info'
                       : data.status === 'CONFIRMED'
@@ -218,26 +217,24 @@ export default function CustomerCycleCountDetailPage() {
         {canCustomerAct && (
           <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap gap-3">
             <Button onClick={handleConfirm} disabled={confirming}>
-              {confirming ? 'Confirming...' : 'Confirm result (no inventory adjustment)'}
+              {confirming ? 'Confirming...' : 'Confirm result and update inventory'}
             </Button>
             <Button
               variant="secondary"
               onClick={() => setAdjustModalOpen(true)}
-              disabled={adjusting || !hasDiscrepancy}
+              disabled={adjusting}
             >
-              Request inventory adjustment
+              Request recount
             </Button>
-            {!hasDiscrepancy && (
-              <p className="text-xs text-slate-500">
-                No discrepancy; adjustment request not available.
-              </p>
-            )}
+            <p className="text-xs text-slate-500">
+              Recount request will be sent to manager for approval first.
+            </p>
           </div>
         )}
 
         {data.status === 'ADJUSTMENT_REQUESTED' && (
           <div className="mt-6 pt-4 border-t border-slate-100 text-sm text-slate-600">
-            Adjustment request sent. Waiting for manager to apply.
+            Recount request sent. Waiting for manager approval before re-assignment to staff.
           </div>
         )}
         {data.status === 'CONFIRMED' && (
@@ -245,7 +242,7 @@ export default function CustomerCycleCountDetailPage() {
             Cycle count has been confirmed.
             {data.inventory_adjusted
               ? ' Inventory has been updated per count results.'
-              : ' No inventory adjustment was applied.'}
+              : ' Inventory has not been updated yet.'}
           </div>
         )}
       </section>
@@ -293,6 +290,54 @@ export default function CustomerCycleCountDetailPage() {
         </section>
       )}
 
+      {hasItems &&
+        data.items!.some((i) => (i.discrepancy ?? 0) !== 0) && (
+          <section className="border border-amber-200 rounded-3xl bg-amber-50/50 p-6 shadow-sm">
+            <h2 className="text-lg font-black text-amber-900 mb-1 flex items-center gap-2">
+              <span className="material-symbols-outlined text-xl">inventory_2</span>
+              Shortage / variance reasons (inventory check)
+            </h2>
+            <p className="text-sm text-amber-900/80 mb-4">
+              Lines where counted quantity differs from system quantity. Staff may leave a note explaining damage,
+              shrinkage, or counting notes.
+            </p>
+            <ul className="space-y-4">
+              {data.items!
+                .filter((i) => (i.discrepancy ?? 0) !== 0)
+                .map((item) => {
+                  const disc = item.discrepancy ?? 0;
+                  return (
+                    <li
+                      key={`${item.stored_item_id}-${item.shelf_id}`}
+                      className="text-sm border-b border-amber-100 pb-4 last:border-0 last:pb-0"
+                    >
+                      <p className="font-bold text-slate-900">
+                        {item.item_name}{' '}
+                        <span className="font-mono text-slate-500">({item.shelf_code})</span>
+                      </p>
+                      <div className="mt-2 space-y-1 text-slate-700">
+                        <p>
+                          <span className="text-slate-600 font-semibold">System qty:</span> {item.system_quantity}{' '}
+                          {item.unit} · <span className="text-slate-600 font-semibold">Counted:</span>{' '}
+                          {item.counted_quantity ?? '—'} ·{' '}
+                          <span className="text-amber-800 font-semibold">Variance:</span> {disc > 0 ? '+' : ''}
+                          {disc}
+                        </p>
+                        {item.note && item.note.trim() ? (
+                          <p>
+                            <span className="text-slate-600 font-semibold">Reason / note:</span> {item.note}
+                          </p>
+                        ) : (
+                          <p className="text-slate-500 italic">No staff note on this line.</p>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          </section>
+        )}
+
       {!hasItems && (
         <p className="text-slate-500 text-sm">
           No count results yet (staff has not submitted or session was rejected).
@@ -302,23 +347,23 @@ export default function CustomerCycleCountDetailPage() {
       <Modal
         open={adjustModalOpen}
         onOpenChange={setAdjustModalOpen}
-        title="Request inventory adjustment"
+        title="Request recount"
         size="md"
       >
         <div className="space-y-4">
           <p className="text-sm text-slate-600">
-            Request to update inventory per the discrepancy found. Optionally describe the reason.
+            Request staff to recount this cycle count. Manager approval is required before reassignment.
           </p>
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
-              Reason (optional)
+              Reason for recount (optional)
             </label>
             <textarea
               rows={4}
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
-              placeholder="e.g. Adjust per January count, variance due to data entry..."
+              placeholder="e.g. Need double-check for variance in Shelf A2..."
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -326,7 +371,7 @@ export default function CustomerCycleCountDetailPage() {
               Cancel
             </Button>
             <Button onClick={handleRequestAdjustment} disabled={adjusting}>
-              {adjusting ? 'Sending...' : 'Submit request'}
+              {adjusting ? 'Sending...' : 'Submit recount request'}
             </Button>
           </div>
         </div>

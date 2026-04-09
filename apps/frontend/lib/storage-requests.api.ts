@@ -46,15 +46,24 @@ export interface StorageRequestView {
   contract_id: string;
   /** Contract code for display (Contract code) */
   contract_code?: string;
+  warehouse_id?: string;
+  warehouse_name?: string;
   requested_zone_id?: string;
   requested_zone_code?: string;
   /** Customer-provided inbound/outbound reference */
   reference?: string;
   customer_id: string;
+  customer_name?: string;
   request_type: 'IN' | 'OUT';
   status: 'PENDING' | 'APPROVED' | 'DONE_BY_STAFF' | 'COMPLETED' | 'REJECTED';
   created_at: string;
   updated_at: string;
+  customer_confirmed_at?: string;
+  assigned_staff?: Array<{
+    user_id: string;
+    name: string;
+    email: string;
+  }>;
   items: Array<{
     request_detail_id: string;
     shelf_id?: string;
@@ -67,16 +76,22 @@ export interface StorageRequestView {
     volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    /** Shelf stock before/after staff completed IN/OUT (when recorded) */
+    quantity_on_hand_before?: number;
+    quantity_on_hand_after?: number;
     damage_quantity?: number;
     loss_reason?: string;
     loss_notes?: string;
   }>;
 }
 
-export async function listStorageRequests(params: { requestType?: 'IN' | 'OUT'; status?: string } = {}): Promise<StorageRequestView[]> {
+export async function listStorageRequests(
+  params: { requestType?: 'IN' | 'OUT'; status?: string; allAssigned?: boolean } = {}
+): Promise<StorageRequestView[]> {
   const qs = new URLSearchParams();
   if (params.requestType) qs.set('requestType', params.requestType);
   if (params.status) qs.set('status', params.status);
+  if (params.allAssigned) qs.set('allAssigned', 'true');
   return await apiJson<StorageRequestView[]>(
     `/storage-requests${qs.toString() ? `?${qs}` : ''}`,
     { method: 'GET' }

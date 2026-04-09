@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { getStockInHistory, getStockOutHistory } from '../../../lib/stock-history.api';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';

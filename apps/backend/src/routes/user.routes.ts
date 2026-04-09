@@ -9,7 +9,8 @@ import {
   deactivateUserAccount,
   updateUserAccount,
   deleteUserAccount,
-  getStaffUsersForManager
+  getStaffUsersForManager,
+  getAdminDashboardSnapshot
 } from "../controllers/user.controller";
 
 const router = express.Router();
@@ -33,6 +34,13 @@ router.get(
   authenticate,
   authorizeRoles("manager", "admin"),
   getStaffUsersForManager
+);
+
+router.get(
+  "/dashboard-snapshot",
+  authenticate,
+  authorizeRoles("admin"),
+  getAdminDashboardSnapshot
 );
 
 router.get(

@@ -10,6 +10,11 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 
+function formatStatusLabel(status: string): string {
+  const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+}
+
 export default function StaffOutboundRequestsPage() {
   const toast = useToastHelpers();
   const [items, setItems] = useState<StorageRequestView[]>([]);
@@ -64,7 +69,7 @@ export default function StaffOutboundRequestsPage() {
                   <TableCell className="font-bold text-slate-900">{r.reference ?? r.request_id}</TableCell>
                   <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
-                  <TableCell><Badge variant="info">{r.status}</Badge></TableCell>
+                  <TableCell><Badge variant="info">{formatStatusLabel(r.status)}</Badge></TableCell>
                   <TableCell>
                     <Link href={`/staff/outbound-requests/${r.request_id}`} className="text-sm font-bold text-primary hover:underline">
                       Pick & dispatch

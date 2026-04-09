@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { getCustomerContractById } from '../../../../../lib/mockApi/customer.api';
+import { getCustomerContractById } from '../../../../../lib/customer.api';
 import type { Contract } from '../../../../../lib/customer-types';
 import { startContractVNPayPayment } from '../../../../../lib/payment.api';
 import { useToastHelpers } from '../../../../../lib/toast';
@@ -58,12 +58,24 @@ export default function CheckoutPage() {
   const [startingPayment, setStartingPayment] = useState(false);
   const [expireAt, setExpireAt] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<string | null>(null);
+  const [resumePaymentUrl, setResumePaymentUrl] = useState<string | null>(null);
+
+  const getPendingPaymentStorageKey = (contractId: string) => `pending_vnpay_contract_${contractId}`;
+  const parseVnpDate = (v: string) => {
+    const year = Number(v.slice(0, 4));
+    const month = Number(v.slice(4, 6)) - 1;
+    const day = Number(v.slice(6, 8));
+    const hour = Number(v.slice(8, 10));
+    const min = Number(v.slice(10, 12));
+    const sec = Number(v.slice(12, 14));
+    return new Date(year, month, day, hour, min, sec);
+  };
 
   // Load contract only when we are not handling a VNPay return result
   useEffect(() => {
     const hasResult = searchParams.get('result');
-    if (hasResult) {
-      // We will redirect based on result, no need to load contract here
+    if (hasResult === 'success') {
+      // Success branch redirects away from checkout page.
       return;
     }
     let cancelled = false;
@@ -93,6 +105,29 @@ export default function CheckoutPage() {
   }, [id, router, searchParams]);
 
   useEffect(() => {
+    if (!id || typeof window === 'undefined') return;
+    const key = getPendingPaymentStorageKey(id);
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw) as { paymentUrl?: string; expireAt?: string };
+      if (!payload.paymentUrl || !payload.expireAt) {
+        localStorage.removeItem(key);
+        return;
+      }
+      const expired = parseVnpDate(payload.expireAt).getTime() <= Date.now();
+      if (expired) {
+        localStorage.removeItem(key);
+        return;
+      }
+      setResumePaymentUrl(payload.paymentUrl);
+      setExpireAt(payload.expireAt);
+    } catch {
+      localStorage.removeItem(key);
+    }
+  }, [id]);
+
+  useEffect(() => {
     const result = searchParams.get('result');
     const message = searchParams.get('message');
     if (!result) return;
@@ -106,9 +141,16 @@ export default function CheckoutPage() {
       (window as any).__swsPaymentHandled[key] = true;
     }
     if (result === 'success') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(getPendingPaymentStorageKey(id));
+      }
       toast.success(message || 'Payment completed successfully.');
       router.replace(`/customer/contracts/${id}`);
     } else if (result === 'failed') {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(getPendingPaymentStorageKey(id));
+      }
+      setResumePaymentUrl(null);
       toast.error(message || 'Payment failed. Please try again or contact support.');
     }
   }, [searchParams, toast, router, id]);
@@ -118,15 +160,6 @@ export default function CheckoutPage() {
       setCountdown(null);
       return;
     }
-    const parseVnpDate = (v: string) => {
-      const year = Number(v.slice(0, 4));
-      const month = Number(v.slice(4, 6)) - 1;
-      const day = Number(v.slice(6, 8));
-      const hour = Number(v.slice(8, 10));
-      const min = Number(v.slice(10, 12));
-      const sec = Number(v.slice(12, 14));
-      return new Date(year, month, day, hour, min, sec);
-    };
     const expireDate = parseVnpDate(expireAt);
 
     const updateCountdown = () => {
@@ -134,6 +167,10 @@ export default function CheckoutPage() {
       const diff = expireDate.getTime() - now.getTime();
       if (diff <= 0) {
         setCountdown('Expired');
+        setResumePaymentUrl(null);
+        if (typeof window !== 'undefined' && id) {
+          localStorage.removeItem(getPendingPaymentStorageKey(id));
+        }
         return;
       }
       const totalSeconds = Math.floor(diff / 1000);
@@ -153,6 +190,13 @@ export default function CheckoutPage() {
       setStartingPayment(true);
       const result = await startContractVNPayPayment(id);
       setExpireAt(result.expireAt);
+      setResumePaymentUrl(result.paymentUrl);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(
+          getPendingPaymentStorageKey(id),
+          JSON.stringify({ paymentUrl: result.paymentUrl, expireAt: result.expireAt })
+        );
+      }
       if (typeof window !== 'undefined') {
         window.location.href = result.paymentUrl;
       }
@@ -161,6 +205,13 @@ export default function CheckoutPage() {
       toast.error(message);
     } finally {
       setStartingPayment(false);
+    }
+  };
+
+  const handleResumePayment = () => {
+    if (!resumePaymentUrl || countdown === 'Expired') return;
+    if (typeof window !== 'undefined') {
+      window.location.href = resumePaymentUrl;
     }
   };
 
@@ -269,6 +320,16 @@ export default function CheckoutPage() {
               <span className="material-symbols-outlined text-lg">payments</span>
               {startingPayment ? 'Creating payment session...' : 'Pay with VNPay'}
             </button>
+            {resumePaymentUrl && countdown !== 'Expired' && (
+              <button
+                type="button"
+                onClick={handleResumePayment}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-800 font-bold text-sm hover:bg-slate-200 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">open_in_new</span>
+                Continue VNPay payment
+              </button>
+            )}
           </div>
         </section>
       </div>

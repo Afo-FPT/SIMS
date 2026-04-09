@@ -1,6 +1,7 @@
 import Contract from "../models/Contract";
 import Shelf from "../models/Shelf";
 import Payment from "../models/Payment";
+import { runContractExpirySideEffects } from "./contract-expiry-side-effects.service";
 
 /**
  * Automatically activate contracts where rented zones' start date has passed
@@ -99,6 +100,18 @@ export async function expireContractsByDate(): Promise<{
           }
           await session.commitTransaction();
           expired++;
+
+          try {
+            await runContractExpirySideEffects({
+              _id: contract._id,
+              customerId: contract.customerId,
+              contractCode: contract.contractCode
+            });
+          } catch (sideErr: any) {
+            errors.push(
+              `Post-expiry side effects failed for ${contract.contractCode}: ${sideErr?.message || sideErr}`
+            );
+          }
         } catch (error: any) {
           await session.abortTransaction();
           errors.push(`Failed to expire contract ${contract.contractCode}: ${error.message}`);

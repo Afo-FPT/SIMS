@@ -61,6 +61,20 @@ export interface CycleCountResponse {
   created_at: string;
   updated_at: string;
   inventory_adjusted?: boolean;
+  recount_round?: number;
+  recount_requested_at?: string;
+  recount_requested_by?: {
+    user_id: string;
+    name: string;
+    email: string;
+  };
+  recount_decision_at?: string;
+  recount_decision_by?: {
+    user_id: string;
+    name: string;
+    email: string;
+  };
+  recount_rejected_reason?: string;
 }
 
 export async function getCycleCounts(): Promise<CycleCountResponse[]> {
@@ -163,7 +177,7 @@ export async function assignStaffToCycleCount(
   });
 }
 
-// CUSTOMER confirms cycle count result (no inventory adjustment)
+// CUSTOMER confirms cycle count result and updates inventory
 export async function confirmCycleCount(
   cycleCountId: string
 ): Promise<CycleCountResponse> {
@@ -181,7 +195,7 @@ export async function requestRecount(
   });
 }
 
-// CUSTOMER requests inventory adjustment based on discrepancies
+// CUSTOMER requests recount (manager approval required)
 export async function requestInventoryAdjustment(
   cycleCountId: string,
   reason?: string

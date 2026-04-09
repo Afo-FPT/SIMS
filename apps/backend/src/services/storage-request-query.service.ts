@@ -5,6 +5,8 @@ import StorageRequestDetail from "../models/StorageRequestDetail";
 export interface ListStorageRequestsQuery {
   requestType?: "IN" | "OUT";
   status?: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
+  /** When true, staff sees all assigned requests regardless of status (e.g. reports). */
+  allAssigned?: boolean;
 }
 
 export interface StorageRequestViewDTO {
@@ -12,15 +14,20 @@ export interface StorageRequestViewDTO {
   contract_id: string;
   /** Contract code (e.g. from Contract.contractCode) for display */
   contract_code?: string;
+  warehouse_id?: string;
+  warehouse_name?: string;
   requested_zone_id?: string;
   requested_zone_code?: string;
   /** Customer-provided reference (inbound/outbound reference) */
   reference?: string;
   customer_id: string;
+  customer_name?: string;
   request_type: "IN" | "OUT";
   status: "PENDING" | "APPROVED" | "DONE_BY_STAFF" | "COMPLETED" | "REJECTED";
   approved_by?: string;
   approved_at?: Date;
+  customer_confirmed_at?: Date;
+  assigned_staff?: Array<{ user_id: string; name: string; email: string }>;
   created_at: Date;
   updated_at: Date;
   items: Array<{
@@ -36,6 +43,10 @@ export interface StorageRequestViewDTO {
     volume_per_unit_m3?: number;
     quantity_requested: number;
     quantity_actual?: number;
+    /** Shelf stock for this SKU line before completion (staff snapshot) */
+    quantity_on_hand_before?: number;
+    /** Shelf stock after completion */
+    quantity_on_hand_after?: number;
     damage_quantity?: number;
     loss_reason?: string;
     loss_notes?: string;
@@ -62,7 +73,7 @@ export async function listStorageRequests(
   }
   if (userRole === "staff") {
     q.assignedStaffIds = new Types.ObjectId(userId);
-    if (!query.status) q.status = "APPROVED";
+    if (!query.status && !query.allAssigned) q.status = "APPROVED";
   }
   if (query.requestType) q.requestType = query.requestType;
   if (query.status) q.status = query.status;
@@ -70,12 +81,70 @@ export async function listStorageRequests(
   const requests = await StorageRequest.find(q).sort({ createdAt: -1 }).lean();
   if (requests.length === 0) return [];
 
-  const contractIds = [...new Set(requests.map((r: any) => r.contractId.toString()))];
+  const contractIds = [
+    ...new Set(
+      requests
+        .map((r: any) => r.contractId?.toString?.())
+        .filter(Boolean)
+    )
+  ];
   const Contract = (await import("../models/Contract")).default;
   const contracts = await Contract.find({ _id: { $in: contractIds.map((id) => new Types.ObjectId(id)) } })
-    .select("_id contractCode")
+    .select("_id contractCode warehouseId")
     .lean();
   const contractCodeById = new Map(contracts.map((c: any) => [c._id.toString(), c.contractCode]));
+  const contractWarehouseIdById = new Map(
+    contracts.map((c: any) => [c._id.toString(), c.warehouseId?.toString?.()])
+  );
+
+  // Preload warehouse names for all related contracts.
+  const warehouseIds = Array.from(
+    new Set(
+      contracts
+        .map((c: any) => c.warehouseId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const Warehouse = (await import("../models/Warehouse")).default;
+  const warehouses = warehouseIds.length
+    ? await Warehouse.find({ _id: { $in: warehouseIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name")
+        .lean()
+    : [];
+  const warehouseNameById = new Map(warehouses.map((w: any) => [w._id.toString(), w.name]));
+
+  // Preload customer names
+  const customerIds = Array.from(
+    new Set(
+      requests
+        .map((r: any) => r.customerId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const User = (await import("../models/User")).default;
+  const customers = customerIds.length
+    ? await User.find({ _id: { $in: customerIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name")
+        .lean()
+    : [];
+  const customerNameById = new Map(customers.map((u: any) => [u._id.toString(), u.name]));
+
+  // Preload assigned staff names
+  const assignedStaffIds = Array.from(
+    new Set(
+      requests
+        .flatMap((r: any) => (r.assignedStaffIds || []).map((id: any) => id?.toString?.()))
+        .filter(Boolean)
+    )
+  );
+  const assignedStaffUsers = assignedStaffIds.length
+    ? await User.find({ _id: { $in: assignedStaffIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name email")
+        .lean()
+    : [];
+  const assignedStaffById = new Map(
+    assignedStaffUsers.map((u: any) => [u._id.toString(), { name: u.name, email: u.email }])
+  );
 
   const requestIds = requests.map((r: any) => r._id);
   const details = await StorageRequestDetail.find({ requestId: { $in: requestIds } })
@@ -84,7 +153,13 @@ export async function listStorageRequests(
 
   const detailsByRequest = new Map<string, any[]>();
   for (const d of details) {
-    const rid = (d as any).requestId.toString();
+    const rid = (d as any).requestId?.toString?.();
+    if (!rid) {
+      console.warn(
+        `[StorageRequest][MissingRef][detail-row] detail_id=${(d as any)?._id?.toString?.() || "unknown"} missing=requestId`
+      );
+      continue;
+    }
     detailsByRequest.set(rid, [...(detailsByRequest.get(rid) || []), d]);
   }
 
@@ -108,20 +183,43 @@ export async function listStorageRequests(
 
   return requests.map((r: any) => {
     const ds = detailsByRequest.get(r._id.toString()) || [];
+    const contractIdStr = r.contractId?.toString?.() || "";
+    const customerIdStr = r.customerId?.toString?.() || "";
+    const missingRefs: string[] = [];
+    if (!contractIdStr) missingRefs.push("contractId");
+    if (!customerIdStr) missingRefs.push("customerId");
+    if (missingRefs.length > 0) {
+      console.warn(
+        `[StorageRequest][MissingRef][list] request_id=${r._id?.toString?.() || "unknown"} missing=${missingRefs.join(",")}`
+      );
+    }
+    const warehouseId = contractWarehouseIdById.get(contractIdStr);
     return {
       request_id: r._id.toString(),
-      contract_id: r.contractId.toString(),
-      contract_code: contractCodeById.get(r.contractId.toString()),
+      contract_id: contractIdStr,
+      contract_code: contractCodeById.get(contractIdStr),
+      warehouse_id: warehouseId,
+      warehouse_name: warehouseId ? warehouseNameById.get(warehouseId) : undefined,
       requested_zone_id: r.requestedZoneId?.toString?.(),
       requested_zone_code: r.requestedZoneId?.toString?.()
         ? zoneCodeById.get(r.requestedZoneId.toString())
         : undefined,
       reference: r.reference,
-      customer_id: r.customerId.toString(),
+      customer_id: customerIdStr,
+      customer_name: customerNameById.get(customerIdStr),
       request_type: r.requestType,
       status: r.status,
       approved_by: r.approvedBy?.toString?.(),
       approved_at: r.approvedAt,
+      customer_confirmed_at: r.customerConfirmedAt,
+      assigned_staff: (r.assignedStaffIds || [])
+        .map((id: any) => id?.toString?.())
+        .filter(Boolean)
+        .map((id: string) => ({
+          user_id: id,
+          name: assignedStaffById.get(id)?.name ?? id,
+          email: assignedStaffById.get(id)?.email ?? "",
+        })),
       created_at: r.createdAt,
       updated_at: r.updatedAt,
       items: ds.map((d: any) => {
@@ -139,6 +237,8 @@ export async function listStorageRequests(
           volume_per_unit_m3: d.volumePerUnitM3,
           quantity_requested: d.quantityRequested,
           quantity_actual: d.quantityActual,
+          quantity_on_hand_before: d.quantityOnHandBefore,
+          quantity_on_hand_after: d.quantityOnHandAfter,
           damage_quantity: d.damageQuantity,
           loss_reason: d.lossReason,
           loss_notes: d.lossNotes
@@ -159,20 +259,47 @@ export async function getStorageRequestById(
   const req = await StorageRequest.findById(requestId).lean();
   if (!req) throw new Error("Storage request not found");
 
-  if (userRole === "customer" && (req as any).customerId.toString() !== userId) {
+  const reqCustomerIdStr = (req as any).customerId?.toString?.() || "";
+  if (userRole === "customer" && reqCustomerIdStr !== userId) {
     throw new Error("Access denied. You can only view your own requests.");
   }
   if (userRole === "staff") {
     const assigned = (req as any).assignedStaffIds || [];
-    const assignedIds = assigned.map((id: any) => id.toString());
+    const assignedIds = assigned.map((id: any) => id?.toString?.()).filter(Boolean);
     if (assignedIds.length > 0 && !assignedIds.includes(userId)) {
       throw new Error("Access denied. This request is not assigned to you.");
     }
   }
 
   const Contract = (await import("../models/Contract")).default;
-  const contract = await Contract.findById((req as any).contractId).select("contractCode").lean();
+  const contract = await Contract.findById((req as any).contractId)
+    .select("contractCode warehouseId")
+    .lean();
   const contract_code = contract ? (contract as any).contractCode : undefined;
+
+  const Warehouse = (await import("../models/Warehouse")).default;
+  const warehouse =
+    contract && (contract as any).warehouseId
+      ? await Warehouse.findById((contract as any).warehouseId)
+          .select("name")
+          .lean()
+      : null;
+
+  const User = (await import("../models/User")).default;
+  const customer = await User.findById((req as any).customerId)
+    .select("name")
+    .lean();
+  const assignedStaffIds = ((req as any).assignedStaffIds || [])
+    .map((id: any) => id?.toString?.())
+    .filter(Boolean);
+  const assignedStaffUsers = assignedStaffIds.length
+    ? await User.find({ _id: { $in: assignedStaffIds.map((id: string) => new Types.ObjectId(id)) } })
+        .select("_id name email")
+        .lean()
+    : [];
+  const assignedStaffById = new Map(
+    assignedStaffUsers.map((u: any) => [u._id.toString(), { name: u.name, email: u.email }])
+  );
 
   const details = await StorageRequestDetail.find({ requestId: req._id })
     .populate("shelfId", "shelfCode zoneId")
@@ -194,20 +321,40 @@ export async function getStorageRequestById(
     : [];
   const zoneCodeById = new Map(zones.map((z: any) => [z._id.toString(), z.zoneCode]));
 
+  const detailContractIdStr = (req as any).contractId?.toString?.() || "";
+  const detailCustomerIdStr = (req as any).customerId?.toString?.() || "";
+  const detailMissingRefs: string[] = [];
+  if (!detailContractIdStr) detailMissingRefs.push("contractId");
+  if (!detailCustomerIdStr) detailMissingRefs.push("customerId");
+  if (detailMissingRefs.length > 0) {
+    console.warn(
+      `[StorageRequest][MissingRef][detail] request_id=${(req as any)._id?.toString?.() || "unknown"} missing=${detailMissingRefs.join(",")}`
+    );
+  }
+
   return {
     request_id: req._id.toString(),
-    contract_id: (req as any).contractId.toString(),
+    contract_id: detailContractIdStr,
     contract_code,
+    warehouse_id: (contract as any)?.warehouseId?.toString?.(),
+    warehouse_name: warehouse ? (warehouse as any).name : undefined,
     requested_zone_id: (req as any).requestedZoneId?.toString?.(),
     requested_zone_code: (req as any).requestedZoneId?.toString?.()
       ? zoneCodeById.get((req as any).requestedZoneId.toString())
       : undefined,
     reference: (req as any).reference,
-    customer_id: (req as any).customerId.toString(),
+    customer_id: detailCustomerIdStr,
+    customer_name: customer ? (customer as any).name : undefined,
     request_type: (req as any).requestType,
     status: (req as any).status,
     approved_by: (req as any).approvedBy?.toString?.(),
     approved_at: (req as any).approvedAt,
+    customer_confirmed_at: (req as any).customerConfirmedAt,
+    assigned_staff: assignedStaffIds.map((id: string) => ({
+      user_id: id,
+      name: assignedStaffById.get(id)?.name ?? id,
+      email: assignedStaffById.get(id)?.email ?? "",
+    })),
     created_at: (req as any).createdAt,
     updated_at: (req as any).updatedAt,
     items: details.map((d: any) => {
@@ -225,6 +372,8 @@ export async function getStorageRequestById(
         volume_per_unit_m3: d.volumePerUnitM3,
         quantity_requested: d.quantityRequested,
         quantity_actual: d.quantityActual,
+        quantity_on_hand_before: d.quantityOnHandBefore,
+        quantity_on_hand_after: d.quantityOnHandAfter,
         damage_quantity: d.damageQuantity,
         loss_reason: d.lossReason,
         loss_notes: d.lossNotes

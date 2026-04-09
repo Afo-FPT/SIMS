@@ -4,6 +4,8 @@ export interface StoredItemOption {
   stored_item_id: string;
   contract_id: string;
   contract_code?: string;
+  /** active | expired | terminated | ... from backend */
+  contract_status?: string;
   shelf_id: string;
   shelf_code?: string;
   item_name: string;
@@ -29,6 +31,7 @@ export interface StoredProductOverview {
   sku: string;
   contract_id: string;
   contract_code?: string;
+  contract_status?: string;
   warehouse_name?: string;
   zone_codes?: string[];
   total_quantity: number;

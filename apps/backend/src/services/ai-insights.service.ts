@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAiRuntimeSettings } from "./ai-settings.service";
 
 type ReportInsightParams = {
   chartKey: string;
@@ -10,18 +11,36 @@ type ReportInsightParams = {
 };
 
 function buildSystemInstruction(chartKey: string, startDate: string, endDate: string): string {
+  if (chartKey === "manager_deep_expiry_stacked") {
+    return [
+      "You are a SIMS warehouse analytics assistant for managers.",
+      "Use ONLY the JSON payload (bucket totals and contractAlerts / zoneLeaseAlerts / focus* fields). Do not invent contract codes or names.",
+      "Respond in English, 2–4 short sentences in one paragraph.",
+      "You MUST mention at least one specific contractCode and customerName from contractAlerts or zoneLeaseAlerts when that array is non-empty (e.g. which contracts are expired or expiring soon and by when).",
+      "If shelfCodes appear for a zone lease, you may reference them as shelf location hints.",
+      `Reporting window: ${startDate} → ${endDate}.`
+    ].join("\n");
+  }
+  if (chartKey.startsWith("manager_deep_")) {
+    return [
+      "You are a SIMS analytics assistant for warehouse managers.",
+      "Use only the attached JSON data; do not invent numbers.",
+      "Respond in English only, in 2-3 concise sentences in a single paragraph.",
+      `Reporting window: ${startDate} → ${endDate}.`
+    ].join("\n");
+  }
   return [
-    "Bạn là trợ lý phân tích báo cáo vận hành kho của hệ thống SIMS.",
-    "Nhiệm vụ của bạn là đọc dữ liệu biểu đồ JSON mà người dùng cung cấp và đưa ra nhận xét hữu ích cho khách hàng.",
-    "Chỉ sử dụng dữ liệu trong JSON người dùng gửi (không tự suy đoán số liệu). Nếu thiếu dữ liệu để kết luận chắc chắn, hãy nói rõ giới hạn.",
-    "BẮT BUỘC trả lời bằng tiếng Anh (không trả lời tiếng Việt). If you accidentally write Vietnamese, translate everything to English before sending.",
+    "You are an operations-report analytics assistant for the SIMS warehouse system.",
+    "Read the provided chart JSON and provide useful business insights for managers.",
+    "Use only the data in the JSON payload (no fabricated values). If data is insufficient, clearly state the limitation.",
+    "Respond strictly in English.",
     "You may use light Markdown for emphasis (e.g., **keyword**), but don't use Markdown tables.",
-    "Trả lời theo đúng format:",
-    "- 1-2 câu tóm tắt xu hướng chính",
-    "- 2 ý bất thường/điểm đáng chú ý (nếu có, nếu không hãy nói 'chưa thấy bất thường rõ ràng')",
-    "- 1-2 giả định nguyên nhân hợp lý (nêu dưới dạng 'có thể')",
-    "- 1-2 khuyến nghị hành động cụ thể",
-    `Phạm vi thời gian: ${startDate} -> ${endDate}.`
+    "Answer using this structure:",
+    "- 1-2 sentences summarizing the main trend",
+    "- 2 notable points or anomalies (or explicitly state none are clear)",
+    "- 1-2 plausible causes (as hypotheses)",
+    "- 1-2 concrete action recommendations",
+    `Reporting window: ${startDate} -> ${endDate}.`
   ].join("\n");
 }
 
@@ -31,7 +50,12 @@ export async function getReportInsight(params: ReportInsightParams): Promise<str
     throw new Error("GEMINI_API_KEY is not set");
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const aiSettings = await getAiRuntimeSettings();
+  if (!aiSettings.enabled) {
+    throw new Error("AI is currently disabled by admin settings.");
+  }
+
+  const modelName = aiSettings.insightModel || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const startDate = params.startDate;
   const endDate = params.endDate;
   const chartKey = params.chartKey;
@@ -39,7 +63,11 @@ export async function getReportInsight(params: ReportInsightParams): Promise<str
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({
     model: modelName,
-    systemInstruction: buildSystemInstruction(chartKey, startDate, endDate)
+    systemInstruction: buildSystemInstruction(chartKey, startDate, endDate),
+    generationConfig: {
+      temperature: aiSettings.temperature,
+      maxOutputTokens: aiSettings.maxOutputTokens,
+    },
   });
 
   // Limit payload size to avoid exceeding model limits.
@@ -72,6 +100,6 @@ export async function getReportInsight(params: ReportInsightParams): Promise<str
   }
 
   sanitized = lines.join("\n").trim();
-  return sanitized || "Chưa đủ dữ liệu để tạo insight rõ ràng.";
+  return sanitized || "Insufficient data to produce a clear insight.";
 }
 

@@ -3,6 +3,7 @@ import Notification, { type NotificationType } from "../models/Notification";
 import Contract from "../models/Contract";
 import User from "../models/User";
 import { emitToUser } from "../realtime/socket";
+import { scheduleManagerReportsInvalidate } from "../realtime/manager-reports-invalidate";
 import { enqueueEmail } from "../queues/email.queue";
 import { resolveNotificationRecipients, type NotificationEventType } from "./notification-recipient.service";
 
@@ -173,8 +174,123 @@ export async function notifyStorageRequestEvent(params: {
           await enqueueEmail({ to: u.email, subject, html, text });
         })
     );
+
+    scheduleManagerReportsInvalidate();
   } catch (err) {
     console.error("[Notification] notifyStorageRequestEvent failed", err);
+  }
+}
+
+/**
+ * One-time in-app (deduped) notice when a contract moves to expired (scheduler).
+ */
+export async function notifyContractExpiredForCustomer(params: {
+  contractId: string;
+  customerId: string;
+  contractCode?: string;
+}): Promise<void> {
+  try {
+    const { contractId, customerId, contractCode } = params;
+    if (!Types.ObjectId.isValid(contractId) || !Types.ObjectId.isValid(customerId)) return;
+
+    const dedupeKey = `CONTRACT_EXPIRED:${contractId}`;
+    const title = "Contract expired";
+    const message = contractCode
+      ? `Contract ${contractCode} has expired. Inbound requests are closed; you can still create outbound requests to remove inventory until the contract is renewed or terminated.`
+      : "Your warehouse contract has expired. Inbound requests are closed; you can still create outbound requests to remove inventory until the contract is renewed or terminated.";
+
+    const raw = await Notification.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId), dedupeKey },
+      {
+        $setOnInsert: {
+          userId: new Types.ObjectId(customerId),
+          dedupeKey,
+          type: "CONTRACT_EXPIRED",
+          title,
+          message,
+          relatedEntityType: "contract",
+          relatedEntityId: new Types.ObjectId(contractId),
+          read: false,
+          meta: { contract_id: contractId, contract_code: contractCode }
+        }
+      },
+      { upsert: true, new: true, rawResult: true, setDefaultsOnInsert: true }
+    );
+
+    const inserted = !(raw as any)?.lastErrorObject?.updatedExisting;
+    const doc = (raw as any)?.value;
+    if (inserted && doc) {
+      emitToUser(customerId, "notification:new", {
+        id: doc._id.toString(),
+        type: doc.type,
+        title: doc.title,
+        message: doc.message,
+        relatedEntityType: doc.relatedEntityType,
+        relatedEntityId: doc.relatedEntityId?.toString(),
+        read: doc.read,
+        createdAt: doc.createdAt,
+        meta: doc.meta
+      });
+    }
+
+    scheduleManagerReportsInvalidate();
+  } catch (err) {
+    console.error("[Notification] notifyContractExpiredForCustomer failed", err);
+  }
+}
+
+export async function notifyContractTerminatedForCustomer(params: {
+  contractId: string;
+  customerId: string;
+  contractCode?: string;
+}): Promise<void> {
+  try {
+    const { contractId, customerId, contractCode } = params;
+    if (!Types.ObjectId.isValid(contractId) || !Types.ObjectId.isValid(customerId)) return;
+
+    const dedupeKey = `CONTRACT_TERMINATED:${contractId}`;
+    const title = "Contract terminated";
+    const message = contractCode
+      ? `Contract ${contractCode} has been terminated. New service requests (inbound, outbound, inventory checking) are no longer allowed. Contact the warehouse if you need to resolve remaining inventory.`
+      : "Your warehouse contract has been terminated. New service requests are no longer allowed. Contact the warehouse if you need to resolve remaining inventory.";
+
+    const raw = await Notification.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId), dedupeKey },
+      {
+        $setOnInsert: {
+          userId: new Types.ObjectId(customerId),
+          dedupeKey,
+          type: "CONTRACT_TERMINATED",
+          title,
+          message,
+          relatedEntityType: "contract",
+          relatedEntityId: new Types.ObjectId(contractId),
+          read: false,
+          meta: { contract_id: contractId, contract_code: contractCode }
+        }
+      },
+      { upsert: true, new: true, rawResult: true, setDefaultsOnInsert: true }
+    );
+
+    const inserted = !(raw as any)?.lastErrorObject?.updatedExisting;
+    const doc = (raw as any)?.value;
+    if (inserted && doc) {
+      emitToUser(customerId, "notification:new", {
+        id: doc._id.toString(),
+        type: doc.type,
+        title: doc.title,
+        message: doc.message,
+        relatedEntityType: doc.relatedEntityType,
+        relatedEntityId: doc.relatedEntityId?.toString(),
+        read: doc.read,
+        createdAt: doc.createdAt,
+        meta: doc.meta
+      });
+    }
+
+    scheduleManagerReportsInvalidate();
+  } catch (err) {
+    console.error("[Notification] notifyContractTerminatedForCustomer failed", err);
   }
 }
 
@@ -242,5 +358,13 @@ export async function markAllNotificationsRead(params: { userId: string }) {
     { $set: { read: true, readAt: now } }
   );
   return { updated: res.modifiedCount ?? 0 };
+}
+
+export async function deleteReadNotifications(params: { userId: string }) {
+  const res = await Notification.deleteMany({
+    userId: new Types.ObjectId(params.userId),
+    read: true
+  });
+  return { deleted: res.deletedCount ?? 0 };
 }
 

@@ -4,10 +4,14 @@ import Shelf from "../models/Shelf";
 import StoredItem from "../models/StoredItem";
 import CycleCountItem from "../models/CycleCountItem";
 import Contract from "../models/Contract";
+import Zone from "../models/Zone";
 import User from "../models/User";
+import { suggestZoneMonthlyPrices, type ZonePricingInputRow } from "./pricing-suggestion.service";
 import InboundApproval from "../models/InboundApproval";
 import OutboundApproval from "../models/OutboundApproval";
-import type { Types } from "mongoose";
+import Payment from "../models/Payment";
+import RequestCreditPayment from "../models/RequestCreditPayment";
+import { Types } from "mongoose";
 
 /** Top outbound product by quantity and frequency */
 export interface TopOutboundProductItem {
@@ -58,6 +62,10 @@ export interface ManagerReportStats {
   outbound: number;
   completion: number;
   discrepancies: number;
+  totalRevenue: number;
+  contractRevenue: number;
+  serviceRevenue: number;
+  paidTransactions: number;
 }
 
 export interface CapacitySlice {
@@ -164,7 +172,16 @@ async function getStats(
 ): Promise<ManagerReportStats> {
   const completedStatuses = ["COMPLETED", "DONE_BY_STAFF"];
 
-  const [inbound, outbound, totalCompleted, totalInPeriod] = await Promise.all([
+  const [
+    inbound,
+    outbound,
+    totalCompleted,
+    totalInPeriod,
+    contractRevenueAgg,
+    serviceRevenueAgg,
+    contractPaidCount,
+    servicePaidCount
+  ] = await Promise.all([
     StorageRequest.countDocuments({
       requestType: "IN",
       status: { $in: completedStatuses },
@@ -182,6 +199,42 @@ async function getStats(
     StorageRequest.countDocuments({
       status: { $ne: "REJECTED" },
       createdAt: { $gte: start, $lte: end }
+    }),
+    Payment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" }
+        }
+      }
+    ]),
+    RequestCreditPayment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" }
+        }
+      }
+    ]),
+    Payment.countDocuments({
+      status: "paid",
+      paidAt: { $gte: start, $lte: end }
+    }),
+    RequestCreditPayment.countDocuments({
+      status: "paid",
+      paidAt: { $gte: start, $lte: end }
     })
   ]);
 
@@ -193,11 +246,20 @@ async function getStats(
     createdAt: { $gte: start, $lte: end }
   });
 
+  const contractRevenue = Number(contractRevenueAgg?.[0]?.total ?? 0);
+  const serviceRevenue = Number(serviceRevenueAgg?.[0]?.total ?? 0);
+  const totalRevenue = contractRevenue + serviceRevenue;
+  const paidTransactions = contractPaidCount + servicePaidCount;
+
   return {
     inbound,
     outbound,
     completion,
-    discrepancies
+    discrepancies,
+    totalRevenue,
+    contractRevenue,
+    serviceRevenue,
+    paidTransactions
   };
 }
 
@@ -750,4 +812,693 @@ export async function getProcessingTimeStats(
   }
 
   return { trendData, boxPlotData };
+}
+
+/** Manager deep reports: expiry stacked + zone pricing + penalty */
+
+export type ManagerDeepReportGranularity = "daily" | "monthly" | "yearly";
+
+/** Actionable contract row at a bucket snapshot (expired or expiring within 30d of as-of). */
+export interface ExpiryContractAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  aggregateEndDate: string;
+  tier: "expired" | "expiringSoon";
+  contractStatus: string;
+}
+
+/** Per zone lease line + shelf codes from StoredItem inventory in that zone for the contract. */
+export interface ExpiryZoneLeaseAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  zoneId: string;
+  zoneCode: string;
+  leaseEndDate: string;
+  tier: "expired" | "expiringSoon";
+  shelfCodes: string[];
+  contractStatus: string;
+}
+
+export interface ExpiryStackedBucket {
+  label: string;
+  contracts: { expired: number; expiringSoon: number; active: number };
+  zoneLeases: { expired: number; expiringSoon: number; active: number };
+  /** Names/codes needing action for this time bucket (capped server-side). */
+  details?: {
+    contractAlerts: ExpiryContractAlertRow[];
+    zoneLeaseAlerts: ExpiryZoneLeaseAlertRow[];
+  };
+}
+
+export interface ExpiryStackedReport {
+  granularity: ManagerDeepReportGranularity;
+  buckets: ExpiryStackedBucket[];
+}
+
+export interface ZonePricingComboRow {
+  zoneCode: string;
+  zoneId: string;
+  warehouseId: string;
+  warehouseName: string;
+  occupancyPercent: number;
+  avgMonthlyRentInRange: number;
+  suggestedMonthlyPrice: number;
+  shelfTotal: number;
+  shelfRented: number;
+}
+
+export interface PenaltyTopCustomerRow {
+  customerId: string;
+  customerName: string;
+  totalDamageUnits: number;
+  affectedRequestCount: number;
+  topDamagedItems: { itemName: string; damageUnits: number }[];
+}
+
+export interface RevenueTrendPoint {
+  period: string;
+  contractRevenue: number;
+  serviceRevenue: number;
+  totalRevenue: number;
+  paidTransactions: number;
+}
+
+export interface ManagerRevenueReport {
+  summary: {
+    totalRevenue: number;
+    contractRevenue: number;
+    serviceRevenue: number;
+    paidTransactions: number;
+  };
+  trend: RevenueTrendPoint[];
+  granularity: "week" | "month";
+}
+
+function parseYMDLocal(s: string): Date {
+  const [y, mo, d] = s.split("-").map((x) => parseInt(x, 10));
+  return new Date(y, mo - 1, d);
+}
+
+function endOfLocalDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(23, 59, 59, 999);
+  return x;
+}
+
+function formatYMDLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function expiryTier(zoneEnd: Date, asOf: Date): "expired" | "expiringSoon" | "active" {
+  const endMs = endOfLocalDay(zoneEnd).getTime();
+  const asMs = endOfLocalDay(asOf).getTime();
+  const soonEnd = asMs + 30 * 24 * 60 * 60 * 1000;
+  if (endMs < asMs) return "expired";
+  if (endMs <= soonEnd) return "expiringSoon";
+  return "active";
+}
+
+function enumerateExpiryBuckets(
+  startStr: string,
+  endStr: string,
+  g: ManagerDeepReportGranularity
+): { asOf: Date; label: string }[] {
+  const rangeStart = parseYMDLocal(startStr);
+  rangeStart.setHours(0, 0, 0, 0);
+  const rangeEnd = parseYMDLocal(endStr);
+  rangeEnd.setHours(23, 59, 59, 999);
+  const out: { asOf: Date; label: string }[] = [];
+
+  if (g === "daily") {
+    const cur = new Date(rangeStart);
+    while (cur <= rangeEnd && out.length < 400) {
+      out.push({ asOf: endOfLocalDay(new Date(cur)), label: formatYMDLocal(cur) });
+      cur.setDate(cur.getDate() + 1);
+    }
+    return out;
+  }
+
+  if (g === "monthly") {
+    let y = rangeStart.getFullYear();
+    let m = rangeStart.getMonth();
+    const endY = rangeEnd.getFullYear();
+    const endM = rangeEnd.getMonth();
+    while ((y < endY || (y === endY && m <= endM)) && out.length < 120) {
+      const monthEnd = new Date(y, m + 1, 0, 23, 59, 59, 999);
+      if (monthEnd >= rangeStart && monthEnd <= rangeEnd) {
+        out.push({
+          asOf: monthEnd,
+          label: `${y}-${String(m + 1).padStart(2, "0")}`
+        });
+      }
+      m++;
+      if (m > 11) {
+        m = 0;
+        y++;
+      }
+    }
+    return out;
+  }
+
+  for (let y = rangeStart.getFullYear(); y <= rangeEnd.getFullYear() && out.length < 30; y++) {
+    const yearEnd = new Date(y, 11, 31, 23, 59, 59, 999);
+    if (yearEnd >= rangeStart && yearEnd <= rangeEnd) {
+      out.push({ asOf: yearEnd, label: String(y) });
+    }
+  }
+  return out;
+}
+
+const MAX_EXPIRY_CONTRACT_ALERTS = 45;
+const MAX_EXPIRY_ZONE_LEASE_ALERTS = 70;
+
+function customerNameFromContractLean(c: {
+  customerId?: { name?: string } | Types.ObjectId | null;
+}): string {
+  const cid = c.customerId;
+  if (cid && typeof cid === "object" && "name" in cid && (cid as { name?: string }).name) {
+    return String((cid as { name?: string }).name);
+  }
+  return "—";
+}
+
+function sortExpiryContractAlerts(a: ExpiryContractAlertRow, b: ExpiryContractAlertRow): number {
+  const rank = (t: string) => (t === "expired" ? 0 : 1);
+  const d = rank(a.tier) - rank(b.tier);
+  if (d !== 0) return d;
+  return a.aggregateEndDate.localeCompare(b.aggregateEndDate);
+}
+
+function sortExpiryZoneLeaseAlerts(a: ExpiryZoneLeaseAlertRow, b: ExpiryZoneLeaseAlertRow): number {
+  const rank = (t: string) => (t === "expired" ? 0 : 1);
+  const d = rank(a.tier) - rank(b.tier);
+  if (d !== 0) return d;
+  return a.leaseEndDate.localeCompare(b.leaseEndDate);
+}
+
+/**
+ * Stacked time series: contract-level (max zone end among zones started by asOf) and per zone-lease row.
+ * Each bucket includes capped detail rows (contract code, customer, zone/shelf codes from MongoDB).
+ */
+export async function getManagerExpiryStackedReport(
+  startDate: string,
+  endDate: string,
+  granularity: ManagerDeepReportGranularity
+): Promise<ExpiryStackedReport> {
+  const bucketsMeta = enumerateExpiryBuckets(startDate, endDate, granularity);
+  const contracts = await Contract.find({
+    rentedZones: { $exists: true, $not: { $size: 0 } }
+  })
+    .populate("customerId", "name")
+    .select("createdAt rentedZones contractCode customerId status")
+    .lean();
+
+  const zoneIds = new Set<string>();
+  for (const c of contracts) {
+    for (const rz of c.rentedZones || []) {
+      zoneIds.add((rz.zoneId as Types.ObjectId).toString());
+    }
+  }
+  const zoneDocs =
+    zoneIds.size > 0
+      ? await Zone.find({ _id: { $in: [...zoneIds].map((id) => new Types.ObjectId(id)) } })
+          .select("_id zoneCode")
+          .lean()
+      : [];
+  const zoneCodeById = new Map(zoneDocs.map((z) => [String(z._id), String(z.zoneCode ?? z._id)]));
+
+  const shelfColl = Shelf.collection.collectionName;
+  const shelfAgg = await StoredItem.aggregate<{
+    _id: { contractId: Types.ObjectId; zoneId: Types.ObjectId };
+    shelfCodes: string[];
+  }>([
+    {
+      $lookup: {
+        from: shelfColl,
+        localField: "shelfId",
+        foreignField: "_id",
+        as: "sh"
+      }
+    },
+    { $unwind: "$sh" },
+    {
+      $group: {
+        _id: { contractId: "$contractId", zoneId: "$sh.zoneId" },
+        shelfCodes: { $addToSet: "$sh.shelfCode" }
+      }
+    }
+  ]);
+  const shelfCodesByContractZone = new Map<string, string[]>();
+  for (const row of shelfAgg) {
+    const cid = row._id.contractId.toString();
+    const zid = row._id.zoneId.toString();
+    const codes = (row.shelfCodes || []).filter(Boolean).slice().sort();
+    shelfCodesByContractZone.set(`${cid}|${zid}`, codes);
+  }
+
+  const buckets: ExpiryStackedBucket[] = bucketsMeta.map(({ asOf, label }) => {
+    let ce = 0,
+      cx = 0,
+      ca = 0;
+    let ze = 0,
+      zx = 0,
+      za = 0;
+
+    const contractAlerts: ExpiryContractAlertRow[] = [];
+    const zoneLeaseAlerts: ExpiryZoneLeaseAlertRow[] = [];
+
+    for (const c of contracts) {
+      if (new Date(c.createdAt as Date) > asOf) continue;
+      const zones = (c.rentedZones || []).filter((rz) => new Date(rz.startDate) <= asOf);
+      if (zones.length === 0) continue;
+
+      const maxEnd = new Date(
+        Math.max(...zones.map((z) => new Date(z.endDate).getTime()))
+      );
+      const ct = expiryTier(maxEnd, asOf);
+      if (ct === "expired") ce++;
+      else if (ct === "expiringSoon") cx++;
+      else ca++;
+
+      for (const rz of zones) {
+        const zt = expiryTier(new Date(rz.endDate), asOf);
+        if (zt === "expired") ze++;
+        else if (zt === "expiringSoon") zx++;
+        else za++;
+      }
+    }
+
+    detailLoop: for (const c of contracts) {
+      if (new Date(c.createdAt as Date) > asOf) continue;
+      const zones = (c.rentedZones || []).filter((rz) => new Date(rz.startDate) <= asOf);
+      if (zones.length === 0) continue;
+
+      const cidStr = String((c as { _id: Types.ObjectId })._id);
+      const contractCode = String((c as { contractCode?: string }).contractCode || cidStr);
+      const customerName = customerNameFromContractLean(
+        c as { customerId?: { name?: string } | Types.ObjectId | null }
+      );
+      const contractStatus = String((c as { status?: string }).status ?? "unknown");
+
+      const maxEnd = new Date(
+        Math.max(...zones.map((z) => new Date(z.endDate).getTime()))
+      );
+      const ct = expiryTier(maxEnd, asOf);
+
+      if (
+        (ct === "expired" || ct === "expiringSoon") &&
+        contractAlerts.length < MAX_EXPIRY_CONTRACT_ALERTS
+      ) {
+        contractAlerts.push({
+          contractId: cidStr,
+          contractCode,
+          customerName,
+          aggregateEndDate: formatYMDLocal(maxEnd),
+          tier: ct,
+          contractStatus
+        });
+      }
+
+      for (const rz of zones) {
+        const zt = expiryTier(new Date(rz.endDate), asOf);
+        if (zt !== "expired" && zt !== "expiringSoon") continue;
+        if (zoneLeaseAlerts.length >= MAX_EXPIRY_ZONE_LEASE_ALERTS) break detailLoop;
+
+        const zid = (rz.zoneId as Types.ObjectId).toString();
+        const zoneCode = zoneCodeById.get(zid) || zid;
+        const shelfCodes = shelfCodesByContractZone.get(`${cidStr}|${zid}`) ?? [];
+
+        zoneLeaseAlerts.push({
+          contractId: cidStr,
+          contractCode,
+          customerName,
+          zoneId: zid,
+          zoneCode,
+          leaseEndDate: formatYMDLocal(new Date(rz.endDate)),
+          tier: zt,
+          shelfCodes,
+          contractStatus
+        });
+      }
+    }
+
+    contractAlerts.sort(sortExpiryContractAlerts);
+    zoneLeaseAlerts.sort(sortExpiryZoneLeaseAlerts);
+
+    return {
+      label,
+      contracts: { expired: ce, expiringSoon: cx, active: ca },
+      zoneLeases: { expired: ze, expiringSoon: zx, active: za },
+      details: {
+        contractAlerts,
+        zoneLeaseAlerts
+      }
+    };
+  });
+
+  return { granularity, buckets };
+}
+
+/**
+ * Zone occupancy (current shelf snapshot) + avg zone rent from contract lines overlapping date range + Gemini suggested price.
+ */
+export async function getManagerZonePricingComboData(
+  startDate: string,
+  endDate: string
+): Promise<ZonePricingComboRow[]> {
+  const start = parseYMDLocal(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = parseYMDLocal(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const zones = await Zone.find({ status: "ACTIVE" })
+    .select("_id zoneCode warehouseId")
+    .populate("warehouseId", "name")
+    .lean();
+
+  const shelfAgg = await Shelf.aggregate([
+    {
+      $group: {
+        _id: "$zoneId",
+        total: { $sum: 1 },
+        rented: { $sum: { $cond: [{ $eq: ["$status", "RENTED"] }, 1, 0] } }
+      }
+    }
+  ]);
+
+  const shelfMap = new Map(
+    shelfAgg.map((x: { _id: Types.ObjectId; total: number; rented: number }) => [
+      x._id.toString(),
+      { total: x.total, rented: x.rented }
+    ])
+  );
+
+  const contracts = await Contract.find({
+    status: { $in: ["active", "expired", "terminated", "pending_payment"] },
+    rentedZones: { $exists: true, $not: { $size: 0 } }
+  })
+    .select("rentedZones")
+    .lean();
+
+  const rentSumByZone = new Map<string, { sum: number; n: number }>();
+  for (const c of contracts) {
+    for (const z of c.rentedZones || []) {
+      const zs = new Date(z.startDate).getTime();
+      const ze = new Date(z.endDate).getTime();
+      if (ze < start.getTime() || zs > end.getTime()) continue;
+      const id = (z.zoneId as Types.ObjectId).toString();
+      const cur = rentSumByZone.get(id) || { sum: 0, n: 0 };
+      cur.sum += z.price;
+      cur.n += 1;
+      rentSumByZone.set(id, cur);
+    }
+  }
+
+  function warehouseFields(z: {
+    warehouseId?: Types.ObjectId | { _id?: Types.ObjectId; name?: string } | null;
+  }): { warehouseId: string; warehouseName: string } {
+    const w = z.warehouseId;
+    if (w && typeof w === "object" && w !== null && "name" in w) {
+      const wid = (w as { _id?: Types.ObjectId })._id;
+      return {
+        warehouseId: wid ? String(wid) : "",
+        warehouseName: String((w as { name?: string }).name || "—")
+      };
+    }
+    return { warehouseId: "", warehouseName: "—" };
+  }
+
+  const rows: ZonePricingInputRow[] = zones.map((z) => {
+    const id = z._id.toString();
+    const sh = shelfMap.get(id) || { total: 0, rented: 0 };
+    const total = sh.total || 0;
+    const rented = sh.rented || 0;
+    const occ = total > 0 ? Math.round((rented / total) * 1000) / 10 : 0;
+    const rs = rentSumByZone.get(id);
+    const avg = rs && rs.n > 0 ? Math.round(rs.sum / rs.n) : 0;
+    return { zoneCode: z.zoneCode, occupancyPercent: occ, avgMonthlyRent: avg };
+  });
+
+  const suggested = await suggestZoneMonthlyPrices(rows);
+
+  return zones.map((z, i) => {
+    const id = z._id.toString();
+    const sh = shelfMap.get(id) || { total: 0, rented: 0 };
+    const total = sh.total || 0;
+    const rented = sh.rented || 0;
+    const occ = total > 0 ? Math.round((rented / total) * 1000) / 10 : 0;
+    const rs = rentSumByZone.get(id);
+    const avg = rs && rs.n > 0 ? Math.round(rs.sum / rs.n) : 0;
+    const wh = warehouseFields(z);
+    return {
+      zoneCode: z.zoneCode,
+      zoneId: id,
+      warehouseId: wh.warehouseId,
+      warehouseName: wh.warehouseName,
+      occupancyPercent: occ,
+      avgMonthlyRentInRange: avg,
+      suggestedMonthlyPrice: suggested[i] ?? avg,
+      shelfTotal: total,
+      shelfRented: rented
+    };
+  });
+}
+
+/**
+ * Top customers by summed damageQuantity on storage request lines (inventory penalty proxy).
+ */
+export async function getManagerPenaltyTopCustomers(
+  startDate: string,
+  endDate: string,
+  limit = 10
+): Promise<PenaltyTopCustomerRow[]> {
+  const start = parseYMDLocal(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = parseYMDLocal(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const agg = await StorageRequestDetail.aggregate([
+    {
+      $lookup: {
+        from: "storagerequests",
+        localField: "requestId",
+        foreignField: "_id",
+        as: "req"
+      }
+    },
+    { $unwind: "$req" },
+    {
+      $match: {
+        "req.createdAt": { $gte: start, $lte: end },
+        damageQuantity: { $gt: 0 }
+      }
+    },
+    {
+      $group: {
+        _id: "$req.customerId",
+        totalDamage: { $sum: "$damageQuantity" },
+        reqIds: { $addToSet: "$requestId" }
+      }
+    },
+    { $sort: { totalDamage: -1 } },
+    { $limit: limit },
+    {
+      $project: {
+        customerId: "$_id",
+        totalDamageUnits: "$totalDamage",
+        affectedRequestCount: { $size: "$reqIds" }
+      }
+    }
+  ]);
+
+  const ids = agg.map((a: { customerId: Types.ObjectId }) => a.customerId);
+  if (ids.length === 0) return [];
+
+  const users = await User.find({ _id: { $in: ids } })
+    .select("name")
+    .lean();
+  const nameMap = new Map(users.map((u) => [u._id.toString(), u.name || "Unknown"]));
+
+  const itemBreakdownAgg = await StorageRequestDetail.aggregate([
+    {
+      $lookup: {
+        from: "storagerequests",
+        localField: "requestId",
+        foreignField: "_id",
+        as: "req"
+      }
+    },
+    { $unwind: "$req" },
+    {
+      $match: {
+        "req.createdAt": { $gte: start, $lte: end },
+        "req.customerId": { $in: ids },
+        damageQuantity: { $gt: 0 }
+      }
+    },
+    {
+      $group: {
+        _id: { customerId: "$req.customerId", itemName: "$itemName" },
+        damageUnits: { $sum: "$damageQuantity" }
+      }
+    },
+    { $sort: { "_id.customerId": 1, damageUnits: -1 } }
+  ]);
+  const topItemsByCustomerId = new Map<string, { itemName: string; damageUnits: number }[]>();
+  for (const row of itemBreakdownAgg as Array<{
+    _id: { customerId: Types.ObjectId; itemName: string };
+    damageUnits: number;
+  }>) {
+    const customerId = String(row._id.customerId);
+    const current = topItemsByCustomerId.get(customerId) || [];
+    if (current.length >= 5) continue;
+    current.push({
+      itemName: String(row._id.itemName || "Unknown item"),
+      damageUnits: Number(row.damageUnits) || 0
+    });
+    topItemsByCustomerId.set(customerId, current);
+  }
+
+  return agg.map(
+    (a: {
+      customerId: Types.ObjectId;
+      totalDamageUnits: number;
+      affectedRequestCount: number;
+    }) => ({
+      customerId: a.customerId.toString(),
+      customerName: nameMap.get(a.customerId.toString()) || "Unknown",
+      totalDamageUnits: a.totalDamageUnits,
+      affectedRequestCount: a.affectedRequestCount,
+      topDamagedItems: topItemsByCustomerId.get(a.customerId.toString()) || []
+    })
+  );
+}
+
+/**
+ * Manager revenue report from paid payments.
+ * - contractRevenue: Payment
+ * - serviceRevenue: RequestCreditPayment
+ */
+export async function getManagerRevenueReport(
+  startDate: string,
+  endDate: string,
+  granularity: "week" | "month" = "week"
+): Promise<ManagerRevenueReport> {
+  const start = parseYMDLocal(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = parseYMDLocal(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const periodExpr =
+    granularity === "month"
+      ? { $dateToString: { date: "$paidAt", format: "%Y-%m" } }
+      : {
+          $concat: [
+            { $toString: { $isoWeekYear: "$paidAt" } },
+            "-W",
+            {
+              $let: {
+                vars: { wk: { $isoWeek: "$paidAt" } },
+                in: {
+                  $cond: [
+                    { $lt: ["$$wk", 10] },
+                    { $concat: ["0", { $toString: "$$wk" }] },
+                    { $toString: "$$wk" }
+                  ]
+                }
+              }
+            }
+          ]
+        };
+
+  const [contractAgg, serviceAgg] = await Promise.all([
+    Payment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: periodExpr,
+          revenue: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]),
+    RequestCreditPayment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: periodExpr,
+          revenue: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ])
+  ]);
+
+  const byPeriod = new Map<
+    string,
+    { contractRevenue: number; serviceRevenue: number; paidTransactions: number }
+  >();
+
+  for (const r of contractAgg as Array<{ _id: string; revenue: number; count: number }>) {
+    byPeriod.set(String(r._id), {
+      contractRevenue: Number(r.revenue || 0),
+      serviceRevenue: 0,
+      paidTransactions: Number(r.count || 0)
+    });
+  }
+
+  for (const r of serviceAgg as Array<{ _id: string; revenue: number; count: number }>) {
+    const key = String(r._id);
+    const cur = byPeriod.get(key) || {
+      contractRevenue: 0,
+      serviceRevenue: 0,
+      paidTransactions: 0
+    };
+    cur.serviceRevenue += Number(r.revenue || 0);
+    cur.paidTransactions += Number(r.count || 0);
+    byPeriod.set(key, cur);
+  }
+
+  const trend: RevenueTrendPoint[] = Array.from(byPeriod.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, x]) => ({
+      period,
+      contractRevenue: x.contractRevenue,
+      serviceRevenue: x.serviceRevenue,
+      totalRevenue: x.contractRevenue + x.serviceRevenue,
+      paidTransactions: x.paidTransactions
+    }));
+
+  const contractRevenue = trend.reduce((s, x) => s + x.contractRevenue, 0);
+  const serviceRevenue = trend.reduce((s, x) => s + x.serviceRevenue, 0);
+  const totalRevenue = contractRevenue + serviceRevenue;
+  const paidTransactions = trend.reduce((s, x) => s + x.paidTransactions, 0);
+
+  return {
+    summary: {
+      totalRevenue,
+      contractRevenue,
+      serviceRevenue,
+      paidTransactions
+    },
+    trend,
+    granularity
+  };
 }

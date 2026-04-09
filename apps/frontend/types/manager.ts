@@ -1,5 +1,4 @@
 import type { Contract, RentRequest, ServiceRequest, CustomerInventoryItem, AdjustmentRequest } from '../lib/customer-types';
-import type { StaffTask } from './staff';
 
 export type ShelfStatus = 'Available' | 'Occupied';
 
@@ -102,6 +101,10 @@ export interface ManagerReportStats {
   outbound: number;
   completion: number;
   discrepancies: number;
+  totalRevenue: number;
+  contractRevenue: number;
+  serviceRevenue: number;
+  paidTransactions: number;
 }
 
 export interface ManagerReportCapacitySlice {
@@ -208,4 +211,82 @@ export interface ProcessingTimeBoxPlotItem {
   max: number;
   count: number;
   avgHours: number;
+}
+
+/** Manager deep reports (stacked expiry, zone pricing combo, penalty top customers) */
+export type ManagerDeepGranularity = 'daily' | 'monthly' | 'yearly';
+
+export interface ExpiryContractAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  aggregateEndDate: string;
+  tier: 'expired' | 'expiringSoon';
+  contractStatus: string;
+}
+
+export interface ExpiryZoneLeaseAlertRow {
+  contractId: string;
+  contractCode: string;
+  customerName: string;
+  zoneId: string;
+  zoneCode: string;
+  leaseEndDate: string;
+  tier: 'expired' | 'expiringSoon';
+  shelfCodes: string[];
+  contractStatus: string;
+}
+
+export interface ExpiryStackedBucket {
+  label: string;
+  contracts: { expired: number; expiringSoon: number; active: number };
+  zoneLeases: { expired: number; expiringSoon: number; active: number };
+  details?: {
+    contractAlerts: ExpiryContractAlertRow[];
+    zoneLeaseAlerts: ExpiryZoneLeaseAlertRow[];
+  };
+}
+
+export interface ExpiryStackedReport {
+  granularity: ManagerDeepGranularity;
+  buckets: ExpiryStackedBucket[];
+}
+
+export interface ZonePricingComboRow {
+  zoneCode: string;
+  zoneId: string;
+  warehouseId: string;
+  warehouseName: string;
+  occupancyPercent: number;
+  avgMonthlyRentInRange: number;
+  suggestedMonthlyPrice: number;
+  shelfTotal: number;
+  shelfRented: number;
+}
+
+export interface PenaltyTopCustomerRow {
+  customerId: string;
+  customerName: string;
+  totalDamageUnits: number;
+  affectedRequestCount: number;
+  topDamagedItems: Array<{ itemName: string; damageUnits: number }>;
+}
+
+export interface RevenueTrendPoint {
+  period: string;
+  contractRevenue: number;
+  serviceRevenue: number;
+  totalRevenue: number;
+  paidTransactions: number;
+}
+
+export interface ManagerRevenueReportResponse {
+  summary: {
+    totalRevenue: number;
+    contractRevenue: number;
+    serviceRevenue: number;
+    paidTransactions: number;
+  };
+  trend: RevenueTrendPoint[];
+  granularity: 'week' | 'month';
 }

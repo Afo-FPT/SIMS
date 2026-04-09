@@ -106,8 +106,13 @@ export async function createInboundRequestController(
       error.message.includes("not found") ||
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
+      error.message.includes("expired") ||
+      error.message.includes("terminated") ||
+      error.message.includes("Inbound requests") ||
       error.message.includes("empty") ||
-      error.message.includes("Weekly request limit")
+      error.message.includes("Weekly request limit") ||
+      error.message.includes("assigned to this warehouse") ||
+      error.message.includes("Assigned warehouse staff")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -199,8 +204,13 @@ export async function createOutboundRequestController(
       error.message.includes("not found") ||
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
+      error.message.includes("expired") ||
+      error.message.includes("terminated") ||
+      error.message.includes("Storage requests") ||
       error.message.includes("empty") ||
-      error.message.includes("Weekly request limit")
+      error.message.includes("Weekly request limit") ||
+      error.message.includes("assigned to this warehouse") ||
+      error.message.includes("Assigned warehouse staff")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -231,7 +241,12 @@ export async function assignStorageRequestController(req: Request, res: Response
       msg.includes("required") ||
       msg.includes("not found") ||
       msg.includes("Only PENDING") ||
-      msg.includes("not an active staff")
+      msg.includes("not an active staff") ||
+      msg.includes("not allowed") ||
+      msg.includes("Cannot assign") ||
+      msg.includes("expired") ||
+      msg.includes("terminated") ||
+      msg.includes("Manual assignment is disabled")
     ) {
       return res.status(400).json({ message: msg });
     }

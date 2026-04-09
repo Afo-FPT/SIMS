@@ -3,6 +3,7 @@ import StorageRequest from "../models/StorageRequest";
 import CycleCount from "../models/CycleCount";
 import RequestCredit, { type RequestCreditEntityType, type RequestCreditStatus } from "../models/RequestCredit";
 import { ClientSession } from "mongoose";
+import { getOrCreateRequestCreditPricing } from "./system-setting.service";
 
 export const WEEKLY_FREE_REQUEST_LIMIT = 3;
 export const REQUEST_CREDIT_PRICE_VND = 100000;
@@ -114,6 +115,8 @@ export async function reserveRequestCreditIfNeeded(params: {
   reservationToken?: string;
 }> {
   const { customerId, contractId, now, entityType, session } = params;
+  const pricing = await getOrCreateRequestCreditPricing();
+  const weeklyFreeLimit = pricing.weekly_free_request_limit ?? WEEKLY_FREE_REQUEST_LIMIT;
   const [completedCount, unfinishedCount] = await Promise.all([
     countCustomerCompletedRequestsInWeek(customerId, contractId, now, session),
     countCustomerUnfinishedRequestsInWeek(customerId, contractId, now, session)
@@ -123,7 +126,7 @@ export async function reserveRequestCreditIfNeeded(params: {
   // (unfinished + used) >= quota => need extra credit/payment to create new request
   const totalUsed = completedCount + unfinishedCount;
 
-  if (totalUsed < WEEKLY_FREE_REQUEST_LIMIT) {
+  if (totalUsed < weeklyFreeLimit) {
     return {};
   }
 
@@ -161,6 +164,38 @@ export async function reserveRequestCreditIfNeeded(params: {
   }
 
   return { reservedCreditId: credit._id.toString(), reservationToken: token };
+}
+
+export async function getCustomerWeeklyQuotaSummary(params: {
+  customerId: string;
+  contractId: string;
+  now?: Date;
+  session?: ClientSession;
+}): Promise<{
+  weeklyFreeLimit: number;
+  completedCount: number;
+  unfinishedCount: number;
+  totalUsed: number;
+  remainingFreeRequests: number;
+  requiresExtraCredit: boolean;
+}> {
+  const now = params.now || new Date();
+  const pricing = await getOrCreateRequestCreditPricing();
+  const weeklyFreeLimit = pricing.weekly_free_request_limit ?? WEEKLY_FREE_REQUEST_LIMIT;
+  const [completedCount, unfinishedCount] = await Promise.all([
+    countCustomerCompletedRequestsInWeek(params.customerId, params.contractId, now, params.session),
+    countCustomerUnfinishedRequestsInWeek(params.customerId, params.contractId, now, params.session),
+  ]);
+  const totalUsed = completedCount + unfinishedCount;
+  const remainingFreeRequests = Math.max(0, weeklyFreeLimit - totalUsed);
+  return {
+    weeklyFreeLimit,
+    completedCount,
+    unfinishedCount,
+    totalUsed,
+    remainingFreeRequests,
+    requiresExtraCredit: totalUsed >= weeklyFreeLimit,
+  };
 }
 
 export async function attachReservedCreditToEntity(params: {
@@ -201,6 +236,33 @@ export async function releaseReservedCredit(params: {
     {
       _id: new Types.ObjectId(creditId),
       reservationToken
+    },
+    {
+      $set: { status: "available" },
+      $unset: {
+        reservationToken: 1,
+        reservedEntityType: 1,
+        reservedEntityId: 1,
+        consumedAt: 1
+      }
+    },
+    { session: session || undefined }
+  );
+}
+
+/** Release any credits reserved for a storage request / cycle entity (e.g. contract auto-expiry). */
+export async function releaseReservedCreditsForEntity(params: {
+  entityType: RequestCreditEntityType;
+  entityId: string;
+  session?: ClientSession;
+}): Promise<void> {
+  const { entityType, entityId, session } = params;
+  if (!Types.ObjectId.isValid(entityId)) return;
+  await RequestCredit.updateMany(
+    {
+      reservedEntityType: entityType,
+      reservedEntityId: new Types.ObjectId(entityId),
+      status: "reserved"
     },
     {
       $set: { status: "available" },

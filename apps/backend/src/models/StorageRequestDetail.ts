@@ -12,6 +12,10 @@ export interface IStorageRequestDetail extends Document {
   volumePerUnitM3?: number;
   quantityRequested: number;
   quantityActual?: number;
+  /** Stock on shelf for this item line before staff completed putaway/pick (snapshot) */
+  quantityOnHandBefore?: number;
+  /** Stock on shelf after completion */
+  quantityOnHandAfter?: number;
   /** Staff-reported: quantity damaged/lost */
   damageQuantity?: number;
   /** Staff-reported: reason code for loss/damage */
@@ -62,6 +66,8 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
       type: Number,
       min: 0
     },
+    quantityOnHandBefore: { type: Number, min: 0 },
+    quantityOnHandAfter: { type: Number, min: 0 },
     damageQuantity: { type: Number, min: 0 },
     lossReason: { type: String, trim: true },
     lossNotes: { type: String, trim: true }

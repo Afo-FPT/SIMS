@@ -143,7 +143,7 @@ export async function createWarehouse(
     width: data.width,
     area: area,
     description: data.description?.trim(),
-    status: "ACTIVE",
+    status: "INACTIVE",
     createdBy: new Types.ObjectId(createdBy)
   });
 

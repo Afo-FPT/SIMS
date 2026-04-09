@@ -48,7 +48,7 @@ const WarehouseSchema = new Schema<IWarehouse>(
     status: {
       type: String,
       enum: ["ACTIVE", "INACTIVE"],
-      default: "ACTIVE"
+      default: "INACTIVE"
     },
     createdBy: {
       type: Schema.Types.ObjectId,

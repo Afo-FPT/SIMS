@@ -40,7 +40,9 @@ export async function approveOutboundRequestController(req: Request, res: Respon
       msg.includes("Only") ||
       msg.includes("already been") ||
       msg.includes("not an outbound") ||
-      msg.includes("PENDING")
+      msg.includes("PENDING") ||
+      msg.includes("Cannot approve") ||
+      msg.includes("terminated")
     ) {
       return res.status(400).json({ message: msg });
     }

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Persona } from '../types';
-import { listMyNotifications, markNotificationRead, type AppNotification, getMyUnreadCount, markAllNotificationsRead } from '../lib/notifications.api';
+import { deleteReadNotifications, listMyNotifications, markNotificationRead, type AppNotification, getMyUnreadCount, markAllNotificationsRead } from '../lib/notifications.api';
 import { getNotificationSocket } from '../lib/notifications.socket';
 import { Badge } from './ui/Badge';
 
@@ -97,6 +97,17 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
     }
   };
 
+  const handleDeleteRead = async () => {
+    try {
+      await deleteReadNotifications();
+      setRows((prev) => prev.filter((n) => !n.read));
+      setTotalPages(1);
+      setPage(1);
+    } catch {
+      // ignore
+    }
+  };
+
   const handleClickNotification = async (n: AppNotification) => {
     setOpen(false);
     if (!n.read) {
@@ -129,11 +140,12 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
       case 'USERS': return persona === 'ADMIN' ? 'Users' : 'User Control';
       case 'LOGS': return persona === 'ADMIN' ? 'Logs' : 'Audit Logs';
       case 'HISTORY': return 'History';
-      case 'CONFIG': return 'AI Parameters';
+      case 'CONFIG': return 'Config';
       case 'WAREHOUSES': return persona === 'MANAGER' ? 'Warehouses' : 'Facilities';
       case 'AI_LAYOUT': return 'Layout Optimization';
       case 'AI_CHAT': return 'AI Intelligence';
       case 'REPORTS': return 'Reports';
+      case 'PAYMENTS': return 'Payments';
       default: return 'Management';
     }
   };
@@ -179,6 +191,13 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
                 className="text-xs font-black text-primary hover:underline"
               >
                 Mark all read
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteRead}
+                className="text-xs font-black text-rose-600 hover:underline"
+              >
+                Delete read
               </button>
             </div>
           </div>
@@ -272,6 +291,10 @@ function iconForNotificationType(type: string): string {
       return 'sync_alt';
     case 'REQUEST_UPDATED':
       return 'edit';
+    case 'CONTRACT_EXPIRED':
+      return 'event_busy';
+    case 'CONTRACT_TERMINATED':
+      return 'gavel';
     default:
       return 'notifications';
   }

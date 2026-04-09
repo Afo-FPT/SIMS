@@ -3,6 +3,8 @@ import StorageRequest from "../models/StorageRequest";
 import OutboundApproval from "../models/OutboundApproval";
 import User from "../models/User";
 import { notifyStorageRequestEvent } from "./notification.service";
+import Contract from "../models/Contract";
+import { assertManagerMayApproveOutbound } from "./contract-rules.service";
 
 export interface OutboundApprovalRequestDTO {
   decision: "APPROVED" | "REJECTED";
@@ -91,6 +93,14 @@ export async function approveOrRejectOutboundRequest(
     }).session(session);
     if (existingApproval) {
       throw new Error("This outbound request has already been approved/rejected");
+    }
+
+    if (dto.decision === "APPROVED") {
+      const contract = await Contract.findById(request.contractId).session(session);
+      if (!contract) {
+        throw new Error("Contract not found");
+      }
+      assertManagerMayApproveOutbound(contract);
     }
 
     const now = new Date();

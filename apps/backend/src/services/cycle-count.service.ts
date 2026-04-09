@@ -8,6 +8,7 @@ import StoredItem from "../models/StoredItem";
 import User from "../models/User";
 import Shelf from "../models/Shelf";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
+import StaffWarehouse from "../models/StaffWarehouse";
 
 /**
  * DTOs for Cycle Count
@@ -87,6 +88,20 @@ export interface CycleCountResponse {
   };
   // Đã cập nhật tồn kho theo kết quả kiểm kê hay chưa
   inventory_adjusted?: boolean;
+  recount_round?: number;
+  recount_requested_at?: Date;
+  recount_requested_by?: {
+    user_id: string;
+    name: string;
+    email: string;
+  };
+  recount_decision_at?: Date;
+  recount_decision_by?: {
+    user_id: string;
+    name: string;
+    email: string;
+  };
+  recount_rejected_reason?: string;
   assigned_staff?: Array<{
     user_id: string;
     name: string;
@@ -118,6 +133,24 @@ export interface CycleCountResponse {
     unit: string;
     system_quantity: number;
   }>;
+}
+
+async function applyInventoryFromCycleCountItems(
+  cycleCountId: Types.ObjectId,
+  session: mongoose.ClientSession
+): Promise<void> {
+  const items = await CycleCountItem.find({ cycleCountId }).session(session);
+  if (items.length === 0) {
+    throw new Error("Cycle count has no items to adjust");
+  }
+  for (const item of items) {
+    const storedItem = await StoredItem.findById(item.storedItemId).session(session);
+    if (!storedItem) {
+      throw new Error(`Stored item ${item.storedItemId.toString()} not found`);
+    }
+    storedItem.quantity = item.countedQuantity;
+    await storedItem.save({ session });
+  }
 }
 
 /**
@@ -190,7 +223,7 @@ function validateSubmitResultDTO(data: SubmitCycleCountResultDTO): void {
 }
 
 /**
- * CUSTOMER creates a Cycle Count Request
+ * CUSTOMER creates a Cycle Count Request (auto-assigned to warehouse staff)
  */
 export async function createCycleCount(
   dto: CreateCycleCountDTO,
@@ -252,17 +285,53 @@ export async function createCycleCount(
       targetStoredItemIds = allStoredItems.map((si) => si._id);
     }
 
+    const warehouseStaffMapping = await StaffWarehouse.findOne({
+      warehouseId: contract.warehouseId
+    }).session(session);
+    if (!warehouseStaffMapping?.staffId) {
+      throw new Error("No staff is assigned to this warehouse yet");
+    }
+    const assignedStaff = await User.findOne({
+      _id: warehouseStaffMapping.staffId,
+      role: "staff",
+      isActive: true
+    }).session(session);
+    if (!assignedStaff) {
+      throw new Error("Assigned warehouse staff is inactive or invalid");
+    }
+
+    const now = new Date();
+    // If customer set preferred date, use end-of-day for deadline, otherwise 24h from now.
+    const deadline = dto.preferredDate
+      ? new Date(new Date(dto.preferredDate).setHours(23, 59, 59, 999))
+      : new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
     // Create cycle count request
     const cycleCount = await CycleCount.create(
       [
         {
           contractId: contract._id,
           createdByCustomerId: new Types.ObjectId(customerId),
-          status: "PENDING_MANAGER_APPROVAL",
+          status: "ASSIGNED_TO_STAFF",
           note: dto.note?.trim(),
           preferredDate: dto.preferredDate ? new Date(dto.preferredDate) : undefined,
-          requestedAt: new Date(),
+          requestedAt: now,
+          approvedAt: now,
+          approvedBy: new Types.ObjectId(customerId),
+          countingDeadline: deadline,
           targetStoredItemIds
+        }
+      ],
+      { session }
+    );
+
+    await CycleCountAssignment.create(
+      [
+        {
+          cycleCountId: cycleCount[0]._id,
+          staffId: assignedStaff._id,
+          assignedBy: new Types.ObjectId(customerId),
+          assignedAt: now
         }
       ],
       { session }
@@ -287,12 +356,21 @@ export async function createCycleCount(
       contract_code: contract.contractCode,
       customer_id: customerId,
       customer_name: (populatedCycleCount!.createdByCustomerId as any).name,
-      status: "PENDING_MANAGER_APPROVAL",
+      status: "ASSIGNED_TO_STAFF",
       note: dto.note?.trim(),
       preferred_date: dto.preferredDate ? new Date(dto.preferredDate) : undefined,
       requested_at: cycleCount[0].requestedAt,
       warehouse_id: contract.warehouseId.toString(),
       warehouse_name: (contractPopulated!.warehouseId as any).name,
+      counting_deadline: cycleCount[0].countingDeadline,
+      assigned_staff: [
+        {
+          user_id: assignedStaff._id.toString(),
+          name: assignedStaff.name,
+          email: assignedStaff.email,
+          assigned_at: now
+        }
+      ],
       created_at: cycleCount[0].createdAt,
       updated_at: cycleCount[0].updatedAt,
       inventory_adjusted: false
@@ -316,56 +394,43 @@ export async function approveOrRejectCycleCount(
   if (!Types.ObjectId.isValid(cycleCountId)) {
     throw new Error("Invalid cycle count ID");
   }
-
   if (!Types.ObjectId.isValid(managerId)) {
     throw new Error("Invalid manager ID");
   }
-
   if (dto.decision !== "APPROVED" && dto.decision !== "REJECTED") {
     throw new Error("Decision must be either APPROVED or REJECTED");
   }
 
-  if (dto.decision === "REJECTED" && (!dto.rejectionReason || dto.rejectionReason.trim().length === 0)) {
-    throw new Error("Rejection reason is required when rejecting");
-  }
-
   const session = await mongoose.startSession();
   session.startTransaction();
-
   try {
-    // Verify manager exists
     const manager = await User.findById(managerId).session(session);
     if (!manager || manager.role !== "manager") {
       throw new Error("Manager not found");
     }
 
-    // Get cycle count
     const cycleCount = await CycleCount.findById(cycleCountId).session(session);
-    if (!cycleCount) {
-      throw new Error("Cycle count not found");
-    }
-
-    if (cycleCount.status !== "PENDING_MANAGER_APPROVAL") {
-      throw new Error("Only PENDING_MANAGER_APPROVAL cycle counts can be approved/rejected");
+    if (!cycleCount) throw new Error("Cycle count not found");
+    if (cycleCount.status !== "RECOUNT_REQUIRED") {
+      throw new Error("Only RECOUNT_REQUIRED cycle counts can be approved/rejected by manager");
     }
 
     const now = new Date();
+    cycleCount.recountDecisionAt = now;
+    cycleCount.recountDecisionBy = new Types.ObjectId(managerId);
 
     if (dto.decision === "APPROVED") {
-      // Sau khi manager approve, request sẵn sàng cho bước assign staff
       cycleCount.status = "ASSIGNED_TO_STAFF";
-      cycleCount.approvedAt = now;
-      cycleCount.approvedBy = new Types.ObjectId(managerId);
+      cycleCount.recountRound = (cycleCount.recountRound || 0) + 1;
+      cycleCount.countingDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      await CycleCountItem.deleteMany({ cycleCountId: cycleCount._id }, { session });
     } else {
-      cycleCount.status = "REJECTED";
-      cycleCount.rejectedAt = now;
-      cycleCount.rejectedBy = new Types.ObjectId(managerId);
-      cycleCount.rejectionReason = dto.rejectionReason!.trim();
+      cycleCount.status = "STAFF_SUBMITTED";
+      cycleCount.recountRejectedReason = dto.rejectionReason?.trim() || "Recount request rejected by manager";
     }
 
     await cycleCount.save({ session });
     await session.commitTransaction();
-
     return await getCycleCountById(cycleCountId, managerId, "manager");
   } catch (err) {
     await session.abortTransaction();
@@ -383,75 +448,10 @@ export async function assignStaffToCycleCount(
   managerId: string,
   dto: AssignStaffDTO
 ): Promise<CycleCountResponse> {
-  validateAssignStaffDTO(dto);
-
-  if (!Types.ObjectId.isValid(cycleCountId)) {
-    throw new Error("Invalid cycle count ID");
-  }
-
-  if (!Types.ObjectId.isValid(managerId)) {
-    throw new Error("Invalid manager ID");
-  }
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    // Verify manager exists
-    const manager = await User.findById(managerId).session(session);
-    if (!manager || manager.role !== "manager") {
-      throw new Error("Manager not found");
-    }
-
-    // Get cycle count
-    const cycleCount = await CycleCount.findById(cycleCountId).session(session);
-    if (!cycleCount) {
-      throw new Error("Cycle count not found");
-    }
-
-    if (cycleCount.status !== "ASSIGNED_TO_STAFF") {
-      throw new Error("Cycle count must be in ASSIGNED_TO_STAFF status to assign staff");
-    }
-
-    // Verify all staff IDs are valid staff users
-    const staffUsers = await User.find({
-      _id: { $in: dto.staffIds.map((id) => new Types.ObjectId(id)) },
-      role: "staff"
-    }).session(session);
-
-    if (staffUsers.length !== dto.staffIds.length) {
-      throw new Error("One or more staff IDs are invalid or not staff users");
-    }
-
-    // Delete existing assignments
-    await CycleCountAssignment.deleteMany(
-      { cycleCountId: cycleCount._id },
-      { session }
-    );
-
-    // Create new assignments
-    const assignments = dto.staffIds.map((staffId) => ({
-      cycleCountId: cycleCount._id,
-      staffId: new Types.ObjectId(staffId),
-      assignedBy: new Types.ObjectId(managerId),
-      assignedAt: new Date()
-    }));
-
-    await CycleCountAssignment.insertMany(assignments, { session });
-
-    // Update cycle count deadline
-    cycleCount.countingDeadline = new Date(dto.countingDeadline);
-    await cycleCount.save({ session });
-
-    await session.commitTransaction();
-
-    return await getCycleCountById(cycleCountId, managerId, "manager");
-  } catch (err) {
-    await session.abortTransaction();
-    throw err;
-  } finally {
-    session.endSession();
-  }
+  void cycleCountId;
+  void managerId;
+  void dto;
+  throw new Error("Manual assignment is disabled. Cycle count requests are auto-assigned by warehouse staff mapping.");
 }
 
 /**
@@ -573,8 +573,18 @@ export async function submitCycleCountResult(
     await CycleCountItem.insertMany(cycleCountItems, { session });
 
     // Update cycle count status:
-    // Sau khi staff submit, chờ customer review: approve hoặc yêu cầu điều chỉnh tồn kho
-    cycleCount.status = "STAFF_SUBMITTED";
+    // - Round đầu: chờ customer confirm hoặc request recount.
+    // - Recount round: auto apply inventory and close.
+    const isRecountRound = (cycleCount.recountRound || 0) > 0;
+    if (isRecountRound) {
+      await applyInventoryFromCycleCountItems(cycleCount._id, session);
+      cycleCount.status = "CONFIRMED";
+      cycleCount.inventoryAdjusted = true;
+      cycleCount.confirmedAt = new Date();
+      cycleCount.confirmedBy = new Types.ObjectId(staffId);
+    } else {
+      cycleCount.status = "STAFF_SUBMITTED";
+    }
     const completedAt = new Date();
     cycleCount.completedAt = completedAt;
     await cycleCount.save({ session });
@@ -601,11 +611,8 @@ export async function submitCycleCountResult(
 }
 
 /**
- * CUSTOMER confirms cycle count result
- *
- * Trường hợp này dùng khi:
- * - Kết quả kiểm kê KHÔNG có chênh lệch đáng kể, hoặc
- * - Customer chấp nhận giữ nguyên số lượng hiện tại trên hệ thống.
+ * CUSTOMER confirms first-round cycle count result.
+ * This action updates inventory quantities immediately from counted results.
  */
 export async function confirmCycleCount(
   cycleCountId: string,
@@ -644,10 +651,14 @@ export async function confirmCycleCount(
       throw new Error("Customer can only confirm their own cycle counts");
     }
 
+    // Apply inventory update from submitted items
+    await applyInventoryFromCycleCountItems(cycleCount._id, session);
+
     // Update status
     cycleCount.status = "CONFIRMED";
     cycleCount.confirmedAt = new Date();
     cycleCount.confirmedBy = new Types.ObjectId(userId);
+    cycleCount.inventoryAdjusted = true;
     await cycleCount.save({ session });
 
     await session.commitTransaction();
@@ -662,8 +673,7 @@ export async function confirmCycleCount(
 }
 
 /**
- * CUSTOMER yêu cầu điều chỉnh tồn kho theo kết quả kiểm kê
- * (khi phát hiện chênh lệch và muốn cập nhật lại số lượng trên hệ thống).
+ * CUSTOMER requests a recount after first-round submission.
  */
 export async function requestInventoryAdjustment(
   cycleCountId: string,
@@ -688,24 +698,17 @@ export async function requestInventoryAdjustment(
     }
 
     if (cycleCount.status !== "STAFF_SUBMITTED") {
-      throw new Error("Cycle count must be in STAFF_SUBMITTED status to request inventory adjustment");
+      throw new Error("Cycle count must be in STAFF_SUBMITTED status to request recount");
     }
 
     if (cycleCount.createdByCustomerId.toString() !== customerId) {
       throw new Error("Customer can only request adjustment for their own cycle counts");
     }
 
-    // Ensure there is at least one discrepancy to adjust
-    const discrepancyCount = await CycleCountItem.countDocuments({
-      cycleCountId: cycleCount._id,
-      discrepancy: { $ne: 0 }
-    }).session(session);
-
-    if (discrepancyCount === 0) {
-      throw new Error("No discrepancies to adjust for this cycle count");
-    }
-
-    cycleCount.status = "ADJUSTMENT_REQUESTED";
+    cycleCount.status = "RECOUNT_REQUIRED";
+    cycleCount.recountRequestedAt = new Date();
+    cycleCount.recountRequestedBy = new Types.ObjectId(customerId);
+    cycleCount.note = [cycleCount.note, dto.reason?.trim()].filter(Boolean).join(" | ");
     await cycleCount.save({ session });
 
     await session.commitTransaction();
@@ -751,36 +754,11 @@ export async function applyCycleCountAdjustment(
       throw new Error("Cycle count not found");
     }
 
-    if (cycleCount.status !== "ADJUSTMENT_REQUESTED") {
-      throw new Error("Cycle count must be in ADJUSTMENT_REQUESTED status to apply adjustment");
+    if (cycleCount.status !== "ADJUSTMENT_REQUESTED" && cycleCount.status !== "STAFF_SUBMITTED") {
+      throw new Error("Cycle count must be in ADJUSTMENT_REQUESTED or STAFF_SUBMITTED status to apply adjustment");
     }
 
-    // Lấy tất cả items của lần kiểm kê
-    const items = await CycleCountItem.find({
-      cycleCountId: cycleCount._id
-    }).session(session);
-
-    if (items.length === 0) {
-      throw new Error("Cycle count has no items to adjust");
-    }
-
-    // Cập nhật quantity của StoredItem theo countedQuantity
-    for (const item of items) {
-      const storedItem = await StoredItem.findById(item.storedItemId).session(session);
-      if (!storedItem) {
-        throw new Error(`Stored item ${item.storedItemId.toString()} not found`);
-      }
-
-      // Đảm bảo cùng contract
-      if (storedItem.contractId.toString() !== cycleCount.contractId.toString()) {
-        throw new Error(
-          `Stored item ${item.storedItemId.toString()} does not belong to this cycle count's contract`
-        );
-      }
-
-      storedItem.quantity = item.countedQuantity;
-      await storedItem.save({ session });
-    }
+    await applyInventoryFromCycleCountItems(cycleCount._id, session);
 
     // Đánh dấu cycle count đã điều chỉnh và kết thúc
     const now = new Date();
@@ -887,6 +865,8 @@ export async function getCycleCounts(
     .populate("approvedBy", "name email")
     .populate("rejectedBy", "name email")
     .populate("confirmedBy", "name email")
+    .populate("recountRequestedBy", "name email")
+    .populate("recountDecisionBy", "name email")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -908,7 +888,7 @@ export async function getCycleCounts(
 
     // Get items if status is STAFF_SUBMITTED or CONFIRMED
     let items: any[] = [];
-    if (cc.status === "STAFF_SUBMITTED" || cc.status === "CONFIRMED") {
+    if (cc.status === "STAFF_SUBMITTED" || cc.status === "CONFIRMED" || cc.status === "RECOUNT_REQUIRED") {
       const countItems = await CycleCountItem.find({
         cycleCountId: cc._id
       })
@@ -916,26 +896,44 @@ export async function getCycleCounts(
         .populate("storedItemId", "itemName unit")
         .lean();
 
-      items = countItems.map((item) => ({
-        item_id: item._id.toString(),
-        stored_item_id: item.storedItemId.toString(),
-        shelf_id: item.shelfId.toString(),
-        shelf_code: (item.shelfId as any).shelfCode,
-        item_name: (item.storedItemId as any).itemName,
-        unit: (item.storedItemId as any).unit,
-        system_quantity: item.systemQuantity,
-        counted_quantity: item.countedQuantity,
-        discrepancy: item.discrepancy,
-        note: item.note
-      }));
+      items = countItems.map((item: any) => {
+        const storedItem =
+          typeof item.storedItemId === "object"
+            ? item.storedItemId
+            : { _id: item.storedItemId };
+        const shelf =
+          typeof item.shelfId === "object"
+            ? item.shelfId
+            : { _id: item.shelfId };
+        return {
+          item_id: item._id.toString(),
+          stored_item_id: storedItem?._id?.toString?.() || "",
+          shelf_id: shelf?._id?.toString?.() || "",
+          shelf_code: shelf?.shelfCode,
+          item_name: storedItem?.itemName,
+          unit: storedItem?.unit,
+          system_quantity: item.systemQuantity,
+          counted_quantity: item.countedQuantity,
+          discrepancy: item.discrepancy,
+          note: item.note
+        };
+      });
     }
 
     results.push({
       cycle_count_id: cc._id.toString(),
-      contract_id: (cc.contractId as any)._id?.toString() || cc.contractId.toString(),
-      contract_code: (cc.contractId as any).contractCode,
-      customer_id: (cc.createdByCustomerId as any)._id?.toString() || cc.createdByCustomerId.toString(),
-      customer_name: (cc.createdByCustomerId as any).name,
+      contract_id:
+        (cc.contractId as any)?._id?.toString?.() ||
+        (typeof cc.contractId === "object" && (cc.contractId as any)?.toString
+          ? (cc.contractId as any).toString()
+          : ""),
+      contract_code: (cc.contractId as any)?.contractCode || "",
+      customer_id:
+        (cc.createdByCustomerId as any)?._id?.toString?.() ||
+        (typeof cc.createdByCustomerId === "object" && (cc.createdByCustomerId as any)?.toString
+          ? (cc.createdByCustomerId as any).toString()
+          : ""),
+      customer_name: (cc.createdByCustomerId as any)?.name || "",
       status: cc.status,
       note: cc.note,
       preferred_date: cc.preferredDate,
@@ -943,7 +941,10 @@ export async function getCycleCounts(
       approved_at: cc.approvedAt,
       approved_by: cc.approvedBy
         ? {
-          user_id: (cc.approvedBy as any)._id?.toString() || cc.approvedBy.toString(),
+          user_id:
+            (cc.approvedBy as any)?._id?.toString?.() ||
+            (cc.approvedBy as any)?.toString?.() ||
+            "",
           name: (cc.approvedBy as any).name,
           email: (cc.approvedBy as any).email
         }
@@ -951,7 +952,10 @@ export async function getCycleCounts(
       rejected_at: cc.rejectedAt,
       rejected_by: cc.rejectedBy
         ? {
-          user_id: (cc.rejectedBy as any)._id?.toString() || cc.rejectedBy.toString(),
+          user_id:
+            (cc.rejectedBy as any)?._id?.toString?.() ||
+            (cc.rejectedBy as any)?.toString?.() ||
+            "",
           name: (cc.rejectedBy as any).name,
           email: (cc.rejectedBy as any).email
         }
@@ -962,19 +966,46 @@ export async function getCycleCounts(
       confirmed_at: cc.confirmedAt,
       confirmed_by: cc.confirmedBy
         ? {
-          user_id: (cc.confirmedBy as any)._id?.toString() || cc.confirmedBy.toString(),
+          user_id:
+            (cc.confirmedBy as any)?._id?.toString?.() ||
+            (cc.confirmedBy as any)?.toString?.() ||
+            "",
           name: (cc.confirmedBy as any).name,
           email: (cc.confirmedBy as any).email
         }
         : undefined,
       assigned_staff: assignments.map((a) => ({
-        user_id: (a.staffId as any)._id?.toString() || a.staffId.toString(),
+        user_id: (a.staffId as any)?._id?.toString?.() || (a.staffId as any)?.toString?.() || "",
         name: (a.staffId as any).name,
         email: (a.staffId as any).email,
         assigned_at: a.assignedAt
       })),
       items,
       inventory_adjusted: cc.inventoryAdjusted ?? false,
+      recount_round: cc.recountRound ?? 0,
+      recount_requested_at: cc.recountRequestedAt,
+      recount_requested_by: cc.recountRequestedBy
+        ? {
+          user_id:
+            (cc.recountRequestedBy as any)?._id?.toString?.() ||
+            (cc.recountRequestedBy as any)?.toString?.() ||
+            "",
+          name: (cc.recountRequestedBy as any).name,
+          email: (cc.recountRequestedBy as any).email
+        }
+        : undefined,
+      recount_decision_at: cc.recountDecisionAt,
+      recount_decision_by: cc.recountDecisionBy
+        ? {
+          user_id:
+            (cc.recountDecisionBy as any)?._id?.toString?.() ||
+            (cc.recountDecisionBy as any)?.toString?.() ||
+            "",
+          name: (cc.recountDecisionBy as any).name,
+          email: (cc.recountDecisionBy as any).email
+        }
+        : undefined,
+      recount_rejected_reason: cc.recountRejectedReason,
       warehouse_id: warehouse ? (warehouse as any)._id.toString() : "",
       warehouse_name: warehouse ? (warehouse as any).name : "",
       created_at: cc.createdAt,
@@ -1007,6 +1038,8 @@ export async function getCycleCountById(
     .populate("approvedBy", "name email")
     .populate("rejectedBy", "name email")
     .populate("confirmedBy", "name email")
+    .populate("recountRequestedBy", "name email")
+    .populate("recountDecisionBy", "name email")
     .lean();
 
   if (!cycleCount) {
@@ -1015,7 +1048,11 @@ export async function getCycleCountById(
 
   // Role-based access control
   if (userRole === "customer") {
-    if ((cycleCount.createdByCustomerId as any)._id?.toString() !== userId) {
+    const cycleCustomerId =
+      (cycleCount.createdByCustomerId as any)?._id?.toString?.() ||
+      (cycleCount.createdByCustomerId as any)?.toString?.() ||
+      "";
+    if (cycleCustomerId !== userId) {
       throw new Error("Customer can only view their own cycle counts");
     }
   } else if (userRole === "staff") {
@@ -1044,7 +1081,11 @@ export async function getCycleCountById(
 
   // Get items if status is STAFF_SUBMITTED or CONFIRMED
   let items: any[] = [];
-  if (cycleCount.status === "STAFF_SUBMITTED" || cycleCount.status === "CONFIRMED") {
+  if (
+    cycleCount.status === "STAFF_SUBMITTED" ||
+    cycleCount.status === "CONFIRMED" ||
+    cycleCount.status === "RECOUNT_REQUIRED"
+  ) {
     const countItems = await CycleCountItem.find({
       cycleCountId: cycleCount._id
     })
@@ -1065,13 +1106,11 @@ export async function getCycleCountById(
 
       return {
         item_id: item._id.toString(),
-
-        stored_item_id: storedItem._id.toString(),
-        shelf_id: shelf._id.toString(),
-
-        shelf_code: shelf.shelfCode,
-        item_name: storedItem.itemName,
-        unit: storedItem.unit,
+        stored_item_id: storedItem?._id?.toString?.() || "",
+        shelf_id: shelf?._id?.toString?.() || "",
+        shelf_code: shelf?.shelfCode || "",
+        item_name: storedItem?.itemName || "(deleted item)",
+        unit: storedItem?.unit || "",
 
         system_quantity: item.systemQuantity,
         counted_quantity: item.countedQuantity,
@@ -1105,8 +1144,8 @@ export async function getCycleCountById(
       const shelf = typeof si.shelfId === "object" ? si.shelfId : { _id: si.shelfId, shelfCode: "" };
       return {
         stored_item_id: si._id.toString(),
-        shelf_id: shelf._id.toString(),
-        shelf_code: shelf.shelfCode || "",
+        shelf_id: shelf?._id?.toString?.() || "",
+        shelf_code: shelf?.shelfCode || "",
         item_name: si.itemName,
         unit: si.unit,
         system_quantity: si.quantity
@@ -1116,10 +1155,19 @@ export async function getCycleCountById(
 
   return {
     cycle_count_id: cycleCount._id.toString(),
-    contract_id: (cycleCount.contractId as any)._id?.toString() || cycleCount.contractId.toString(),
-    contract_code: (cycleCount.contractId as any).contractCode,
-    customer_id: (cycleCount.createdByCustomerId as any)._id?.toString() || cycleCount.createdByCustomerId.toString(),
-    customer_name: (cycleCount.createdByCustomerId as any).name,
+    contract_id:
+      (cycleCount.contractId as any)?._id?.toString?.() ||
+      (typeof cycleCount.contractId === "object" && (cycleCount.contractId as any)?.toString
+        ? (cycleCount.contractId as any).toString()
+        : ""),
+    contract_code: (cycleCount.contractId as any)?.contractCode || "",
+    customer_id:
+      (cycleCount.createdByCustomerId as any)?._id?.toString?.() ||
+      (typeof cycleCount.createdByCustomerId === "object" &&
+      (cycleCount.createdByCustomerId as any)?.toString
+        ? (cycleCount.createdByCustomerId as any).toString()
+        : ""),
+    customer_name: (cycleCount.createdByCustomerId as any)?.name || "",
     status: cycleCount.status,
     note: cycleCount.note,
     preferred_date: cycleCount.preferredDate,
@@ -1127,7 +1175,10 @@ export async function getCycleCountById(
     approved_at: cycleCount.approvedAt,
     approved_by: cycleCount.approvedBy
       ? {
-        user_id: (cycleCount.approvedBy as any)._id?.toString() || cycleCount.approvedBy.toString(),
+        user_id:
+          (cycleCount.approvedBy as any)?._id?.toString?.() ||
+          (cycleCount.approvedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.approvedBy as any).name,
         email: (cycleCount.approvedBy as any).email
       }
@@ -1135,7 +1186,10 @@ export async function getCycleCountById(
     rejected_at: cycleCount.rejectedAt,
     rejected_by: cycleCount.rejectedBy
       ? {
-        user_id: (cycleCount.rejectedBy as any)._id?.toString() || cycleCount.rejectedBy.toString(),
+        user_id:
+          (cycleCount.rejectedBy as any)?._id?.toString?.() ||
+          (cycleCount.rejectedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.rejectedBy as any).name,
         email: (cycleCount.rejectedBy as any).email
       }
@@ -1146,13 +1200,16 @@ export async function getCycleCountById(
     confirmed_at: cycleCount.confirmedAt,
     confirmed_by: cycleCount.confirmedBy
       ? {
-        user_id: (cycleCount.confirmedBy as any)._id?.toString() || cycleCount.confirmedBy.toString(),
+        user_id:
+          (cycleCount.confirmedBy as any)?._id?.toString?.() ||
+          (cycleCount.confirmedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.confirmedBy as any).name,
         email: (cycleCount.confirmedBy as any).email
       }
       : undefined,
     assigned_staff: assignments.map((a) => ({
-      user_id: (a.staffId as any)._id?.toString() || a.staffId.toString(),
+      user_id: (a.staffId as any)?._id?.toString?.() || (a.staffId as any)?.toString?.() || "",
       name: (a.staffId as any).name,
       email: (a.staffId as any).email,
       assigned_at: a.assignedAt
@@ -1160,6 +1217,30 @@ export async function getCycleCountById(
     items,
     target_items,
     inventory_adjusted: cycleCount.inventoryAdjusted ?? false,
+    recount_round: (cycleCount as any).recountRound ?? 0,
+    recount_requested_at: (cycleCount as any).recountRequestedAt,
+    recount_requested_by: (cycleCount as any).recountRequestedBy
+      ? {
+        user_id:
+          (cycleCount as any).recountRequestedBy?._id?.toString?.() ||
+          (cycleCount as any).recountRequestedBy?.toString?.() ||
+          "",
+        name: (cycleCount as any).recountRequestedBy.name,
+        email: (cycleCount as any).recountRequestedBy.email
+      }
+      : undefined,
+    recount_decision_at: (cycleCount as any).recountDecisionAt,
+    recount_decision_by: (cycleCount as any).recountDecisionBy
+      ? {
+        user_id:
+          (cycleCount as any).recountDecisionBy?._id?.toString?.() ||
+          (cycleCount as any).recountDecisionBy?.toString?.() ||
+          "",
+        name: (cycleCount as any).recountDecisionBy.name,
+        email: (cycleCount as any).recountDecisionBy.email
+      }
+      : undefined,
+    recount_rejected_reason: (cycleCount as any).recountRejectedReason,
     warehouse_id: warehouse ? (warehouse as any)._id.toString() : "",
     warehouse_name: warehouse ? (warehouse as any).name : "",
     created_at: cycleCount.createdAt,

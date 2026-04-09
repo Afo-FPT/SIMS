@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import type { ManagerWarehouse, Shelf } from '../../../../types/manager';
 import {
@@ -16,7 +15,7 @@ import {
   updateWarehouseStatus,
   updateShelfInfo,
   updateShelfStatus,
-} from '../../../../lib/mockApi/manager.api';
+} from '../../../../lib/manager.api';
 import { getShelfUtilization, type ShelfUtilization } from '../../../../lib/shelves.api';
 import { getSpaceLimits, type SpaceLimits } from '../../../../lib/system-settings.api';
 import { useToastHelpers } from '../../../../lib/toast';
@@ -35,8 +34,8 @@ function formatM3(n: number): string {
 }
 
 function utilizationHint(pct: number): { label: string; className: string } | null {
-  if (pct >= 95) return { label: 'Gần đầy', className: 'bg-red-100 text-red-800' };
-  if (pct >= 85) return { label: 'Sắp đầy', className: 'bg-amber-100 text-amber-900' };
+  if (pct >= 95) return { label: 'Nearly full', className: 'bg-red-100 text-red-800' };
+  if (pct >= 85) return { label: 'Filling up', className: 'bg-amber-100 text-amber-900' };
   return null;
 }
 
@@ -66,6 +65,7 @@ export default function ManagerWarehouseDetailPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [creatingZone, setCreatingZone] = useState(false);
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
   const [savingZoneId, setSavingZoneId] = useState<string | null>(null);
@@ -98,8 +98,8 @@ export default function ManagerWarehouseDetailPage() {
     length: '',
     width: '',
     description: '',
-    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+  const [togglingWarehouseStatus, setTogglingWarehouseStatus] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -299,17 +299,6 @@ export default function ManagerWarehouseDetailPage() {
     }
   };
 
-  const previewMaxM3 = useMemo(() => {
-    const tierCount = parseInt(shelfForm.tierCountStr, 10);
-    const h = Number(shelfForm.heightStr);
-    const w = Number(shelfForm.widthStr);
-    const d = Number(shelfForm.depthStr);
-    if (!Number.isFinite(tierCount) || tierCount < 1) return 0;
-    if (!Number.isFinite(h) || !Number.isFinite(w) || !Number.isFinite(d)) return 0;
-    if (h <= 0 || w <= 0 || d <= 0) return 0;
-    return Math.round(tierCount * h * w * d * 1_000_000) / 1_000_000;
-  }, [shelfForm.tierCountStr, shelfForm.heightStr, shelfForm.widthStr, shelfForm.depthStr]);
-
   useEffect(() => {
     if (warehouse && !editingInfo) {
       setInfoForm({
@@ -318,7 +307,6 @@ export default function ManagerWarehouseDetailPage() {
         length: String(warehouse.length),
         width: String(warehouse.width),
         description: warehouse.description ?? '',
-        status: warehouse.status,
       });
     }
   }, [warehouse, editingInfo]);
@@ -373,7 +361,7 @@ export default function ManagerWarehouseDetailPage() {
     const depth = Number(depthStr);
 
     if (!shelfCode?.trim() || !tierCountStr || isNaN(tierCountNum) || tierCountNum < 1) {
-      toast.warning('Nhập mã kệ và số tầng hợp lệ');
+      toast.warning('Enter a valid shelf code and tier count');
       return;
     }
     if (
@@ -384,7 +372,7 @@ export default function ManagerWarehouseDetailPage() {
       width <= 0 ||
       depth <= 0
     ) {
-      toast.warning('Nhập cao / rộng / dài hợp lệ (> 0)');
+      toast.warning('Enter valid height / width / depth values (> 0)');
       return;
     }
 
@@ -453,17 +441,31 @@ export default function ManagerWarehouseDetailPage() {
         width: widthNum,
         description: infoForm.description.trim() || undefined,
       });
-      let next = updated;
-      if (infoForm.status && infoForm.status !== warehouse.status) {
-        next = await updateWarehouseStatus(warehouse.id, infoForm.status);
-      }
-      setWarehouse(next);
+      setWarehouse(updated);
       toast.success('Warehouse information updated');
       setEditingInfo(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update warehouse');
     } finally {
       setSavingInfo(false);
+    }
+  };
+
+  const handleSetWarehouseVisibility = async (next: 'ACTIVE' | 'INACTIVE') => {
+    if (!warehouse || warehouse.status === next) return;
+    try {
+      setTogglingWarehouseStatus(true);
+      const updated = await updateWarehouseStatus(warehouse.id, next);
+      setWarehouse(updated);
+      toast.success(
+        next === 'ACTIVE'
+          ? 'Warehouse is active and visible to customers on rent requests.'
+          : 'Warehouse is inactive and hidden from customers on rent requests.'
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update warehouse status');
+    } finally {
+      setTogglingWarehouseStatus(false);
     }
   };
 
@@ -571,7 +573,6 @@ export default function ManagerWarehouseDetailPage() {
             Detailed management for this warehouse: zones and shelves.
           </p>
         </div>
-        <Badge variant={warehouse.status === 'ACTIVE' ? 'success' : 'warning'}>{warehouse.status}</Badge>
       </div>
 
       {/* Warehouse info */}
@@ -642,15 +643,6 @@ export default function ManagerWarehouseDetailPage() {
               onChange={(e) => setInfoForm((p) => ({ ...p, width: e.target.value }))}
               required
             />
-            <Select
-              label="Status"
-              value={infoForm.status}
-              onChange={(e) => setInfoForm((p) => ({ ...p, status: e.target.value as 'ACTIVE' | 'INACTIVE' }))}
-              options={[
-                { value: 'ACTIVE', label: 'ACTIVE' },
-                { value: 'INACTIVE', label: 'INACTIVE' },
-              ]}
-            />
             <div className="md:col-span-2 lg:col-span-3">
               <Input
                 label="Description (optional)"
@@ -670,7 +662,6 @@ export default function ManagerWarehouseDetailPage() {
                     length: String(warehouse.length),
                     width: String(warehouse.width),
                     description: warehouse.description ?? '',
-                    status: warehouse.status,
                   });
                 }}
               >
@@ -693,8 +684,8 @@ export default function ManagerWarehouseDetailPage() {
           Zones group shelves for location tracking. Contracts are assigned to zones.
         </p>
         <p className={`text-xs ${zoneLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-          Giới hạn zone: tối đa {spaceLimits.zone_area_percent_of_warehouse}% diện tích kho
-          ({zoneMaxAllowed.toFixed(2)} m²). Đang dùng {usedZoneArea.toFixed(2)} m², còn lại {remainingZoneArea.toFixed(2)} m².
+          Zone limit: up to {spaceLimits.zone_area_percent_of_warehouse}% of warehouse area
+          ({zoneMaxAllowed.toFixed(2)} m²). Used {usedZoneArea.toFixed(2)} m², remaining {remainingZoneArea.toFixed(2)} m².
         </p>
         <form
           onSubmit={handleCreateZone}
@@ -895,8 +886,8 @@ export default function ManagerWarehouseDetailPage() {
           Create shelves inside zones and see their current status.
         </p>
         <p className={`text-xs ${shelfLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-          Giới hạn shelf: tối đa {spaceLimits.shelf_area_percent_of_zone}% diện tích zone đã chọn
-          ({zoneShelfMaxAllowed.toFixed(2)} m²). Đang dùng {usedShelfAreaInZone.toFixed(2)} m², còn lại {remainingShelfAreaInZone.toFixed(2)} m².
+          Shelf limit: up to {spaceLimits.shelf_area_percent_of_zone}% of selected zone area
+          ({zoneShelfMaxAllowed.toFixed(2)} m²). Used {usedShelfAreaInZone.toFixed(2)} m², remaining {remainingShelfAreaInZone.toFixed(2)} m².
         </p>
 
         <form onSubmit={handleCreateShelf} className="space-y-4">
@@ -918,16 +909,16 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Số tầng"
+              label="Tier count"
               type="number"
               min={1}
               value={shelfForm.tierCountStr}
               onChange={(e) => setShelfForm((p) => ({ ...p, tierCountStr: e.target.value }))}
-              placeholder="VD: 3"
+              placeholder="e.g. 3"
               required
             />
             <Input
-              label="Cao (m)"
+              label="Height (m)"
               type="number"
               step="0.01"
               min={0}
@@ -937,7 +928,7 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Rộng (m)"
+              label="Width (m)"
               type="number"
               step="0.01"
               min={0}
@@ -947,7 +938,7 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Dài (m)"
+              label="Depth (m)"
               type="number"
               step="0.01"
               min={0}
@@ -956,16 +947,6 @@ export default function ManagerWarehouseDetailPage() {
               placeholder="1.0"
               required
             />
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-            <p className="text-sm text-slate-700">
-              <span className="font-bold">Dung tích tối đa ước tính:</span>{' '}
-              <span className="font-mono font-bold text-primary">{formatM3(previewMaxM3)}</span>
-              <span className="text-slate-500">
-                {' '}
-                (= số tầng × cao × rộng × dài, áp dụng cùng kích thước cho mọi tầng)
-              </span>
-            </p>
           </div>
           <div className="flex justify-end">
             <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
@@ -983,7 +964,7 @@ export default function ManagerWarehouseDetailPage() {
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
               {utilLoading && (
                 <p className="text-xs text-slate-500 px-4 py-2 border-b border-slate-100">
-                  Đang tải dung tích kệ…
+                  Loading shelf capacity...
                 </p>
               )}
               <Table>
@@ -995,11 +976,11 @@ export default function ManagerWarehouseDetailPage() {
                   <TableHeader className="text-right">Width (m)</TableHeader>
                   <TableHeader className="text-right">Depth (m)</TableHeader>
                   <TableHeader>Contract</TableHeader>
-                  <TableHeader className="text-right">Đã dùng</TableHeader>
+                  <TableHeader className="text-right">Used</TableHeader>
                   <TableHeader className="text-right">Max</TableHeader>
-                  <TableHeader className="text-right">Còn lại</TableHeader>
+                  <TableHeader className="text-right">Remaining</TableHeader>
                   <TableHeader className="text-right">%</TableHeader>
-                  <TableHeader>Cảnh báo</TableHeader>
+                  <TableHeader>Warning</TableHeader>
                 </TableHead>
                 <TableBody>
                   {shelves.map((s) => {
@@ -1194,6 +1175,44 @@ export default function ManagerWarehouseDetailPage() {
           )}
         </div>
       </section>
+
+      {/* Manage: visibility — at bottom of page (active/inactive for rent requests) */}
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <h2 className="text-lg font-black text-slate-900 mb-2">Manage warehouse</h2>
+        <p className="text-sm text-slate-600 mb-4">
+          Only <strong className="text-slate-800">active</strong> warehouses appear in the customer rent-requests list.
+          New warehouses start as inactive until you activate them here.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          {warehouse.status === 'INACTIVE' ? (
+            <Button
+              type="button"
+              onClick={() => handleSetWarehouseVisibility('ACTIVE')}
+              isLoading={togglingWarehouseStatus}
+              disabled={togglingWarehouseStatus}
+            >
+              Activate warehouse
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleSetWarehouseVisibility('INACTIVE')}
+              isLoading={togglingWarehouseStatus}
+              disabled={togglingWarehouseStatus}
+            >
+              Deactivate warehouse
+            </Button>
+          )}
+        </div>
+        <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap items-center gap-3">
+          <span className="text-sm font-bold text-slate-500">Status</span>
+          <Badge variant={warehouse.status === 'ACTIVE' ? 'success' : 'warning'}>
+            {warehouse.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+          </Badge>
+        </div>
+      </section>
+
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Contract } from '../../../lib/customer-types';
-import { listContracts, listShelvesByWarehouse, updateContractStatus } from '../../../lib/mockApi/manager.api';
+import { listContracts, listShelvesByWarehouse, updateContractStatus } from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';

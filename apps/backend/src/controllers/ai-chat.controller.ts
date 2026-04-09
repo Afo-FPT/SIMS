@@ -50,7 +50,11 @@ export async function aiChatController(req: Request, res: Response) {
     });
   } catch (error: any) {
     const msg = error?.message || "Chat failed";
-    if (msg.includes("GEMINI_API_KEY") || msg.includes("not configured")) {
+    if (
+      msg.includes("GEMINI_API_KEY") ||
+      msg.includes("not configured") ||
+      msg.includes("currently disabled")
+    ) {
       return res.status(503).json({ message: msg });
     }
     if (msg.includes("Last message") || msg.includes("Invalid")) {

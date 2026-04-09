@@ -4,6 +4,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listContractPackages, type ContractPackage } from '../lib/contract-packages.api';
+import { clearAuth, getAuthState } from '../lib/auth';
+
+function dashboardPathForRole(role: string | null): string | null {
+  if (!role) return null;
+  const r = role.toUpperCase();
+  if (r === 'CUSTOMER') return '/customer/dashboard';
+  if (r === 'ADMIN') return '/admin/dashboard';
+  if (r === 'MANAGER') return '/manager/dashboard';
+  if (r === 'STAFF') return '/staff/dashboard';
+  return null;
+}
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -11,7 +22,17 @@ import { Badge } from '../components/ui/Badge';
 
 export default function LandingPage() {
   const router = useRouter();
-  const [isCustomer] = useState(false);
+  const [session, setSession] = useState<{
+    loggedIn: boolean;
+    dashboardPath: string | null;
+  }>({ loggedIn: false, dashboardPath: null });
+
+  useEffect(() => {
+    const state = getAuthState();
+    const dashboardPath = dashboardPathForRole(state.role);
+    const loggedIn = state.isAuthenticated && dashboardPath !== null;
+    setSession({ loggedIn, dashboardPath });
+  }, []);
 
   const [pricingLoading, setPricingLoading] = useState(true);
   const [pricingError, setPricingError] = useState<string | null>(null);
@@ -49,12 +70,8 @@ export default function LandingPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('sws_persona');
-    localStorage.removeItem('sws_email');
-    localStorage.removeItem('sws_name');
-    localStorage.removeItem('sws_title');
-    localStorage.removeItem('sws_avatar');
-    localStorage.removeItem('sws_verified');
+    clearAuth();
+    setSession({ loggedIn: false, dashboardPath: null });
     router.push('/');
   };
 
@@ -78,18 +95,20 @@ export default function LandingPage() {
           
           <div className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-xs font-black text-slate-500 hover:text-primary uppercase tracking-widest transition-colors">Features</a>
-            <a href="#solutions" className="text-xs font-black text-slate-500 hover:text-primary uppercase tracking-widest transition-colors">Solutions</a>
             <a href="#pricing" className="text-xs font-black text-slate-500 hover:text-primary uppercase tracking-widest transition-colors">Pricing</a>
           </div>
 
           <div className="flex items-center gap-4">
-            {isCustomer ? (
+            {session.loggedIn && session.dashboardPath ? (
               <>
-                <span className="hidden sm:block text-sm font-bold text-slate-900">Welcome, Customer</span>
-                <button onClick={() => navigateTo('/customer/dashboard')} className="px-6 py-2.5 bg-primary text-white text-[10px] font-black rounded-xl shadow-xl shadow-primary/20 uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95">
+                <button
+                  type="button"
+                  onClick={() => navigateTo(session.dashboardPath!)}
+                  className="px-6 py-2.5 bg-primary text-white text-[10px] font-black rounded-xl shadow-xl shadow-primary/20 uppercase tracking-widest hover:bg-primary-dark transition-all active:scale-95"
+                >
                   My Dashboard
                 </button>
-                <button onClick={handleLogout} className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors">
+                <button type="button" onClick={handleLogout} className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 transition-colors">
                   Logout
                 </button>
               </>
@@ -120,8 +139,12 @@ export default function LandingPage() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
-            {isCustomer ? (
-              <button onClick={() => navigateTo('/customer/dashboard')} className="w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/30 text-lg hover:-translate-y-1 transition-all">
+            {session.loggedIn && session.dashboardPath ? (
+              <button
+                type="button"
+                onClick={() => navigateTo(session.dashboardPath!)}
+                className="w-full sm:w-auto px-10 py-5 bg-primary text-white font-black rounded-2xl shadow-2xl shadow-primary/30 text-lg hover:-translate-y-1 transition-all"
+              >
                 Go to My Dashboard
               </button>
             ) : (

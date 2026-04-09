@@ -5,6 +5,8 @@ import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
 import RequestCreditPayment, { type IRequestCreditPayment } from "../models/RequestCreditPayment";
 import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
+import { assertContractEligibleForRequestCredits } from "./contract-rules.service";
+import { getOrCreateRequestCreditPricing } from "./system-setting.service";
 
 export interface StartVNPayPaymentResult {
   payment: IPayment;
@@ -49,8 +51,37 @@ export async function startVNPayPaymentForContract(
     status: "pending"
   });
   if (existingPending) {
-    // Optionally we could reuse existing txnRef, but easier to prevent duplicates.
-    throw new Error("There is already a pending payment for this contract. Please complete it first.");
+    const parseVnpDate = (value?: string): Date | null => {
+      if (!value || value.length !== 14) return null;
+      const year = Number(value.slice(0, 4));
+      const month = Number(value.slice(4, 6)) - 1;
+      const day = Number(value.slice(6, 8));
+      const hour = Number(value.slice(8, 10));
+      const minute = Number(value.slice(10, 12));
+      const second = Number(value.slice(12, 14));
+      if ([year, month, day, hour, minute, second].some((n) => Number.isNaN(n))) return null;
+      // Stored format is GMT+7 (VNPay), convert to UTC timestamp.
+      const utcMs = Date.UTC(year, month, day, hour - 7, minute, second);
+      return new Date(utcMs);
+    };
+
+    const expireAt =
+      parseVnpDate(existingPending.vnpExpireDate) ||
+      new Date(existingPending.createdAt.getTime() + 15 * 60 * 1000);
+    const isExpired = expireAt.getTime() <= Date.now();
+
+    if (isExpired) {
+      existingPending.status = "expired";
+      await existingPending.save();
+    } else if (existingPending.paymentUrl) {
+      return {
+        payment: existingPending,
+        paymentUrl: existingPending.paymentUrl,
+        expireAt: existingPending.vnpExpireDate || ""
+      };
+    } else {
+      throw new Error("There is already a pending payment for this contract. Please complete it first.");
+    }
   }
 
   const orderInfo = `Thanh toan hop dong ${contract.contractCode}`;
@@ -69,7 +100,9 @@ export async function startVNPayPaymentForContract(
     gateway: "vnpay",
     status: "pending",
     vnpTxnRef: vnpResult.vnp_TxnRef,
-    vnpOrderInfo: orderInfo
+    vnpOrderInfo: orderInfo,
+    paymentUrl: vnpResult.url,
+    vnpExpireDate: vnpResult.vnp_ExpireDate
   });
 
   return {
@@ -198,12 +231,18 @@ export async function handleVNPayReturn(
   await requestCreditPayment.save();
 
   if (newStatus === "paid") {
-    await grantRequestCredits({
-      customerId: requestCreditPayment.customerId.toString(),
-      contractId: requestCreditPayment.contractId.toString(),
-      credits: requestCreditPayment.creditsGranted || 1,
-      paidAt: new Date()
-    });
+    const contractRc = await Contract.findById(requestCreditPayment.contractId);
+    if (!contractRc || !["active", "expired"].includes(contractRc.status)) {
+      message =
+        "Payment successful, but credits were not granted because contract status is no longer eligible. Please contact support for a refund or adjustment.";
+    } else {
+      await grantRequestCredits({
+        customerId: requestCreditPayment.customerId.toString(),
+        contractId: requestCreditPayment.contractId.toString(),
+        credits: requestCreditPayment.creditsGranted || 1,
+        paidAt: new Date()
+      });
+    }
   }
 
   return {
@@ -224,6 +263,19 @@ export async function startVNPayPaymentForRequestCredits(
     throw new Error("Invalid customer ID");
   }
 
+  if (!Types.ObjectId.isValid(contractId)) {
+    throw new Error("Invalid contract ID");
+  }
+
+  const contractForCredit = await Contract.findById(contractId);
+  if (!contractForCredit) {
+    throw new Error("Contract not found");
+  }
+  if (contractForCredit.customerId.toString() !== customerId) {
+    throw new Error("Contract does not belong to the authenticated customer");
+  }
+  assertContractEligibleForRequestCredits(contractForCredit);
+
   const existingPending = await RequestCreditPayment.findOne({
     customerId: new Types.ObjectId(customerId),
     contractId: new Types.ObjectId(contractId),
@@ -234,9 +286,31 @@ export async function startVNPayPaymentForRequestCredits(
   }
 
   const creditsGranted = 1;
-  const amount = REQUEST_CREDIT_PRICE_VND;
+  const pricing = await getOrCreateRequestCreditPricing();
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const latestZoneEndDate = (contractForCredit.rentedZones || [])
+    .map((z: any) => new Date(z.endDate))
+    .filter((d: Date) => !Number.isNaN(d.getTime()))
+    .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0];
+  const requestedEndDate = (contractForCredit as any).requestedEndDate
+    ? new Date((contractForCredit as any).requestedEndDate)
+    : null;
+  const contractEndDate =
+    latestZoneEndDate ||
+    (requestedEndDate && !Number.isNaN(requestedEndDate.getTime()) ? requestedEndDate : null);
+  const overdueDays =
+    contractForCredit.status === "expired" && contractEndDate
+      ? Math.max(1, Math.ceil((now.getTime() - contractEndDate.getTime()) / msPerDay))
+      : 0;
+  const baseAmount = pricing.base_request_credit_price_vnd || REQUEST_CREDIT_PRICE_VND;
+  const penaltyAmount = overdueDays * (pricing.expired_contract_penalty_per_day_vnd || 0);
+  const amount = baseAmount + penaltyAmount;
 
-  const orderInfo = `Thanh toan request credit (${creditsGranted}x)`;
+  const orderInfo =
+    overdueDays > 0
+      ? `Thanh toan request credit (${creditsGranted}x) + phat tre ${overdueDays} ngay`
+      : `Thanh toan request credit (${creditsGranted}x)`;
   const txnRef = `RC-${customerId}-${Date.now()}`;
 
   const vnpResult = buildVNPayPaymentUrl({
@@ -260,12 +334,42 @@ export async function startVNPayPaymentForRequestCredits(
   return { payment, paymentUrl: vnpResult.url, expireAt: vnpResult.vnp_ExpireDate };
 }
 
-export async function getPaymentsForManager(): Promise<IPayment[]> {
-  return Payment.find({})
-    .populate("contractId", "contractCode status customerId warehouseId")
-    .sort({ createdAt: -1 })
-    .limit(200)
-    .lean()
-    .exec() as unknown as IPayment[];
+export interface ManagerPaymentsResult {
+  contractPayments: IPayment[];
+  servicePayments: IRequestCreditPayment[];
+}
+
+export async function getPaymentsForManager(): Promise<ManagerPaymentsResult> {
+  const [contractPayments, servicePayments] = await Promise.all([
+    Payment.find({})
+      .populate({
+        path: "contractId",
+        select: "contractCode status customerId warehouseId",
+        populate: [
+          { path: "customerId", select: "name email" },
+          { path: "warehouseId", select: "name" }
+        ]
+      })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean()
+      .exec() as unknown as IPayment[],
+    RequestCreditPayment.find({})
+      .populate("customerId", "name email")
+      .populate({
+        path: "contractId",
+        select: "contractCode status warehouseId",
+        populate: [{ path: "warehouseId", select: "name" }]
+      })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean()
+      .exec() as unknown as IRequestCreditPayment[]
+  ]);
+
+  return {
+    contractPayments,
+    servicePayments
+  };
 }
 

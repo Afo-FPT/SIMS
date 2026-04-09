@@ -1,5 +1,6 @@
 import Zone from "../models/Zone";
 import Warehouse from "../models/Warehouse";
+import Contract from "../models/Contract";
 import { Types } from "mongoose";
 import { getOrCreateSpaceLimits } from "./system-setting.service";
 
@@ -18,6 +19,8 @@ export interface UpdateZoneRequest {
   status?: "ACTIVE" | "INACTIVE";
 }
 
+export type ZoneRentalStatus = "AVAILABLE" | "RENTED";
+
 export interface ZoneResponse {
   zone_id: string;
   zone_code: string;
@@ -29,6 +32,62 @@ export interface ZoneResponse {
   created_by: string;
   created_at: Date;
   updated_at: Date;
+  /** Occupied by an active / pending_payment contract for the current calendar day */
+  rental_status: ZoneRentalStatus;
+  /** ISO date when current lease ends (latest end if multiple rows) */
+  lease_end_date?: string;
+  /** Whole days from today until lease_end_date (only set when rented) */
+  days_until_available?: number;
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function isInclusiveInLeasePeriod(start: Date, end: Date, now: Date): boolean {
+  const t = startOfDay(now).getTime();
+  const s = startOfDay(start).getTime();
+  const e = startOfDay(end).getTime();
+  return t >= s && t <= e;
+}
+
+function wholeDaysFromTodayToEnd(end: Date): number {
+  const diff = startOfDay(end).getTime() - startOfDay(new Date()).getTime();
+  return Math.round(diff / 86400000);
+}
+
+/**
+ * Map zoneId -> latest lease end among overlapping active/pending_payment contracts.
+ */
+async function getZoneLeaseEndsByWarehouse(
+  warehouseId: string
+): Promise<Map<string, Date>> {
+  const contracts = await Contract.find({
+    warehouseId: new Types.ObjectId(warehouseId),
+    status: { $in: ["active", "pending_payment"] }
+  })
+    .select("rentedZones")
+    .lean();
+
+  const now = new Date();
+  const map = new Map<string, Date>();
+
+  for (const c of contracts) {
+    const rows = (c as any).rentedZones as { zoneId: Types.ObjectId; startDate: Date; endDate: Date }[] | undefined;
+    if (!rows?.length) continue;
+    for (const rz of rows) {
+      if (!rz.zoneId || !rz.startDate || !rz.endDate) continue;
+      const start = new Date(rz.startDate);
+      const end = new Date(rz.endDate);
+      if (!isInclusiveInLeasePeriod(start, end, now)) continue;
+      const zid = rz.zoneId.toString();
+      const prev = map.get(zid);
+      if (!prev || end.getTime() > prev.getTime()) {
+        map.set(zid, end);
+      }
+    }
+  }
+  return map;
 }
 
 async function validateWarehouse(warehouseId: string): Promise<void> {
@@ -114,7 +173,38 @@ export async function createZone(
     status: zone.status,
     created_by: zone.createdBy.toString(),
     created_at: zone.createdAt,
-    updated_at: zone.updatedAt
+    updated_at: zone.updatedAt,
+    rental_status: "AVAILABLE"
+  };
+}
+
+function mapZoneLeanToResponse(z: any, leaseEnds: Map<string, Date>): ZoneResponse {
+  const zid = z._id.toString();
+  const leaseEnd = leaseEnds.get(zid);
+  const rented = Boolean(leaseEnd);
+  let daysUntil: number | undefined;
+  if (leaseEnd) {
+    daysUntil = wholeDaysFromTodayToEnd(leaseEnd);
+    if (daysUntil < 0) daysUntil = 0;
+  }
+  return {
+    zone_id: zid,
+    zone_code: z.zoneCode,
+    name: z.name,
+    area: z.area,
+    warehouse_id: z.warehouseId.toString(),
+    description: z.description,
+    status: z.status,
+    created_by: z.createdBy.toString(),
+    created_at: z.createdAt,
+    updated_at: z.updatedAt,
+    rental_status: rented ? "RENTED" : "AVAILABLE",
+    ...(rented && leaseEnd
+      ? {
+          lease_end_date: leaseEnd.toISOString(),
+          days_until_available: daysUntil
+        }
+      : {})
   };
 }
 
@@ -125,18 +215,9 @@ export async function listZonesByWarehouse(warehouseId: string): Promise<ZoneRes
     .sort({ zoneCode: 1 })
     .lean();
 
-  return zones.map((z: any) => ({
-    zone_id: z._id.toString(),
-    zone_code: z.zoneCode,
-    name: z.name,
-    area: z.area,
-    warehouse_id: z.warehouseId.toString(),
-    description: z.description,
-    status: z.status,
-    created_by: z.createdBy.toString(),
-    created_at: z.createdAt,
-    updated_at: z.updatedAt
-  }));
+  const leaseEnds = await getZoneLeaseEndsByWarehouse(warehouseId);
+
+  return zones.map((z: any) => mapZoneLeanToResponse(z, leaseEnds));
 }
 
 export async function getZoneById(zoneId: string): Promise<ZoneResponse | null> {
@@ -146,18 +227,9 @@ export async function getZoneById(zoneId: string): Promise<ZoneResponse | null> 
   const zone = await Zone.findById(zoneId).lean();
   if (!zone) return null;
   const z = zone as any;
-  return {
-    zone_id: z._id.toString(),
-    zone_code: z.zoneCode,
-    name: z.name,
-    area: z.area,
-    warehouse_id: z.warehouseId.toString(),
-    description: z.description,
-    status: z.status,
-    created_by: z.createdBy.toString(),
-    created_at: z.createdAt,
-    updated_at: z.updatedAt
-  };
+  const wid = z.warehouseId.toString();
+  const leaseEnds = await getZoneLeaseEndsByWarehouse(wid);
+  return mapZoneLeanToResponse(z, leaseEnds);
 }
 
 export async function updateZone(
@@ -214,16 +286,8 @@ export async function updateZone(
 
   await zone.save();
 
-  return {
-    zone_id: zone._id.toString(),
-    zone_code: zone.zoneCode,
-    name: zone.name,
-    area: zone.area,
-    warehouse_id: zone.warehouseId.toString(),
-    description: zone.description,
-    status: zone.status,
-    created_by: zone.createdBy.toString(),
-    created_at: zone.createdAt,
-    updated_at: zone.updatedAt
-  };
+  const leaseEnds = await getZoneLeaseEndsByWarehouse(warehouseId);
+  const z = await Zone.findById(zone._id).lean();
+  if (!z) throw new Error("Zone not found");
+  return mapZoneLeanToResponse(z as any, leaseEnds);
 }

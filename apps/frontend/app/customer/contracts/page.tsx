@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import type { Contract } from '../../../lib/customer-types';
 import { Pagination } from '../../../components/ui/Pagination';
 

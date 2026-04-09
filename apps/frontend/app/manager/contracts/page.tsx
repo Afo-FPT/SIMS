@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Contract } from '../../../lib/customer-types';
 import {
   listContracts,
@@ -10,9 +10,13 @@ import {
   listZonesByWarehouse,
   type ManagerZoneOption,
   type ManagerWarehouse,
-} from '../../../lib/mockApi/manager.api';
+} from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
-import { listManagerPayments, type ManagerPayment } from '../../../lib/payment.api';
+import {
+  listManagerPayments,
+  type ManagerContractPayment,
+  type ManagerServicePayment,
+} from '../../../lib/payment.api';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -123,9 +127,33 @@ export default function ManagerContractsPage() {
     rentedZones: [{ zoneId: '', startDate: '', endDate: '', price: '' }] as RentedZoneRow[],
   });
   const [paymentsOpen, setPaymentsOpen] = useState(false);
-  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [paymentTab, setPaymentTab] = useState<'contract' | 'service'>('contract');
+  const [contractPayments, setContractPayments] = useState<ManagerContractPayment[]>([]);
+  const [servicePayments, setServicePayments] = useState<ManagerServicePayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsRefreshing, setPaymentsRefreshing] = useState(false);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | Contract['status']>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState<'all' | string>('all');
+  const [detailPayments, setDetailPayments] = useState<ManagerContractPayment[]>([]);
+  const [detailPaymentsLoading, setDetailPaymentsLoading] = useState(false);
+
+  const loadPayments = useCallback(async (silent = false) => {
+    try {
+      if (silent) setPaymentsRefreshing(true);
+      else setPaymentsLoading(true);
+      setPaymentsError(null);
+      const data = await listManagerPayments();
+      setContractPayments(data.contractPayments);
+      setServicePayments(data.servicePayments);
+    } catch (err) {
+      setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
+    } finally {
+      if (silent) setPaymentsRefreshing(false);
+      else setPaymentsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     load();
@@ -146,29 +174,11 @@ export default function ManagerContractsPage() {
   }, [createForm.warehouseId]);
 
   useEffect(() => {
-    let timer: NodeJS.Timeout | undefined;
-    const loadPayments = async () => {
-      try {
-        setPaymentsLoading(true);
-        setPaymentsError(null);
-        const data = await listManagerPayments();
-        setPayments(data);
-      } catch (err) {
-        setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
-      } finally {
-        setPaymentsLoading(false);
-      }
-    };
-
     if (paymentsOpen) {
-      loadPayments();
-      timer = setInterval(loadPayments, 5000);
+      loadPayments(false);
+      setPaymentTab('contract');
     }
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [paymentsOpen]);
+  }, [paymentsOpen, loadPayments]);
 
   const load = async () => {
     try {
@@ -186,8 +196,52 @@ export default function ManagerContractsPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(contracts.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paged = contracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const filteredContracts = contracts.filter((c) => {
+    const q = searchTerm.trim().toLowerCase();
+    const bySearch =
+      !q ||
+      String(c.code || '').toLowerCase().includes(q) ||
+      String(c.customerName || '').toLowerCase().includes(q);
+    const byStatus = statusFilter === 'all' || c.status === statusFilter;
+    const byWarehouse = warehouseFilter === 'all' || c.warehouseId === warehouseFilter;
+    return bySearch && byStatus && byWarehouse;
+  });
+  const filteredTotalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
+  const safePage = Math.min(page, filteredTotalPages);
+  const paged = filteredContracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const warehouseOptions = Array.from(
+    new Map(
+      contracts
+        .filter((c) => c.warehouseId)
+        .map((c) => [c.warehouseId, { id: c.warehouseId, name: c.warehouseName || c.warehouseId }])
+    ).values()
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, statusFilter, warehouseFilter]);
+
+  useEffect(() => {
+    async function loadDetailPayments() {
+      if (!detail) {
+        setDetailPayments([]);
+        return;
+      }
+      try {
+        setDetailPaymentsLoading(true);
+        const all = await listManagerPayments();
+        const rows = all.contractPayments
+          .filter((p) => p.contractId === detail.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setDetailPayments(rows);
+      } catch {
+        setDetailPayments([]);
+      } finally {
+        setDetailPaymentsLoading(false);
+      }
+    }
+    loadDetailPayments();
+  }, [detail]);
 
   const handleStatusChange = async (id: string, status: Contract['status']) => {
     try {
@@ -300,64 +354,103 @@ export default function ManagerContractsPage() {
       ) : contracts.length === 0 ? (
         <EmptyState icon="description" title="No contracts" message="No contracts yet" />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <Table>
-            <TableHead>
-              <TableHeader>Contract code</TableHeader>
-              <TableHeader>Customer</TableHeader>
-              <TableHeader>Zones</TableHeader>
-              <TableHeader>Warehouse</TableHeader>
-              <TableHeader>Start / End</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>Actions</TableHeader>
-            </TableHead>
-            <TableBody>
-              {paged.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
-                  <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
-                  <TableCell className="text-slate-700">{getZonesRentedDisplay(c)}</TableCell>
-                  <TableCell className="text-slate-700">
-                    {c.warehouseName || '—'}
-                    {c.warehouseAddress ? ` — ${c.warehouseAddress}` : ''}
-                  </TableCell>
-                  <TableCell className="text-slate-700">{getDateRangeDisplay(c)}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(c.status)}>
-                      {getStatusDisplay(c.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      type="button"
-                      onClick={() => setDetail(c)}
-                      className="text-sm font-bold text-primary hover:underline"
-                    >
-                      View
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="space-y-4">
+          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input
+                label="Search contract"
+                placeholder="By contract code or customer"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Select
+                label="Warehouse"
+                value={warehouseFilter}
+                onChange={(e) => setWarehouseFilter(e.target.value)}
+                options={[
+                  { value: 'all', label: 'All warehouses' },
+                  ...warehouseOptions.map((w) => ({ value: w.id, label: w.name })),
+                ]}
+              />
+              <Select
+                label="Status"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'all' | Contract['status'])}
+                options={[
+                  { value: 'all', label: 'All statuses' },
+                  { value: 'draft', label: 'Draft' },
+                  { value: 'pending_payment', label: 'Pending payment' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'expired', label: 'Expired' },
+                  { value: 'terminated', label: 'Terminated' },
+                ]}
+              />
+            </div>
+          </div>
+
+          {filteredContracts.length === 0 ? (
+            <EmptyState icon="search_off" title="No matching contracts" message="Try changing search keywords or filters." />
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+              <Table>
+                <TableHead>
+                  <TableHeader>Contract code</TableHeader>
+                  <TableHeader>Customer</TableHeader>
+                  <TableHeader>Zones</TableHeader>
+                  <TableHeader>Warehouse</TableHeader>
+                  <TableHeader>Start / End</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>Actions</TableHeader>
+                </TableHead>
+                <TableBody>
+                  {paged.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
+                      <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>
+                      <TableCell className="text-slate-700">{getZonesRentedDisplay(c)}</TableCell>
+                      <TableCell className="text-slate-700">
+                        {c.warehouseName || '—'}
+                        {c.warehouseAddress ? ` — ${c.warehouseAddress}` : ''}
+                      </TableCell>
+                      <TableCell className="text-slate-700">{getDateRangeDisplay(c)}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusVariant(c.status)}>
+                          {getStatusDisplay(c.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <button
+                          type="button"
+                          onClick={() => setDetail(c)}
+                          className="text-sm font-bold text-primary hover:underline"
+                        >
+                          View
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       )}
 
-      {!loading && !error && contracts.length > 0 && (
+      {!loading && !error && filteredContracts.length > 0 && (
         <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
           <p className="text-sm text-slate-500 whitespace-nowrap">
             Showing{' '}
             <span className="font-bold text-slate-700">
-              {Math.min((safePage - 1) * PAGE_SIZE + 1, contracts.length)}
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, filteredContracts.length)}
             </span>
             {' '}to{' '}
             <span className="font-bold text-slate-700">
-              {Math.min(safePage * PAGE_SIZE, contracts.length)}
+              {Math.min(safePage * PAGE_SIZE, filteredContracts.length)}
             </span>
             {' '}of{' '}
-            <span className="font-bold text-slate-700">{contracts.length}</span>
+            <span className="font-bold text-slate-700">{filteredContracts.length}</span>
           </p>
-          <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
+          <Pagination currentPage={safePage} totalPages={filteredTotalPages} onPageChange={setPage} />
         </div>
       )}
 
@@ -391,6 +484,57 @@ export default function ManagerContractsPage() {
                 </dd>
               </div>
             </dl>
+            <div>
+              <h4 className="text-sm font-bold text-slate-700 mb-2">Payment Information</h4>
+              {detailPaymentsLoading ? (
+                <LoadingSkeleton className="h-16" />
+              ) : detailPayments.length === 0 ? (
+                <p className="text-sm text-slate-500">No payment records found for this contract.</p>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Time</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Amount</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">Status</th>
+                        <th className="px-3 py-2 text-left font-bold text-slate-600">VNPay ref</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailPayments.slice(0, 5).map((p) => (
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                          <td className="px-3 py-2 text-slate-600">
+                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="px-3 py-2 font-bold text-slate-900">{p.amount.toLocaleString('vi-VN')} đ</td>
+                          <td className="px-3 py-2">
+                            <Badge
+                              variant={
+                                p.status === 'paid'
+                                  ? 'success'
+                                  : p.status === 'pending'
+                                  ? 'info'
+                                  : 'error'
+                              }
+                            >
+                              {p.status === 'paid'
+                                ? 'Paid'
+                                : p.status === 'pending'
+                                ? 'Pending'
+                                : p.status === 'expired'
+                                ? 'Expired'
+                                : 'Failed'}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-slate-700 break-all">{p.vnpTxnRef}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
             <div>
               <h4 className="text-sm font-bold text-slate-700 mb-2">Actions</h4>
               <div className="flex flex-wrap gap-2">
@@ -501,87 +645,126 @@ export default function ManagerContractsPage() {
       {paymentsOpen && (
         <Modal open={paymentsOpen} onOpenChange={setPaymentsOpen} title="Payments (VNPay)" size="lg">
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="inline-flex items-center gap-1"
+                onClick={() => loadPayments(true)}
+                isLoading={paymentsRefreshing}
+                disabled={paymentsLoading}
+              >
+                <span className="material-symbols-outlined text-lg leading-none">refresh</span>
+                Refresh
+              </Button>
+            </div>
             {paymentsLoading ? (
               <LoadingSkeleton className="h-32" />
             ) : paymentsError ? (
-              <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => setPaymentsOpen(true)} />
-            ) : payments.length === 0 ? (
+              <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => loadPayments(false)} />
+            ) : contractPayments.length === 0 && servicePayments.length === 0 ? (
               <EmptyState icon="payments" title="No payments" message="No payments found yet." />
             ) : (
-              <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p) => (
-                      <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                        <td className="px-4 py-2 text-slate-600">
-                          {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          <div className="font-bold">{p.contractCode || p.contractId}</div>
-                          {p.warehouseName && (
-                            <div className="text-xs text-slate-500">{p.warehouseName}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          {p.customerName || '—'}
-                        </td>
-                        <td className="px-4 py-2 text-slate-900 font-bold">
-                          {p.amount.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td className="px-4 py-2">
-                          <Badge
-                            variant={
-                              p.status === 'paid'
-                                ? 'success'
-                                : p.status === 'pending'
-                                ? 'info'
-                                : 'error'
-                            }
-                          >
-                            {p.status === 'paid'
-                              ? 'Paid'
-                              : p.status === 'pending'
-                              ? 'Pending'
-                              : p.status === 'expired'
-                              ? 'Expired'
-                              : 'Failed'}
-                          </Badge>
-                          {p.paidAt && (
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              at{' '}
-                              {new Date(p.paidAt).toLocaleString('vi-VN', {
-                                dateStyle: 'short',
-                                timeStyle: 'short',
-                              })}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
-                          {p.vnpResponseCode && (
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              Resp: {p.vnpResponseCode}
-                            </div>
-                          )}
-                        </td>
+              <>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+                      paymentTab === 'contract' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    }`}
+                    onClick={() => setPaymentTab('contract')}
+                  >
+                    Contract ({contractPayments.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+                      paymentTab === 'service' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    }`}
+                    onClick={() => setPaymentTab('service')}
+                  >
+                    Service ({servicePayments.length})
+                  </button>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
+                        {paymentTab === 'service' && (
+                          <th className="px-4 py-2 text-left font-bold text-slate-600">Credits</th>
+                        )}
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(paymentTab === 'contract' ? contractPayments : servicePayments).map((p) => (
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                          <td className="px-4 py-2 text-slate-600">
+                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">
+                            <div className="font-bold">{p.contractCode || p.contractId}</div>
+                            {p.warehouseName && <div className="text-xs text-slate-500">{p.warehouseName}</div>}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">{p.customerName || '—'}</td>
+                          {paymentTab === 'service' && (
+                            <td className="px-4 py-2 font-semibold text-slate-700">
+                              {(p as ManagerServicePayment).creditsGranted} credit
+                            </td>
+                          )}
+                          <td className="px-4 py-2 text-slate-900 font-bold">
+                            {p.amount.toLocaleString('vi-VN')} đ
+                          </td>
+                          <td className="px-4 py-2">
+                            <Badge
+                              variant={
+                                p.status === 'paid'
+                                  ? 'success'
+                                  : p.status === 'pending'
+                                  ? 'info'
+                                  : 'error'
+                              }
+                            >
+                              {p.status === 'paid'
+                                ? 'Paid'
+                                : p.status === 'pending'
+                                ? 'Pending'
+                                : p.status === 'expired'
+                                ? 'Expired'
+                                : 'Failed'}
+                            </Badge>
+                            {p.paidAt && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                at{' '}
+                                {new Date(p.paidAt).toLocaleString('vi-VN', {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short',
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">
+                            <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
+                            {p.vnpResponseCode && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                Resp: {p.vnpResponseCode}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
             <p className="text-xs text-slate-500">
-              Danh sách thanh toán được tự động cập nhật mỗi 5 giây từ VNPay thông qua backend.
+              Click Refresh to reload the payment list from backend.
             </p>
           </div>
         </Modal>

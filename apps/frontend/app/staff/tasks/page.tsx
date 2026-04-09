@@ -1,184 +1,558 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { StaffTask, TaskStatus, TaskType } from '../../../types/staff';
-import { listStaffTasks } from '../../../lib/mockApi/staff.api';
 import { useToastHelpers } from '../../../lib/toast';
+import { getCycleCounts } from '../../../lib/cycle-count.api';
+import {
+  listStorageRequests,
+  type StorageRequestView,
+} from '../../../lib/storage-requests.api';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
-import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
-import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
+import {
+  Table,
+  TableHead,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableCell,
+} from '../../../components/ui/Table';
+import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 
+type TaskType = 'INBOUND' | 'OUTBOUND' | 'INVENTORY_CHECKING';
+type StatusGroup = 'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'REJECTED';
+
+type StaffTaskRow = {
+  rowKey: string;
+  type: TaskType;
+  reference: string;
+  contractCode: string;
+  customerName: string;
+  warehouseName?: string;
+  zoneCode?: string;
+  status: string;
+  updatedAt: string;
+  actionHref: string;
+  actionLabel: string;
+};
+
+const CYCLE_STATUS_LABEL: Record<string, string> = {
+  PENDING_MANAGER_APPROVAL: 'Pending approval',
+  ASSIGNED_TO_STAFF: 'Assigned to staff',
+  STAFF_SUBMITTED: 'Submitted',
+  CONFIRMED: 'Confirmed',
+  REJECTED: 'Rejected',
+  ADJUSTMENT_REQUESTED: 'Adjustment requested',
+  RECOUNT_REQUIRED: 'Recount required',
+};
+
+function formatStatusLabel(status: string): string {
+  const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+}
+
+function safeToDate(v: string): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatDateTime(v: string): string {
+  const d = safeToDate(v);
+  if (!d) return '—';
+  return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function getStatusGroupForRow(row: StaffTaskRow): Exclude<StatusGroup, 'ALL'> {
+  if (row.type === 'INVENTORY_CHECKING') {
+    if (row.status === 'ASSIGNED_TO_STAFF') return 'IN_PROGRESS';
+    if (row.status === 'REJECTED') return 'REJECTED';
+    return 'COMPLETED';
+  }
+
+  // StorageRequest: IN/OUT
+  if (row.status === 'APPROVED') return 'IN_PROGRESS';
+  if (row.status === 'REJECTED') return 'REJECTED';
+  return 'COMPLETED';
+}
+
+function badgeVariantForStatusGroup(group: Exclude<StatusGroup, 'ALL'>): 'success' | 'info' | 'warning' | 'error' | 'neutral' {
+  switch (group) {
+    case 'IN_PROGRESS':
+      return 'info';
+    case 'COMPLETED':
+      return 'success';
+    case 'REJECTED':
+      return 'error';
+    default:
+      return 'neutral';
+  }
+}
+
+function typeToLabel(t: TaskType): string {
+  switch (t) {
+    case 'INBOUND':
+      return 'Inbound';
+    case 'OUTBOUND':
+      return 'Outbound';
+    case 'INVENTORY_CHECKING':
+      return 'Inventory Checking';
+    default:
+      return t;
+  }
+}
+
+function badgeVariantForType(t: TaskType): 'info' | 'warning' | 'neutral' {
+  switch (t) {
+    case 'INBOUND':
+      return 'info';
+    case 'OUTBOUND':
+      return 'warning';
+    case 'INVENTORY_CHECKING':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function taskTypePillClass(t: TaskType): string {
+  // Use soft pastel colors, distinct from status badges
+  switch (t) {
+    case 'INBOUND':
+      return 'bg-sky-50 text-sky-700';
+    case 'OUTBOUND':
+      return 'bg-pink-50 text-pink-700';
+    case 'INVENTORY_CHECKING':
+      return 'bg-slate-50 text-slate-700';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function getProgressForRow(row: StaffTaskRow): { percent: number; label: string } {
+  if (row.type === 'INBOUND' || row.type === 'OUTBOUND') {
+    switch (row.status) {
+      case 'APPROVED':
+        return { percent: 25, label: 'Approved (waiting for staff work)' };
+      case 'DONE_BY_STAFF':
+        return { percent: 75, label: 'Submitted by staff' };
+      case 'COMPLETED':
+        return { percent: 100, label: 'Completed' };
+      case 'REJECTED':
+        return { percent: 0, label: 'Rejected' };
+      default:
+        return { percent: 0, label: 'Unknown status' };
+    }
+  }
+
+  // Cycle count (inventory checking)
+  switch (row.status) {
+    case 'PENDING_MANAGER_APPROVAL':
+      return { percent: 0, label: 'Pending approval' };
+    case 'ASSIGNED_TO_STAFF':
+      return { percent: 30, label: 'Counting' };
+    case 'STAFF_SUBMITTED':
+      return { percent: 70, label: 'Submitted' };
+    case 'CONFIRMED':
+      return { percent: 100, label: 'Confirmed' };
+    case 'ADJUSTMENT_REQUESTED':
+      return { percent: 60, label: 'Adjustment requested' };
+    case 'RECOUNT_REQUIRED':
+      return { percent: 50, label: 'Recount required' };
+    case 'REJECTED':
+      return { percent: 0, label: 'Rejected' };
+    default:
+      return { percent: 0, label: 'Unknown status' };
+  }
+}
+
+function statusPillClass(status: string): string {
+  // Use explicit Tailwind classes so they are picked up by Tailwind.
+  switch (status) {
+    // Storage requests
+    case 'APPROVED':
+      return 'bg-blue-100 text-blue-700';
+    case 'DONE_BY_STAFF':
+      return 'bg-amber-100 text-amber-700';
+    case 'COMPLETED':
+      return 'bg-emerald-100 text-emerald-700';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-700';
+
+    // Cycle count
+    case 'PENDING_MANAGER_APPROVAL':
+      return 'bg-violet-100 text-violet-700';
+    case 'ASSIGNED_TO_STAFF':
+      return 'bg-cyan-100 text-cyan-700';
+    case 'STAFF_SUBMITTED':
+      return 'bg-orange-100 text-orange-700';
+    case 'CONFIRMED':
+      return 'bg-lime-100 text-lime-700';
+    case 'ADJUSTMENT_REQUESTED':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'RECOUNT_REQUIRED':
+      return 'bg-fuchsia-100 text-fuchsia-700';
+
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function renderStatusPill(status: string, label: string) {
+  return (
+    <span
+      className={`inline-flex items-center font-bold rounded-lg px-2.5 py-1 text-xs ${statusPillClass(status)}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function StaffTasksPage() {
   const toast = useToastHelpers();
-  const [tasks, setTasks] = useState<StaffTask[]>([]);
-  const [total, setTotal] = useState(0);
+  const [allRows, setAllRows] = useState<StaffTaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | ''>('');
-  const [typeFilter, setTypeFilter] = useState<TaskType | ''>('');
+
+  const [statusGroup, setStatusGroup] = useState<StatusGroup>('ALL');
+  const [taskTypeFilter, setTaskTypeFilter] = useState<TaskType | 'ALL'>('ALL');
+  const [showReferenceCode, setShowReferenceCode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const limit = 10;
 
-  useEffect(() => {
-    loadTasks();
-  }, [statusFilter, typeFilter, search, page]);
-
-  const loadTasks = async () => {
+  const load = async () => {
     try {
       setLoading(true);
       setError(null);
-      const result = await listStaffTasks({
-        status: statusFilter || undefined,
-        type: typeFilter || undefined,
-        search: search || undefined,
-        page,
-        limit,
+
+      const [
+        inApproved,
+        inDoneByStaff,
+        inCompleted,
+        inRejected,
+        outApproved,
+        outDoneByStaff,
+        outCompleted,
+        outRejected,
+        cycleCounts,
+      ] = await Promise.all([
+        listStorageRequests({ requestType: 'IN', status: 'APPROVED' }),
+        listStorageRequests({ requestType: 'IN', status: 'DONE_BY_STAFF' }),
+        listStorageRequests({ requestType: 'IN', status: 'COMPLETED' }),
+        listStorageRequests({ requestType: 'IN', status: 'REJECTED' }),
+        listStorageRequests({ requestType: 'OUT', status: 'APPROVED' }),
+        listStorageRequests({ requestType: 'OUT', status: 'DONE_BY_STAFF' }),
+        listStorageRequests({ requestType: 'OUT', status: 'COMPLETED' }),
+        listStorageRequests({ requestType: 'OUT', status: 'REJECTED' }),
+        getCycleCounts(),
+      ]);
+
+      const rows: StaffTaskRow[] = [];
+
+      const mapStorage = (r: StorageRequestView, kind: TaskType) => {
+        const reference = r.reference ?? r.request_id;
+        const contractCode = r.contract_code ?? r.contract_id;
+        const customerName = r.customer_name ?? r.customer_id;
+        const updatedAt = r.updated_at ?? r.created_at;
+
+        rows.push({
+          rowKey: `${kind}:${r.request_id}`,
+          type: kind,
+          reference,
+          contractCode,
+          customerName,
+          warehouseName: r.warehouse_name,
+          zoneCode: r.requested_zone_code,
+          status: r.status,
+          updatedAt,
+          actionHref: kind === 'INBOUND' ? `/staff/inbound-requests/${r.request_id}` : `/staff/outbound-requests/${r.request_id}`,
+          actionLabel: r.status === 'APPROVED' ? 'Open' : 'View',
+        });
+      };
+
+      for (const r of inApproved) mapStorage(r, 'INBOUND');
+      for (const r of inDoneByStaff) mapStorage(r, 'INBOUND');
+      for (const r of inCompleted) mapStorage(r, 'INBOUND');
+      for (const r of inRejected) mapStorage(r, 'INBOUND');
+
+      for (const r of outApproved) mapStorage(r, 'OUTBOUND');
+      for (const r of outDoneByStaff) mapStorage(r, 'OUTBOUND');
+      for (const r of outCompleted) mapStorage(r, 'OUTBOUND');
+      for (const r of outRejected) mapStorage(r, 'OUTBOUND');
+
+      for (const cc of cycleCounts) {
+        rows.push({
+          rowKey: `INVENTORY_CHECKING:${cc.cycle_count_id}`,
+          type: 'INVENTORY_CHECKING',
+          reference: cc.cycle_count_id,
+          contractCode: cc.contract_code,
+          customerName: cc.customer_name,
+          warehouseName: cc.warehouse_name || undefined,
+          zoneCode: undefined,
+          status: cc.status,
+          updatedAt: cc.updated_at || cc.created_at,
+          actionHref: `/staff/cycle-count/${cc.cycle_count_id}`,
+          actionLabel: cc.status === 'ASSIGNED_TO_STAFF' ? 'Start' : 'View',
+        });
+      }
+
+      rows.sort((a, b) => {
+        const da = safeToDate(a.updatedAt)?.getTime() ?? 0;
+        const db = safeToDate(b.updatedAt)?.getTime() ?? 0;
+        return db - da;
       });
-      setTasks(result.items);
-      setTotal(result.total);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tasks');
+
+      setAllRows(rows);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load tasks';
+      setError(msg);
       toast.error('Failed to load tasks');
     } finally {
       setLoading(false);
     }
   };
 
-  const totalPages = Math.ceil(total / limit);
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allRows.filter((r) => {
+      if (taskTypeFilter !== 'ALL' && r.type !== taskTypeFilter) return false;
+
+      if (statusGroup !== 'ALL') {
+        const g = getStatusGroupForRow(r);
+        if (g !== statusGroup) return false;
+      }
+
+      if (!q) return true;
+      return (
+        r.reference.toLowerCase().includes(q) ||
+        r.contractCode.toLowerCase().includes(q) ||
+        r.customerName.toLowerCase().includes(q) ||
+        (r.warehouseName ?? '').toLowerCase().includes(q) ||
+        (r.zoneCode ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [allRows, taskTypeFilter, statusGroup, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [taskTypeFilter, statusGroup, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+
+  const paginatedRows = useMemo(() => {
+    const start = (safePage - 1) * limit;
+    return filteredRows.slice(start, start + limit);
+  }, [filteredRows, safePage]);
+
+  const taskCounts = useMemo(() => {
+    const total = allRows.length;
+    const inbound = allRows.filter((r) => r.type === 'INBOUND').length;
+    const outbound = allRows.filter((r) => r.type === 'OUTBOUND').length;
+    const inventory = allRows.filter((r) => r.type === 'INVENTORY_CHECKING').length;
+    return { total, inbound, outbound, inventory };
+  }, [allRows]);
+
+  const statusBadgeText = (row: StaffTaskRow) => {
+    if (row.type === 'INVENTORY_CHECKING') return CYCLE_STATUS_LABEL[row.status] || formatStatusLabel(row.status);
+    return formatStatusLabel(row.status);
+  };
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tasks</h1>
-        <p className="text-slate-500 mt-1">Manage your assigned tasks</p>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight whitespace-nowrap">
+            Tasks
+          </h1>
+          <p className="text-slate-500 mt-1 text-base whitespace-nowrap lg:whitespace-normal">
+            Inbound, outbound & inventory tasks assigned to you
+          </p>
+        </div>
+
+        {/* Overview / Stats */}
+        <div className="flex flex-wrap justify-end gap-3 w-full lg:w-auto">
+          {/* Total Tasks - primary green background */}
+          <div className="w-52 rounded-3xl border border-primary-dark bg-primary p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-white">Total Tasks</p>
+              <p className="text-xl sm:text-2xl font-black text-white">
+                {loading ? '—' : taskCounts.total}
+              </p>
+            </div>
+          </div>
+          {/* Inbound */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Inbound</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.inbound}
+              </p>
+            </div>
+          </div>
+          {/* Outbound */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Outbound</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.outbound}
+              </p>
+            </div>
+          </div>
+          {/* Inventory Checking */}
+          <div className="w-52 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-600">Inventory Checking</p>
+              <p className="text-xl sm:text-2xl font-black text-slate-900">
+                {loading ? '—' : taskCounts.inventory}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[200px]">
-          <Input
-            placeholder="Search by task code or customer name"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-          />
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[240px]">
+            <Input
+              placeholder="Search by reference, contract code, customer, warehouse..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 px-4 py-3 rounded-2xl border border-slate-200 bg-white shadow-sm select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showReferenceCode}
+              onChange={(e) => setShowReferenceCode(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/20"
+            />
+            <span className="text-sm font-bold text-slate-700 whitespace-nowrap">Reference code</span>
+          </label>
         </div>
-        <Select
-          options={[
-            { value: '', label: 'All status' },
-            { value: 'ASSIGNED', label: 'Assigned' },
-            { value: 'IN_PROGRESS', label: 'In Progress' },
-            { value: 'COMPLETED', label: 'Completed' },
-          ]}
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as TaskStatus | '');
-            setPage(1);
-          }}
-        />
-        <Select
-          options={[
-            { value: '', label: 'All types' },
-            { value: 'Inbound', label: 'Inbound' },
-            { value: 'Outbound', label: 'Outbound' },
-            { value: 'Inventory Checking', label: 'Inventory Checking' },
-          ]}
-          value={typeFilter}
-          onChange={(e) => {
-            setTypeFilter(e.target.value as TaskType | '');
-            setPage(1);
-          }}
-        />
+
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All statuses' },
+                { value: 'IN_PROGRESS', label: 'In progress' },
+                { value: 'COMPLETED', label: 'Completed' },
+                { value: 'REJECTED', label: 'Rejected' },
+              ]}
+              value={statusGroup}
+              onChange={(e) => setStatusGroup(e.target.value as StatusGroup)}
+            />
+          </div>
+
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All types' },
+                { value: 'INBOUND', label: 'Inbound' },
+                { value: 'OUTBOUND', label: 'Outbound' },
+                { value: 'INVENTORY_CHECKING', label: 'Inventory Checking' },
+              ]}
+              value={taskTypeFilter}
+              onChange={(e) => setTaskTypeFilter(e.target.value as TaskType | 'ALL')}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Table */}
       {loading ? (
-        <TableSkeleton rows={5} cols={6} />
+        <TableSkeleton rows={6} cols={showReferenceCode ? 9 : 8} />
       ) : error ? (
-        <ErrorState title="Failed to load tasks" message={error} onRetry={loadTasks} />
-      ) : tasks.length === 0 ? (
+        <ErrorState title="Failed to load tasks" message={error} onRetry={load} />
+      ) : filteredRows.length === 0 ? (
         <EmptyState
           icon="assignment"
           title="No tasks found"
-          message="Try adjusting your search or filters"
+          message="Try adjusting your filters or search."
         />
       ) : (
         <>
           <Table>
             <TableHead>
-              <TableHeader>Task code</TableHeader>
+              <TableHeader className="w-16">#</TableHeader>
+              <TableHeader>Task</TableHeader>
+              {showReferenceCode && <TableHeader>Ref</TableHeader>}
               <TableHeader>Customer</TableHeader>
-              <TableHeader>Type</TableHeader>
-              <TableHeader>Priority</TableHeader>
+              <TableHeader>Location</TableHeader>
+              <TableHeader>Progress</TableHeader>
               <TableHeader>Status</TableHeader>
-              <TableHeader>Due date</TableHeader>
+              <TableHeader>Last updated</TableHeader>
               <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell className="font-bold text-slate-900">{task.taskCode}</TableCell>
-                  <TableCell className="text-slate-700">{task.customerName}</TableCell>
-                  <TableCell>
-                    <Badge variant="neutral">{task.type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        task.priority === 'High'
-                          ? 'error'
-                          : task.priority === 'Medium'
-                            ? 'warning'
-                            : 'info'
-                      }
-                    >
-                      {task.priority}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        task.status === 'COMPLETED'
-                          ? 'success'
-                          : task.status === 'IN_PROGRESS'
-                            ? 'info'
-                            : 'warning'
-                      }
-                    >
-                      {task.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-sm">
-                    {new Date(task.dueDate).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      href={`/staff/tasks/${task.id}`}
-                      className="text-sm font-bold text-primary hover:underline"
-                    >
-                      Open
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {paginatedRows.map((r, idx) => {
+                const startIndex = (safePage - 1) * limit;
+                const stt = startIndex + idx + 1;
+                const progress = getProgressForRow(r);
+                const statusLabel = statusBadgeText(r);
+                return (
+                  <TableRow key={r.rowKey}>
+                    <TableCell className="font-bold text-slate-900">{stt}</TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold whitespace-nowrap ${taskTypePillClass(r.type)}`}
+                      >
+                        {typeToLabel(r.type)}
+                      </span>
+                    </TableCell>
+                    {showReferenceCode && (
+                      <TableCell className="font-bold text-slate-900">{r.reference}</TableCell>
+                    )}
+                    <TableCell className="text-slate-700">{r.customerName}</TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <p className="text-slate-700">
+                          Warehouse: {r.warehouseName || '—'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Zone: {r.zoneCode || '—'}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-900">{progress.percent}%</p>
+                        <p className="text-xs text-slate-500">{progress.label}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {renderStatusPill(r.status, statusLabel)}
+                    </TableCell>
+                    <TableCell className="text-slate-600 text-sm">{formatDateTime(r.updatedAt)}</TableCell>
+                    <TableCell>
+                      <Link href={r.actionHref} className="text-sm font-bold text-primary hover:underline">
+                        {r.actionLabel}
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
 
           {totalPages > 1 && (
             <div className="flex justify-center">
               <Pagination
-                currentPage={page}
+                currentPage={safePage}
                 totalPages={totalPages}
-                onPageChange={setPage}
+                onPageChange={(p) => setPage(p)}
               />
             </div>
           )}

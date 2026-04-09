@@ -12,7 +12,7 @@ import {
   listContractPackages,
   updateContractPackage,
 } from '../../../lib/contract-packages.api';
-import { listWarehouses, type ManagerWarehouse } from '../../../lib/mockApi/manager.api';
+import { listWarehouses, type ManagerWarehouse } from '../../../lib/manager.api';
 
 type FormState = {
   name: string;
@@ -159,9 +159,9 @@ export default function ManagerContractPackagesPage() {
   };
 
   const unitOptions = [
-    { value: 'day', label: 'Ngày' },
-    { value: 'month', label: 'Tháng' },
-    { value: 'year', label: 'Năm' },
+    { value: 'day', label: 'Day' },
+    { value: 'month', label: 'Month' },
+    { value: 'year', label: 'Year' },
   ];
 
   return (
@@ -225,7 +225,7 @@ export default function ManagerContractPackagesPage() {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-slate-700">
                         {pkg.duration}{' '}
-                        {pkg.unit === 'day' ? 'ngày' : pkg.unit === 'month' ? 'tháng' : 'năm'}
+                        {pkg.unit === 'day' ? 'day' : pkg.unit === 'month' ? 'month' : 'year'}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap font-semibold text-slate-700">
                         {warehouses.find((w) => w.id === pkg.warehouseId)?.name || '—'}

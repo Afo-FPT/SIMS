@@ -6,12 +6,13 @@ import { listMyStoredProducts, type StoredProductOverview } from '../../../lib/s
 import { useToast } from '../../../lib/toast';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
-import { getCustomerContracts } from '../../../lib/mockApi/customer.api';
+import { getCustomerContracts } from '../../../lib/customer.api';
 import { Pagination } from '../../../components/ui/Pagination';
 
 type ProductRow = StoredProductOverview & {
   warehouseName?: string;
   zoneCodes?: string[];
+  contract_status?: string;
 };
 
 export default function CustomerInventoryPage() {
@@ -34,7 +35,7 @@ export default function CustomerInventoryPage() {
         setError(null);
         // Load contracts once (for filter dropdown)
         const cs = await getCustomerContracts();
-        const active = cs.filter((c) => c.status === 'active').map((c) => ({ id: c.id, code: c.code, status: c.status }));
+        const contractOptions = cs.map((c) => ({ id: c.id, code: c.code, status: c.status }));
 
         // Load grouped products (all contracts OR a specific contract)
         const list = contractFilter === 'ALL'
@@ -45,10 +46,11 @@ export default function CustomerInventoryPage() {
           ...p,
           warehouseName: p.warehouse_name,
           zoneCodes: p.zone_codes ?? [],
+          contract_status: p.contract_status,
         }));
 
         if (!cancelled) {
-          setContracts(active);
+          setContracts(contractOptions);
           setProducts(mapped);
         }
       } catch (e) {
@@ -86,6 +88,17 @@ export default function CustomerInventoryPage() {
     setPage(1);
   }, [search, contractFilter, lowStockOnly]);
 
+  const bannerContract = useMemo(
+    () => (contractFilter === 'ALL' ? null : contracts.find((c) => c.id === contractFilter)),
+    [contractFilter, contracts]
+  );
+
+  const inventoryRiskFlags = useMemo(() => {
+    const exp = products.some((p) => p.contract_status === 'expired');
+    const term = products.some((p) => p.contract_status === 'terminated');
+    return { exp, term };
+  }, [products]);
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = useMemo(() => {
     const p = Math.min(Math.max(1, page), totalPages);
@@ -107,6 +120,58 @@ export default function CustomerInventoryPage() {
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Inventory</h1>
         <p className="text-slate-500 mt-1">Product overview across your contracts</p>
       </div>
+
+      {contractFilter === 'ALL' && inventoryRiskFlags.exp && (
+        <div
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-bold">Some inventory is under an expired contract</p>
+          <p className="mt-1 text-amber-900">
+            Inbound is closed for those contracts. Use <strong>Service Requests → Outbound</strong> to remove stock, or renew the contract.
+          </p>
+        </div>
+      )}
+
+      {contractFilter === 'ALL' && inventoryRiskFlags.term && (
+        <div
+          className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+          role="status"
+        >
+          <p className="font-bold">Some inventory is under a terminated contract</p>
+          <p className="mt-1 text-red-900">
+            New warehouse operations are not allowed. Contact support or your warehouse manager if you need to resolve remaining stock.
+          </p>
+        </div>
+      )}
+
+      {bannerContract?.status === 'expired' && (
+        <div
+          className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-bold">
+            Contract {bannerContract.code} is expired
+          </p>
+          <p className="mt-1 text-amber-900">
+            Inbound is disabled. You can still create <strong>outbound</strong> requests to clear inventory.
+          </p>
+        </div>
+      )}
+
+      {bannerContract?.status === 'terminated' && (
+        <div
+          className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+          role="status"
+        >
+          <p className="font-bold">
+            Contract {bannerContract.code} is terminated
+          </p>
+          <p className="mt-1 text-red-900">
+            This contract no longer allows new service requests. Inventory shown is read-only for your records.
+          </p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-center">
@@ -133,6 +198,7 @@ export default function CustomerInventoryPage() {
             {contracts.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code}
+                {c.status !== 'active' ? ` (${c.status})` : ''}
               </option>
             ))}
           </select>

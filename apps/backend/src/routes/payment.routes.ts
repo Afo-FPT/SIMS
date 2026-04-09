@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  getRequestCreditSummaryController,
   listPaymentsForManagerController,
   startVNPayPaymentController,
   startVNPayRequestCreditPaymentController,
@@ -29,6 +30,17 @@ router.post(
   authenticate,
   authorizeRoles("customer"),
   startVNPayRequestCreditPaymentController
+);
+
+/**
+ * GET /api/payments/request-credits/summary?contractId=...
+ * Customer gets weekly free-request summary for selected contract.
+ */
+router.get(
+  "/request-credits/summary",
+  authenticate,
+  authorizeRoles("customer"),
+  getRequestCreditSummaryController
 );
 
 /**

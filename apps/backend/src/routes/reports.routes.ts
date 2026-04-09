@@ -4,7 +4,11 @@ import {
   getManagerReportController,
   getTopOutboundProductsController,
   getApprovalByManagerController,
-  getProcessingTimeController
+  getProcessingTimeController,
+  getManagerExpiryStackedController,
+  getManagerZonePricingComboController,
+  getManagerPenaltyTopCustomersController,
+  getManagerRevenueReportController
 } from "../controllers/reports.controller";
 
 const router = express.Router();
@@ -35,6 +39,34 @@ router.get(
   authenticate,
   authorizeRoles("manager", "admin"),
   getProcessingTimeController
+);
+
+router.get(
+  "/manager/expiry-stacked",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getManagerExpiryStackedController
+);
+
+router.get(
+  "/manager/zone-pricing-combo",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getManagerZonePricingComboController
+);
+
+router.get(
+  "/manager/revenue",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getManagerRevenueReportController
+);
+
+router.get(
+  "/manager/penalty-top-customers",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getManagerPenaltyTopCustomersController
 );
 
 export default router;

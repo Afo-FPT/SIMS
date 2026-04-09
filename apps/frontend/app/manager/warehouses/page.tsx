@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import type { ManagerWarehouse } from '../../../types/manager';
 import Link from 'next/link';
-import { listWarehouses, createWarehouse } from '../../../lib/mockApi/manager.api';
+import { listWarehouses, createWarehouse } from '../../../lib/manager.api';
+import { getWarehouseCreationTerms } from '../../../lib/system-settings.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
@@ -25,6 +26,8 @@ export default function ManagerWarehousesPage() {
   const [warehouseLength, setWarehouseLength] = useState('');
   const [warehouseWidth, setWarehouseWidth] = useState('');
   const [warehouseDescription, setWarehouseDescription] = useState('');
+  const [warehouseCreationTerms, setWarehouseCreationTerms] = useState('');
+  const [acceptedWarehouseTerms, setAcceptedWarehouseTerms] = useState(false);
   const [createWarehouseModalOpen, setCreateWarehouseModalOpen] = useState(false);
   const [page, setPage] = useState(1);
 
@@ -37,7 +40,9 @@ export default function ManagerWarehousesPage() {
       setLoading(true);
       setError(null);
       const w = await listWarehouses().catch(() => [] as ManagerWarehouse[]);
+      const terms = await getWarehouseCreationTerms().catch(() => ({ warehouse_creation_terms: '' }));
       setWarehouses(w);
+      setWarehouseCreationTerms(String(terms.warehouse_creation_terms || ''));
       setPage(1);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
@@ -55,6 +60,10 @@ export default function ManagerWarehousesPage() {
     e.preventDefault();
     if (!warehouseName || !warehouseAddress || !warehouseLength || !warehouseWidth) {
       toast.warning('Please fill in all required warehouse fields');
+      return;
+    }
+    if (!acceptedWarehouseTerms) {
+      toast.warning('Please accept the warehouse creation terms');
       return;
     }
 
@@ -75,13 +84,14 @@ export default function ManagerWarehousesPage() {
         width,
         description: warehouseDescription || undefined,
       });
-      toast.success('Warehouse created successfully');
+      toast.success('Warehouse created (inactive). Open Manage to activate when it is ready for customers.');
       setWarehouses((prev) => [newWarehouse, ...prev]);
       setWarehouseName('');
       setWarehouseAddress('');
       setWarehouseLength('');
       setWarehouseWidth('');
       setWarehouseDescription('');
+      setAcceptedWarehouseTerms(false);
       setCreateWarehouseModalOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create warehouse');
@@ -102,9 +112,6 @@ export default function ManagerWarehousesPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouses</h1>
-        <p className="text-slate-500 mt-1">
-          Tạo kho; zone và kệ (kích thước từng tầng, dung tích m³) quản lý trong trang chi tiết kho.
-        </p>
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -116,7 +123,10 @@ export default function ManagerWarehousesPage() {
         </div>
         <div className="sm:flex-shrink-0 sm:self-start">
           <Button
-            onClick={() => setCreateWarehouseModalOpen(true)}
+            onClick={() => {
+              setAcceptedWarehouseTerms(false);
+              setCreateWarehouseModalOpen(true);
+            }}
             className="inline-flex items-center gap-2 leading-none shadow-sm"
           >
             <span className="inline-flex size-5 items-center justify-center rounded-full bg-white/20 text-xs font-black leading-none">
@@ -170,15 +180,33 @@ export default function ManagerWarehousesPage() {
               placeholder="Short description"
             />
           </div>
+          <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-sm font-bold text-slate-700 mb-2">Warehouse creation terms</p>
+            <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700 whitespace-pre-wrap">
+              {warehouseCreationTerms || 'No terms configured by admin.'}
+            </div>
+            <label className="mt-3 inline-flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={acceptedWarehouseTerms}
+                onChange={(e) => setAcceptedWarehouseTerms(e.target.checked)}
+                className="mt-0.5"
+              />
+              I have read and agree to the warehouse creation terms.
+            </label>
+          </div>
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setCreateWarehouseModalOpen(false)}
+              onClick={() => {
+                setAcceptedWarehouseTerms(false);
+                setCreateWarehouseModalOpen(false);
+              }}
             >
               Cancel
             </Button>
-            <Button type="submit" isLoading={creatingWarehouse}>
+            <Button type="submit" isLoading={creatingWarehouse} disabled={!acceptedWarehouseTerms}>
               Create warehouse
             </Button>
           </div>

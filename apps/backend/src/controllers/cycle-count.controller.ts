@@ -86,6 +86,8 @@ export async function createCycleCountController(req: Request, res: Response) {
       error.message.includes("does not belong") ||
       error.message.includes("not active") ||
       error.message.includes("past") ||
+      error.message.includes("assigned to this warehouse") ||
+      error.message.includes("Assigned warehouse staff") ||
       error.message.includes("Weekly request limit")
     ) {
       return res.status(400).json({ message: error.message });
@@ -202,7 +204,8 @@ export async function approveOrRejectCycleCountController(
       error.message.includes("not found") ||
       error.message.includes("Only") ||
       error.message.includes("required") ||
-      error.message.includes("Invalid")
+      error.message.includes("Invalid") ||
+      error.message.includes("disabled")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -259,7 +262,9 @@ export async function assignStaffToCycleCountController(
       error.message.includes("must be") ||
       error.message.includes("required") ||
       error.message.includes("Invalid") ||
-      error.message.includes("past")
+      error.message.includes("past") ||
+      error.message.includes("not allowed") ||
+      error.message.includes("disabled")
     ) {
       return res.status(400).json({ message: error.message });
     }
@@ -397,7 +402,7 @@ export async function requestRecountController(req: Request, res: Response) {
 }
 
 /**
- * CUSTOMER yêu cầu điều chỉnh tồn kho theo kết quả kiểm kê
+ * CUSTOMER yêu cầu đếm lại (recount)
  */
 export async function requestInventoryAdjustmentController(
   req: Request,
@@ -415,7 +420,7 @@ export async function requestInventoryAdjustmentController(
     const cycleCount = await requestInventoryAdjustment(id, customerId, { reason });
 
     res.status(200).json({
-      message: "Inventory adjustment requested successfully",
+      message: "Recount requested successfully",
       data: cycleCount
     });
   } catch (error: any) {
@@ -426,7 +431,7 @@ export async function requestInventoryAdjustmentController(
       msg.includes("must be") ||
       msg.includes("Invalid") ||
       msg.includes("only") ||
-      msg.includes("No discrepancies")
+      msg.includes("recount")
     ) {
       return res.status(400).json({ message: msg });
     }

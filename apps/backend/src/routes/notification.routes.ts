@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
 import {
+  deleteReadNotificationsController,
   getUnreadCountController,
   listMyNotificationsController,
   markAllReadController,
@@ -28,6 +29,13 @@ router.patch(
   authenticate,
   authorizeRoles("customer", "manager", "staff", "admin"),
   markAllReadController
+);
+
+router.delete(
+  "/my/read",
+  authenticate,
+  authorizeRoles("customer", "manager", "staff", "admin"),
+  deleteReadNotificationsController
 );
 
 router.patch(
