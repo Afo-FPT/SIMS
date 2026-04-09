@@ -24,8 +24,8 @@ function formatM3(n: number): string {
 }
 
 function utilizationBadge(pct: number): { label: string; className: string } | null {
-  if (pct >= 95) return { label: 'Gần đầy', className: 'bg-red-100 text-red-800' };
-  if (pct >= 85) return { label: 'Sắp đầy', className: 'bg-amber-100 text-amber-900' };
+  if (pct >= 95) return { label: 'Nearly full', className: 'bg-red-100 text-red-800' };
+  if (pct >= 85) return { label: 'Filling up', className: 'bg-amber-100 text-amber-900' };
   return null;
 }
 
@@ -139,7 +139,7 @@ export default function StaffInboundPutawayDetailPage() {
       const remaining = Math.max(0, u.max_capacity - u.current_utilization);
       if (addVol > remaining + 1e-9) {
         out.push(
-          `Kệ ${u.shelf_code}: thêm ${formatM3(addVol)} nhưng chỉ còn ${formatM3(remaining)} (max ${formatM3(u.max_capacity)}, đang dùng ${formatM3(u.current_utilization)}).`
+          `Shelf ${u.shelf_code}: adding ${formatM3(addVol)} but only ${formatM3(remaining)} remains (max ${formatM3(u.max_capacity)}, used ${formatM3(u.current_utilization)}).`
         );
       }
     }
@@ -282,7 +282,7 @@ export default function StaffInboundPutawayDetailPage() {
                 <th className="px-4 py-3 text-left font-bold text-slate-700">STT</th>
                 <th className="px-4 py-3 text-left font-bold text-slate-700">Item</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Requested</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">m³/đv</th>
+                <th className="px-4 py-3 text-right font-bold text-slate-700">m³/unit</th>
                 <th className="px-4 py-3 text-left font-bold text-slate-700">Shelf</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Actual</th>
                 <th className="px-4 py-3 text-right font-bold text-slate-700">Discrepancy</th>
@@ -323,18 +323,18 @@ export default function StaffInboundPutawayDetailPage() {
                       {u && (
                         <div className="mt-2 space-y-1 text-xs text-slate-600">
                           <p>
-                            <span className="font-bold text-slate-700">Kệ:</span> đã dùng{' '}
+                            <span className="font-bold text-slate-700">Shelf:</span> used{' '}
                             <span className="font-mono">{formatM3(u.current_utilization)}</span>
                             {' / max '}
                             <span className="font-mono">{formatM3(u.max_capacity)}</span>
-                            {' → còn '}
+                            {' -> remaining '}
                             <span className="font-mono font-bold text-slate-800">
                               {formatM3(Math.max(0, u.max_capacity - u.current_utilization))}
                             </span>
                           </p>
                           {lineVol > 0 && (
                             <p className="text-slate-500">
-                              Dòng này (actual × m³/đv):{' '}
+                              This row (actual x m³/unit):{' '}
                               <span className="font-mono font-medium text-slate-700">{formatM3(lineVol)}</span>
                             </p>
                           )}
@@ -493,7 +493,7 @@ export default function StaffInboundPutawayDetailPage() {
         <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-900">
           <p className="font-bold mb-2 flex items-center gap-2">
             <span className="material-symbols-outlined text-lg">error</span>
-            Vượt dung tích kệ
+            Shelf capacity exceeded
           </p>
           <ul className="list-disc pl-5 space-y-1">
             {shelfVolumeWarnings.map((w, i) => (

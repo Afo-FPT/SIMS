@@ -51,16 +51,39 @@ export interface ContractResponse {
 }
 
 function mapContractToResponse(contract: any): ContractResponse {
+  const customerId =
+    (contract.customerId as any)?._id?.toString?.() ||
+    contract.customerId?.toString?.() ||
+    "";
+  const warehouseId =
+    (contract.warehouseId as any)?._id?.toString?.() ||
+    contract.warehouseId?.toString?.() ||
+    "";
+  const createdBy =
+    (contract.createdBy as any)?._id?.toString?.() ||
+    contract.createdBy?.toString?.() ||
+    "";
+
+  const missingRefs: string[] = [];
+  if (!customerId) missingRefs.push("customerId");
+  if (!warehouseId) missingRefs.push("warehouseId");
+  if (!createdBy) missingRefs.push("createdBy");
+  if (missingRefs.length > 0) {
+    console.warn(
+      `[Contract][MissingRef] contract_id=${contract?._id?.toString?.() || "unknown"} missing=${missingRefs.join(",")}`
+    );
+  }
+
   return {
     contract_id: contract._id.toString(),
     contract_code: contract.contractCode,
-    customer_id: contract.customerId.toString(),
+    customer_id: customerId,
     customer_name: (contract.customerId as any)?.name,
-    warehouse_id: contract.warehouseId.toString(),
+    warehouse_id: warehouseId,
     warehouse_name: (contract.warehouseId as any)?.name,
     warehouse_address: (contract.warehouseId as any)?.address,
     rented_zones: (contract.rentedZones || []).map((rz: any) => ({
-      zone_id: rz.zoneId?.toString?.() ?? rz.zoneId.toString(),
+      zone_id: rz.zoneId?.toString?.() || "",
       zone_code: (rz.zoneId as any)?.zoneCode,
       zone_name: (rz.zoneId as any)?.name,
       start_date: rz.startDate,
@@ -71,7 +94,7 @@ function mapContractToResponse(contract: any): ContractResponse {
     requested_start_date: contract.requestedStartDate,
     requested_end_date: contract.requestedEndDate,
     status: contract.status,
-    created_by: contract.createdBy.toString(),
+    created_by: createdBy,
     created_at: contract.createdAt,
     updated_at: contract.updatedAt
   };

@@ -23,7 +23,8 @@ import { listMyStoredItems, listMyStoredProducts, type StoredItemOption } from '
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 import { Pagination } from '../../../components/ui/Pagination';
-import { startRequestCreditVNPayPayment } from '../../../lib/payment.api';
+import { getRequestCreditSummary, startRequestCreditVNPayPayment } from '../../../lib/payment.api';
+import { getRequestCreditPricing } from '../../../lib/system-settings.api';
 import {
   type CycleCountResponse,
   createCycleCount,
@@ -177,6 +178,7 @@ export default function ServiceRequestsPage() {
   const selectedContractStatus = selectedContractRecord?.status;
   const isContractActive = selectedContractStatus === 'active';
   const isContractExpired = selectedContractStatus === 'expired';
+  const isContractEligibleForCredit = isContractActive || isContractExpired;
 
   useEffect(() => {
     if (isContractExpired && (type === 'Inbound' || type === 'Inventory Checking')) {
@@ -226,8 +228,8 @@ export default function ServiceRequestsPage() {
   // Weekly request quota for IN/OUT/CYCLE:
   // - 3 free when staff completed 3 requests in the current week
   // - After that, require paying 100,000 VND for 1 more request
-  const REQUEST_WEEKLY_LIMIT = 3;
-  const REQUEST_EXTRA_PRICE_VND = 100000;
+  const [weeklyRequestLimit, setWeeklyRequestLimit] = useState(3);
+  const [requestExtraPriceVnd, setRequestExtraPriceVnd] = useState(100000);
 
   function getWeekStartMonday(d: Date): Date {
     const shifted = new Date(d.getTime() + 7 * 60 * 60 * 1000); // approximate GMT+7 boundary in UI
@@ -285,8 +287,43 @@ export default function ServiceRequestsPage() {
 
   const weeklyTotalUsedPlusUnfinished = weeklyUsedCount + weeklyUnfinishedCount;
 
-  const canUseFreeQuota = weeklyTotalUsedPlusUnfinished < REQUEST_WEEKLY_LIMIT;
-  const creditPurchaseNeeded = weeklyTotalUsedPlusUnfinished >= REQUEST_WEEKLY_LIMIT;
+  const canUseFreeQuota = weeklyTotalUsedPlusUnfinished < weeklyRequestLimit;
+  const creditPurchaseNeeded = weeklyTotalUsedPlusUnfinished >= weeklyRequestLimit;
+  const [quotaReachedByServer, setQuotaReachedByServer] = useState(false);
+  const [serverQuotaSnapshot, setServerQuotaSnapshot] = useState<{
+    weeklyLimit: number;
+    totalUsed: number;
+    requiresExtraCredit: boolean;
+  } | null>(null);
+  const effectiveWeeklyLimit = serverQuotaSnapshot?.weeklyLimit ?? weeklyRequestLimit;
+  const effectiveTotalUsed = serverQuotaSnapshot?.totalUsed ?? weeklyTotalUsedPlusUnfinished;
+  const showCreditWarning =
+    creditPurchaseNeeded || quotaReachedByServer || !!serverQuotaSnapshot?.requiresExtraCredit;
+
+  const isWeeklyLimitError = (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err || '');
+    return /weekly request limit/i.test(msg) || /WEEKLY_LIMIT_REACHED/i.test(msg);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getRequestCreditPricing()
+      .then((cfg) => {
+        if (!cancelled) {
+          setWeeklyRequestLimit(cfg.weekly_free_request_limit || 3);
+          setRequestExtraPriceVnd(cfg.base_request_credit_price_vnd || 100000);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setWeeklyRequestLimit(3);
+          setRequestExtraPriceVnd(100000);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load stored items for outbound (dropdown) and inbound (existing SKU list) when contract/type changes
   useEffect(() => {
@@ -376,6 +413,34 @@ export default function ServiceRequestsPage() {
     loadTrackingRequests();
     loadCycleCounts();
   }, [customerContracts.length]);
+
+  useEffect(() => {
+    // Contract or loaded counters changed -> clear server-forced warning and rely on recomputed counts.
+    setQuotaReachedByServer(false);
+  }, [contractId, weeklyTotalUsedPlusUnfinished, weeklyRequestLimit]);
+
+  useEffect(() => {
+    if (!contractId) {
+      setServerQuotaSnapshot(null);
+      return;
+    }
+    let cancelled = false;
+    getRequestCreditSummary(contractId)
+      .then((summary) => {
+        if (cancelled) return;
+        setServerQuotaSnapshot({
+          weeklyLimit: summary.weekly_free_limit,
+          totalUsed: summary.total_used,
+          requiresExtraCredit: summary.requires_extra_credit,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setServerQuotaSnapshot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contractId, trackingRequests, cycleCounts]);
 
   useEffect(() => {
     const creditResult = searchParams.get('creditResult');
@@ -634,7 +699,7 @@ export default function ServiceRequestsPage() {
         for (const r of withQty) {
           const vol = Number(r.volumePerUnitM3);
           if (isNaN(vol) || vol <= 0) {
-            e.items = 'Mỗi dòng hàng cần thể tích trên 1 đơn vị (m³) > 0';
+            e.items = 'Each item row must have volume per unit (m³) > 0';
             break;
           }
         }
@@ -703,11 +768,17 @@ export default function ServiceRequestsPage() {
       })
         .then(() => {
           toast.success('Inbound request submitted successfully!', 5000);
+          setQuotaReachedByServer(false);
           setInboundItems([]);
           setInboundRef('');
           loadTrackingRequests();
         })
-        .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit inbound request'));
+        .catch((err) => {
+          if (isWeeklyLimitError(err)) {
+            setQuotaReachedByServer(true);
+          }
+          toast.error(err instanceof Error ? err.message : 'Failed to submit inbound request');
+        });
     } else if (type === 'Outbound') {
       const items = outboundItems
         .filter((r) => r.storedItemId && r.quantity > 0)
@@ -730,11 +801,17 @@ export default function ServiceRequestsPage() {
       })
         .then(() => {
           toast.success('Outbound request submitted successfully!', 5000);
+          setQuotaReachedByServer(false);
           setOutboundItems([]);
           setOutboundRef('');
           loadTrackingRequests();
         })
-        .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request'));
+        .catch((err) => {
+          if (isWeeklyLimitError(err)) {
+            setQuotaReachedByServer(true);
+          }
+          toast.error(err instanceof Error ? err.message : 'Failed to submit outbound request');
+        });
     } else {
       // Inventory Checking → tạo Cycle Count thực tế cho hợp đồng
       const storedItemIds =
@@ -747,17 +824,21 @@ export default function ServiceRequestsPage() {
       })
         .then(() => {
           toast.success('Cycle count request submitted successfully!', 5000);
+          setQuotaReachedByServer(false);
           // Reset chỉ các field chung
           setNotes('');
           setCheckScope('Full inventory');
           setCheckSkuList([]);
           loadCycleCounts();
         })
-        .catch((err) =>
+        .catch((err) => {
+          if (isWeeklyLimitError(err)) {
+            setQuotaReachedByServer(true);
+          }
           toast.error(
             err instanceof Error ? err.message : 'Failed to submit inventory checking request'
-          )
-        );
+          );
+        });
     }
   };
 
@@ -1173,7 +1254,7 @@ export default function ServiceRequestsPage() {
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Items</label>
               <p className="text-xs text-slate-500 mb-2">
-                Nhập <strong>thể tích trên 1 đơn vị (m³)</strong> để hệ thống kiểm tra dung tích kệ khi staff nhập kho.
+                Enter <strong>volume per unit (m³)</strong> so the system can validate shelf capacity during staff putaway.
               </p>
               <div className="border border-slate-200 rounded-2xl overflow-hidden">
                 <table className="w-full text-left text-sm">
@@ -1183,7 +1264,7 @@ export default function ServiceRequestsPage() {
                       <th className="px-4 py-3 font-bold text-slate-700">Name</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Qty / unit</th>
-                      <th className="px-4 py-3 font-bold text-slate-700 min-w-[7rem]">Thể tích/đv (m³)</th>
+                      <th className="px-4 py-3 font-bold text-slate-700 min-w-[7rem]">Volume/unit (m³)</th>
                       <th className="px-4 py-3 font-bold text-slate-700">Unit</th>
                       <th className="px-4 py-3 w-12" />
                     </tr>
@@ -1296,8 +1377,8 @@ export default function ServiceRequestsPage() {
                               })
                             }
                             className="w-full min-w-[6rem] px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
-                            placeholder="VD: 0.05"
-                            title="Thể tích một đơn vị (m³)"
+                            placeholder="e.g. 0.05"
+                            title="Volume of one unit (m³)"
                           />
                         </td>
                         <td className="px-4 py-2">
@@ -1380,6 +1461,12 @@ export default function ServiceRequestsPage() {
                   </thead>
                   <tbody>
                     {outboundItems.map((r, i) => (
+                      (() => {
+                        const selectedStored = storedItemOptions.find(
+                          (s) => s.stored_item_id === r.storedItemId
+                        );
+                        const availableQty = selectedStored?.quantity ?? 0;
+                        return (
                       <tr key={i} className="border-b border-slate-100">
                         <td className="px-4 py-2">
                           <select
@@ -1398,21 +1485,42 @@ export default function ServiceRequestsPage() {
                             {storedItemOptions.map((s) => (
                               <option key={s.stored_item_id} value={s.stored_item_id}>
                                 {s.item_name}
-                                {s.shelf_code ? ` @ ${s.shelf_code}` : ''}
+                                {s.shelf_code ? ` @ ${s.shelf_code}` : ''} ({s.quantity} {s.unit})
                               </option>
                             ))}
                           </select>
                         </td>
                         <td className="px-4 py-2">
-                          <input
-                            type="number"
-                            min={0}
-                            value={r.quantity || ''}
-                            onChange={(e) =>
-                              updateOutboundRow(i, { quantity: Number(e.target.value) || 0 })
-                            }
-                            className="w-24 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={r.quantity || ''}
+                              onChange={(e) =>
+                                updateOutboundRow(i, { quantity: Number(e.target.value) || 0 })
+                              }
+                              className="w-24 px-3 py-2 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-primary/20"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateOutboundRow(i, { quantity: availableQty })}
+                              disabled={!r.storedItemId}
+                              className="px-2.5 py-2 text-xs font-bold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={
+                                r.storedItemId
+                                  ? `Set to available stock (${availableQty})`
+                                  : 'Select stored item first'
+                              }
+                            >
+                              Use max
+                            </button>
+                            {r.storedItemId && (
+                              <span className="text-xs text-slate-500">
+                                Stock: <strong className="text-slate-700">{availableQty}</strong>{' '}
+                                {selectedStored?.unit || ''}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-2">
                           <button
@@ -1424,6 +1532,8 @@ export default function ServiceRequestsPage() {
                           </button>
                         </td>
                       </tr>
+                        );
+                      })()
                     ))}
                   </tbody>
                 </table>
@@ -1509,28 +1619,33 @@ export default function ServiceRequestsPage() {
           />
         </div>
 
-        {creditPurchaseNeeded && (
+        {showCreditWarning && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-sm text-amber-900 flex items-start justify-between gap-4">
             <div>
-              <p className="font-bold">Đã đạt giới hạn 3 lượt request trong tuần</p>
+              <p className="font-bold">Weekly free request limit reached ({effectiveWeeklyLimit} requests)</p>
               <p className="text-amber-800 mt-1">
-                Trong tuần này (tính cả request chưa hoàn thành), bạn đang có{" "}
-                <span className="font-bold">{weeklyTotalUsedPlusUnfinished}/{REQUEST_WEEKLY_LIMIT}</span> lượt. Để gửi thêm request, cần thanh toán{" "}
-                <span className="font-bold">{REQUEST_EXTRA_PRICE_VND.toLocaleString('vi-VN')}đ</span>.
+                This week (including unfinished requests), you are currently at{" "}
+                <span className="font-bold">{effectiveTotalUsed}/{effectiveWeeklyLimit}</span>. To submit more requests, please purchase an extra request for{" "}
+                <span className="font-bold">{requestExtraPriceVnd.toLocaleString('en-US')} VND</span>.
               </p>
-              {!isContractActive && (
+              {isContractExpired && (
                 <p className="text-amber-900 mt-2 font-bold">
-                  Mua thêm lượt chỉ khả dụng khi hợp đồng đang <strong>active</strong>.
+                  This contract is <strong>expired</strong>: extra purchases include a daily overdue penalty.
+                </p>
+              )}
+              {!isContractEligibleForCredit && (
+                <p className="text-amber-900 mt-2 font-bold">
+                  Extra request purchase is only available when contract status is <strong>active</strong> or <strong>expired</strong>.
                 </p>
               )}
             </div>
             <button
               type="button"
-              disabled={!isContractActive}
+              disabled={!isContractEligibleForCredit}
               onClick={handleBuyExtraRequest}
               className="px-4 py-2 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             >
-              Mua thêm 1 lượt
+              Buy 1 extra request
             </button>
           </div>
         )}

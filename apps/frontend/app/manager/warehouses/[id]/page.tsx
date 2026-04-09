@@ -34,8 +34,8 @@ function formatM3(n: number): string {
 }
 
 function utilizationHint(pct: number): { label: string; className: string } | null {
-  if (pct >= 95) return { label: 'Gần đầy', className: 'bg-red-100 text-red-800' };
-  if (pct >= 85) return { label: 'Sắp đầy', className: 'bg-amber-100 text-amber-900' };
+  if (pct >= 95) return { label: 'Nearly full', className: 'bg-red-100 text-red-800' };
+  if (pct >= 85) return { label: 'Filling up', className: 'bg-amber-100 text-amber-900' };
   return null;
 }
 
@@ -361,7 +361,7 @@ export default function ManagerWarehouseDetailPage() {
     const depth = Number(depthStr);
 
     if (!shelfCode?.trim() || !tierCountStr || isNaN(tierCountNum) || tierCountNum < 1) {
-      toast.warning('Nhập mã kệ và số tầng hợp lệ');
+      toast.warning('Enter a valid shelf code and tier count');
       return;
     }
     if (
@@ -372,7 +372,7 @@ export default function ManagerWarehouseDetailPage() {
       width <= 0 ||
       depth <= 0
     ) {
-      toast.warning('Nhập cao / rộng / dài hợp lệ (> 0)');
+      toast.warning('Enter valid height / width / depth values (> 0)');
       return;
     }
 
@@ -684,8 +684,8 @@ export default function ManagerWarehouseDetailPage() {
           Zones group shelves for location tracking. Contracts are assigned to zones.
         </p>
         <p className={`text-xs ${zoneLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-          Giới hạn zone: tối đa {spaceLimits.zone_area_percent_of_warehouse}% diện tích kho
-          ({zoneMaxAllowed.toFixed(2)} m²). Đang dùng {usedZoneArea.toFixed(2)} m², còn lại {remainingZoneArea.toFixed(2)} m².
+          Zone limit: up to {spaceLimits.zone_area_percent_of_warehouse}% of warehouse area
+          ({zoneMaxAllowed.toFixed(2)} m²). Used {usedZoneArea.toFixed(2)} m², remaining {remainingZoneArea.toFixed(2)} m².
         </p>
         <form
           onSubmit={handleCreateZone}
@@ -886,8 +886,8 @@ export default function ManagerWarehouseDetailPage() {
           Create shelves inside zones and see their current status.
         </p>
         <p className={`text-xs ${shelfLimitReached ? 'text-red-600 font-semibold' : 'text-slate-500'}`}>
-          Giới hạn shelf: tối đa {spaceLimits.shelf_area_percent_of_zone}% diện tích zone đã chọn
-          ({zoneShelfMaxAllowed.toFixed(2)} m²). Đang dùng {usedShelfAreaInZone.toFixed(2)} m², còn lại {remainingShelfAreaInZone.toFixed(2)} m².
+          Shelf limit: up to {spaceLimits.shelf_area_percent_of_zone}% of selected zone area
+          ({zoneShelfMaxAllowed.toFixed(2)} m²). Used {usedShelfAreaInZone.toFixed(2)} m², remaining {remainingShelfAreaInZone.toFixed(2)} m².
         </p>
 
         <form onSubmit={handleCreateShelf} className="space-y-4">
@@ -909,16 +909,16 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Số tầng"
+              label="Tier count"
               type="number"
               min={1}
               value={shelfForm.tierCountStr}
               onChange={(e) => setShelfForm((p) => ({ ...p, tierCountStr: e.target.value }))}
-              placeholder="VD: 3"
+              placeholder="e.g. 3"
               required
             />
             <Input
-              label="Cao (m)"
+              label="Height (m)"
               type="number"
               step="0.01"
               min={0}
@@ -928,7 +928,7 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Rộng (m)"
+              label="Width (m)"
               type="number"
               step="0.01"
               min={0}
@@ -938,7 +938,7 @@ export default function ManagerWarehouseDetailPage() {
               required
             />
             <Input
-              label="Dài (m)"
+              label="Depth (m)"
               type="number"
               step="0.01"
               min={0}
@@ -964,7 +964,7 @@ export default function ManagerWarehouseDetailPage() {
             <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
               {utilLoading && (
                 <p className="text-xs text-slate-500 px-4 py-2 border-b border-slate-100">
-                  Đang tải dung tích kệ…
+                  Loading shelf capacity...
                 </p>
               )}
               <Table>
@@ -976,11 +976,11 @@ export default function ManagerWarehouseDetailPage() {
                   <TableHeader className="text-right">Width (m)</TableHeader>
                   <TableHeader className="text-right">Depth (m)</TableHeader>
                   <TableHeader>Contract</TableHeader>
-                  <TableHeader className="text-right">Đã dùng</TableHeader>
+                  <TableHeader className="text-right">Used</TableHeader>
                   <TableHeader className="text-right">Max</TableHeader>
-                  <TableHeader className="text-right">Còn lại</TableHeader>
+                  <TableHeader className="text-right">Remaining</TableHeader>
                   <TableHeader className="text-right">%</TableHeader>
-                  <TableHeader>Cảnh báo</TableHeader>
+                  <TableHeader>Warning</TableHeader>
                 </TableHead>
                 <TableBody>
                   {shelves.map((s) => {

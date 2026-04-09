@@ -9,6 +9,8 @@ import User from "../models/User";
 import { suggestZoneMonthlyPrices, type ZonePricingInputRow } from "./pricing-suggestion.service";
 import InboundApproval from "../models/InboundApproval";
 import OutboundApproval from "../models/OutboundApproval";
+import Payment from "../models/Payment";
+import RequestCreditPayment from "../models/RequestCreditPayment";
 import { Types } from "mongoose";
 
 /** Top outbound product by quantity and frequency */
@@ -60,6 +62,10 @@ export interface ManagerReportStats {
   outbound: number;
   completion: number;
   discrepancies: number;
+  totalRevenue: number;
+  contractRevenue: number;
+  serviceRevenue: number;
+  paidTransactions: number;
 }
 
 export interface CapacitySlice {
@@ -166,7 +172,16 @@ async function getStats(
 ): Promise<ManagerReportStats> {
   const completedStatuses = ["COMPLETED", "DONE_BY_STAFF"];
 
-  const [inbound, outbound, totalCompleted, totalInPeriod] = await Promise.all([
+  const [
+    inbound,
+    outbound,
+    totalCompleted,
+    totalInPeriod,
+    contractRevenueAgg,
+    serviceRevenueAgg,
+    contractPaidCount,
+    servicePaidCount
+  ] = await Promise.all([
     StorageRequest.countDocuments({
       requestType: "IN",
       status: { $in: completedStatuses },
@@ -184,6 +199,42 @@ async function getStats(
     StorageRequest.countDocuments({
       status: { $ne: "REJECTED" },
       createdAt: { $gte: start, $lte: end }
+    }),
+    Payment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" }
+        }
+      }
+    ]),
+    RequestCreditPayment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" }
+        }
+      }
+    ]),
+    Payment.countDocuments({
+      status: "paid",
+      paidAt: { $gte: start, $lte: end }
+    }),
+    RequestCreditPayment.countDocuments({
+      status: "paid",
+      paidAt: { $gte: start, $lte: end }
     })
   ]);
 
@@ -195,11 +246,20 @@ async function getStats(
     createdAt: { $gte: start, $lte: end }
   });
 
+  const contractRevenue = Number(contractRevenueAgg?.[0]?.total ?? 0);
+  const serviceRevenue = Number(serviceRevenueAgg?.[0]?.total ?? 0);
+  const totalRevenue = contractRevenue + serviceRevenue;
+  const paidTransactions = contractPaidCount + servicePaidCount;
+
   return {
     inbound,
     outbound,
     completion,
-    discrepancies
+    discrepancies,
+    totalRevenue,
+    contractRevenue,
+    serviceRevenue,
+    paidTransactions
   };
 }
 
@@ -817,6 +877,25 @@ export interface PenaltyTopCustomerRow {
   topDamagedItems: { itemName: string; damageUnits: number }[];
 }
 
+export interface RevenueTrendPoint {
+  period: string;
+  contractRevenue: number;
+  serviceRevenue: number;
+  totalRevenue: number;
+  paidTransactions: number;
+}
+
+export interface ManagerRevenueReport {
+  summary: {
+    totalRevenue: number;
+    contractRevenue: number;
+    serviceRevenue: number;
+    paidTransactions: number;
+  };
+  trend: RevenueTrendPoint[];
+  granularity: "week" | "month";
+}
+
 function parseYMDLocal(s: string): Date {
   const [y, mo, d] = s.split("-").map((x) => parseInt(x, 10));
   return new Date(y, mo - 1, d);
@@ -1298,4 +1377,128 @@ export async function getManagerPenaltyTopCustomers(
       topDamagedItems: topItemsByCustomerId.get(a.customerId.toString()) || []
     })
   );
+}
+
+/**
+ * Manager revenue report from paid payments.
+ * - contractRevenue: Payment
+ * - serviceRevenue: RequestCreditPayment
+ */
+export async function getManagerRevenueReport(
+  startDate: string,
+  endDate: string,
+  granularity: "week" | "month" = "week"
+): Promise<ManagerRevenueReport> {
+  const start = parseYMDLocal(startDate);
+  start.setHours(0, 0, 0, 0);
+  const end = parseYMDLocal(endDate);
+  end.setHours(23, 59, 59, 999);
+
+  const periodExpr =
+    granularity === "month"
+      ? { $dateToString: { date: "$paidAt", format: "%Y-%m" } }
+      : {
+          $concat: [
+            { $toString: { $isoWeekYear: "$paidAt" } },
+            "-W",
+            {
+              $let: {
+                vars: { wk: { $isoWeek: "$paidAt" } },
+                in: {
+                  $cond: [
+                    { $lt: ["$$wk", 10] },
+                    { $concat: ["0", { $toString: "$$wk" }] },
+                    { $toString: "$$wk" }
+                  ]
+                }
+              }
+            }
+          ]
+        };
+
+  const [contractAgg, serviceAgg] = await Promise.all([
+    Payment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: periodExpr,
+          revenue: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]),
+    RequestCreditPayment.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paidAt: { $gte: start, $lte: end }
+        }
+      },
+      {
+        $group: {
+          _id: periodExpr,
+          revenue: { $sum: "$amount" },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ])
+  ]);
+
+  const byPeriod = new Map<
+    string,
+    { contractRevenue: number; serviceRevenue: number; paidTransactions: number }
+  >();
+
+  for (const r of contractAgg as Array<{ _id: string; revenue: number; count: number }>) {
+    byPeriod.set(String(r._id), {
+      contractRevenue: Number(r.revenue || 0),
+      serviceRevenue: 0,
+      paidTransactions: Number(r.count || 0)
+    });
+  }
+
+  for (const r of serviceAgg as Array<{ _id: string; revenue: number; count: number }>) {
+    const key = String(r._id);
+    const cur = byPeriod.get(key) || {
+      contractRevenue: 0,
+      serviceRevenue: 0,
+      paidTransactions: 0
+    };
+    cur.serviceRevenue += Number(r.revenue || 0);
+    cur.paidTransactions += Number(r.count || 0);
+    byPeriod.set(key, cur);
+  }
+
+  const trend: RevenueTrendPoint[] = Array.from(byPeriod.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([period, x]) => ({
+      period,
+      contractRevenue: x.contractRevenue,
+      serviceRevenue: x.serviceRevenue,
+      totalRevenue: x.contractRevenue + x.serviceRevenue,
+      paidTransactions: x.paidTransactions
+    }));
+
+  const contractRevenue = trend.reduce((s, x) => s + x.contractRevenue, 0);
+  const serviceRevenue = trend.reduce((s, x) => s + x.serviceRevenue, 0);
+  const totalRevenue = contractRevenue + serviceRevenue;
+  const paidTransactions = trend.reduce((s, x) => s + x.paidTransactions, 0);
+
+  return {
+    summary: {
+      totalRevenue,
+      contractRevenue,
+      serviceRevenue,
+      paidTransactions
+    },
+    trend,
+    granularity
+  };
 }

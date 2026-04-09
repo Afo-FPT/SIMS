@@ -22,6 +22,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             section: 'System', items: [
               { id: 'DASHBOARD', label: 'Overview', icon: 'dashboard' },
               { id: 'USERS', label: 'Users', icon: 'people' },
+              { id: 'CONFIG', label: 'Config', icon: 'tune' },
             ]
           },
           {
@@ -57,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           {
             section: 'Reports', items: [
               { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
+              { id: 'PAYMENTS', label: 'Payments', icon: 'payments' },
             ]
           },
           {

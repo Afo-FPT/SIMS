@@ -81,7 +81,13 @@ export async function listStorageRequests(
   const requests = await StorageRequest.find(q).sort({ createdAt: -1 }).lean();
   if (requests.length === 0) return [];
 
-  const contractIds = [...new Set(requests.map((r: any) => r.contractId.toString()))];
+  const contractIds = [
+    ...new Set(
+      requests
+        .map((r: any) => r.contractId?.toString?.())
+        .filter(Boolean)
+    )
+  ];
   const Contract = (await import("../models/Contract")).default;
   const contracts = await Contract.find({ _id: { $in: contractIds.map((id) => new Types.ObjectId(id)) } })
     .select("_id contractCode warehouseId")
@@ -147,7 +153,13 @@ export async function listStorageRequests(
 
   const detailsByRequest = new Map<string, any[]>();
   for (const d of details) {
-    const rid = (d as any).requestId.toString();
+    const rid = (d as any).requestId?.toString?.();
+    if (!rid) {
+      console.warn(
+        `[StorageRequest][MissingRef][detail-row] detail_id=${(d as any)?._id?.toString?.() || "unknown"} missing=requestId`
+      );
+      continue;
+    }
     detailsByRequest.set(rid, [...(detailsByRequest.get(rid) || []), d]);
   }
 
@@ -171,7 +183,16 @@ export async function listStorageRequests(
 
   return requests.map((r: any) => {
     const ds = detailsByRequest.get(r._id.toString()) || [];
-    const contractIdStr = r.contractId.toString();
+    const contractIdStr = r.contractId?.toString?.() || "";
+    const customerIdStr = r.customerId?.toString?.() || "";
+    const missingRefs: string[] = [];
+    if (!contractIdStr) missingRefs.push("contractId");
+    if (!customerIdStr) missingRefs.push("customerId");
+    if (missingRefs.length > 0) {
+      console.warn(
+        `[StorageRequest][MissingRef][list] request_id=${r._id?.toString?.() || "unknown"} missing=${missingRefs.join(",")}`
+      );
+    }
     const warehouseId = contractWarehouseIdById.get(contractIdStr);
     return {
       request_id: r._id.toString(),
@@ -184,8 +205,8 @@ export async function listStorageRequests(
         ? zoneCodeById.get(r.requestedZoneId.toString())
         : undefined,
       reference: r.reference,
-      customer_id: r.customerId.toString(),
-      customer_name: customerNameById.get(r.customerId.toString()),
+      customer_id: customerIdStr,
+      customer_name: customerNameById.get(customerIdStr),
       request_type: r.requestType,
       status: r.status,
       approved_by: r.approvedBy?.toString?.(),
@@ -238,12 +259,13 @@ export async function getStorageRequestById(
   const req = await StorageRequest.findById(requestId).lean();
   if (!req) throw new Error("Storage request not found");
 
-  if (userRole === "customer" && (req as any).customerId.toString() !== userId) {
+  const reqCustomerIdStr = (req as any).customerId?.toString?.() || "";
+  if (userRole === "customer" && reqCustomerIdStr !== userId) {
     throw new Error("Access denied. You can only view your own requests.");
   }
   if (userRole === "staff") {
     const assigned = (req as any).assignedStaffIds || [];
-    const assignedIds = assigned.map((id: any) => id.toString());
+    const assignedIds = assigned.map((id: any) => id?.toString?.()).filter(Boolean);
     if (assignedIds.length > 0 && !assignedIds.includes(userId)) {
       throw new Error("Access denied. This request is not assigned to you.");
     }
@@ -267,7 +289,9 @@ export async function getStorageRequestById(
   const customer = await User.findById((req as any).customerId)
     .select("name")
     .lean();
-  const assignedStaffIds = ((req as any).assignedStaffIds || []).map((id: any) => id.toString());
+  const assignedStaffIds = ((req as any).assignedStaffIds || [])
+    .map((id: any) => id?.toString?.())
+    .filter(Boolean);
   const assignedStaffUsers = assignedStaffIds.length
     ? await User.find({ _id: { $in: assignedStaffIds.map((id: string) => new Types.ObjectId(id)) } })
         .select("_id name email")
@@ -297,9 +321,20 @@ export async function getStorageRequestById(
     : [];
   const zoneCodeById = new Map(zones.map((z: any) => [z._id.toString(), z.zoneCode]));
 
+  const detailContractIdStr = (req as any).contractId?.toString?.() || "";
+  const detailCustomerIdStr = (req as any).customerId?.toString?.() || "";
+  const detailMissingRefs: string[] = [];
+  if (!detailContractIdStr) detailMissingRefs.push("contractId");
+  if (!detailCustomerIdStr) detailMissingRefs.push("customerId");
+  if (detailMissingRefs.length > 0) {
+    console.warn(
+      `[StorageRequest][MissingRef][detail] request_id=${(req as any)._id?.toString?.() || "unknown"} missing=${detailMissingRefs.join(",")}`
+    );
+  }
+
   return {
     request_id: req._id.toString(),
-    contract_id: (req as any).contractId.toString(),
+    contract_id: detailContractIdStr,
     contract_code,
     warehouse_id: (contract as any)?.warehouseId?.toString?.(),
     warehouse_name: warehouse ? (warehouse as any).name : undefined,
@@ -308,7 +343,7 @@ export async function getStorageRequestById(
       ? zoneCodeById.get((req as any).requestedZoneId.toString())
       : undefined,
     reference: (req as any).reference,
-    customer_id: (req as any).customerId.toString(),
+    customer_id: detailCustomerIdStr,
     customer_name: customer ? (customer as any).name : undefined,
     request_type: (req as any).requestType,
     status: (req as any).status,

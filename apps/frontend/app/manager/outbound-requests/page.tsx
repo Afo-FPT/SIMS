@@ -20,6 +20,11 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 
+function formatStatusLabel(status: string): string {
+  const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+}
+
 export default function ManagerOutboundRequestsPage() {
   const toast = useToastHelpers();
   const PAGE_SIZE = 10;
@@ -117,7 +122,7 @@ export default function ManagerOutboundRequestsPage() {
                           : 'warning'
                       }
                     >
-                      {r.status}
+                      {formatStatusLabel(r.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">

@@ -9,6 +9,7 @@ import type {
   ZonePricingComboRow,
   PenaltyTopCustomerRow,
   ManagerDeepGranularity,
+  ManagerRevenueReportResponse,
 } from '../types/manager';
 
 export type ReportGranularity = 'day' | 'week';
@@ -93,4 +94,14 @@ export async function getManagerPenaltyTopCustomers(
 ): Promise<PenaltyTopCustomerRow[]> {
   const params = new URLSearchParams({ startDate, endDate, limit: String(limit) });
   return apiJson<PenaltyTopCustomerRow[]>(`/reports/manager/penalty-top-customers?${params.toString()}`);
+}
+
+/** Revenue summary + trend by week/month */
+export async function getManagerRevenueReport(
+  startDate: string,
+  endDate: string,
+  granularity: 'week' | 'month' = 'week',
+): Promise<ManagerRevenueReportResponse> {
+  const params = new URLSearchParams({ startDate, endDate, granularity });
+  return apiJson<ManagerRevenueReportResponse>(`/reports/manager/revenue?${params.toString()}`);
 }

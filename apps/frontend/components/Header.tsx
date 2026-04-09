@@ -140,11 +140,12 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
       case 'USERS': return persona === 'ADMIN' ? 'Users' : 'User Control';
       case 'LOGS': return persona === 'ADMIN' ? 'Logs' : 'Audit Logs';
       case 'HISTORY': return 'History';
-      case 'CONFIG': return 'AI Parameters';
+      case 'CONFIG': return 'Config';
       case 'WAREHOUSES': return persona === 'MANAGER' ? 'Warehouses' : 'Facilities';
       case 'AI_LAYOUT': return 'Layout Optimization';
       case 'AI_CHAT': return 'AI Intelligence';
       case 'REPORTS': return 'Reports';
+      case 'PAYMENTS': return 'Payments';
       default: return 'Management';
     }
   };

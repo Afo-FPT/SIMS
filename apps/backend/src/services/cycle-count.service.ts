@@ -896,26 +896,44 @@ export async function getCycleCounts(
         .populate("storedItemId", "itemName unit")
         .lean();
 
-      items = countItems.map((item) => ({
-        item_id: item._id.toString(),
-        stored_item_id: item.storedItemId.toString(),
-        shelf_id: item.shelfId.toString(),
-        shelf_code: (item.shelfId as any).shelfCode,
-        item_name: (item.storedItemId as any).itemName,
-        unit: (item.storedItemId as any).unit,
-        system_quantity: item.systemQuantity,
-        counted_quantity: item.countedQuantity,
-        discrepancy: item.discrepancy,
-        note: item.note
-      }));
+      items = countItems.map((item: any) => {
+        const storedItem =
+          typeof item.storedItemId === "object"
+            ? item.storedItemId
+            : { _id: item.storedItemId };
+        const shelf =
+          typeof item.shelfId === "object"
+            ? item.shelfId
+            : { _id: item.shelfId };
+        return {
+          item_id: item._id.toString(),
+          stored_item_id: storedItem?._id?.toString?.() || "",
+          shelf_id: shelf?._id?.toString?.() || "",
+          shelf_code: shelf?.shelfCode,
+          item_name: storedItem?.itemName,
+          unit: storedItem?.unit,
+          system_quantity: item.systemQuantity,
+          counted_quantity: item.countedQuantity,
+          discrepancy: item.discrepancy,
+          note: item.note
+        };
+      });
     }
 
     results.push({
       cycle_count_id: cc._id.toString(),
-      contract_id: (cc.contractId as any)._id?.toString() || cc.contractId.toString(),
-      contract_code: (cc.contractId as any).contractCode,
-      customer_id: (cc.createdByCustomerId as any)._id?.toString() || cc.createdByCustomerId.toString(),
-      customer_name: (cc.createdByCustomerId as any).name,
+      contract_id:
+        (cc.contractId as any)?._id?.toString?.() ||
+        (typeof cc.contractId === "object" && (cc.contractId as any)?.toString
+          ? (cc.contractId as any).toString()
+          : ""),
+      contract_code: (cc.contractId as any)?.contractCode || "",
+      customer_id:
+        (cc.createdByCustomerId as any)?._id?.toString?.() ||
+        (typeof cc.createdByCustomerId === "object" && (cc.createdByCustomerId as any)?.toString
+          ? (cc.createdByCustomerId as any).toString()
+          : ""),
+      customer_name: (cc.createdByCustomerId as any)?.name || "",
       status: cc.status,
       note: cc.note,
       preferred_date: cc.preferredDate,
@@ -923,7 +941,10 @@ export async function getCycleCounts(
       approved_at: cc.approvedAt,
       approved_by: cc.approvedBy
         ? {
-          user_id: (cc.approvedBy as any)._id?.toString() || cc.approvedBy.toString(),
+          user_id:
+            (cc.approvedBy as any)?._id?.toString?.() ||
+            (cc.approvedBy as any)?.toString?.() ||
+            "",
           name: (cc.approvedBy as any).name,
           email: (cc.approvedBy as any).email
         }
@@ -931,7 +952,10 @@ export async function getCycleCounts(
       rejected_at: cc.rejectedAt,
       rejected_by: cc.rejectedBy
         ? {
-          user_id: (cc.rejectedBy as any)._id?.toString() || cc.rejectedBy.toString(),
+          user_id:
+            (cc.rejectedBy as any)?._id?.toString?.() ||
+            (cc.rejectedBy as any)?.toString?.() ||
+            "",
           name: (cc.rejectedBy as any).name,
           email: (cc.rejectedBy as any).email
         }
@@ -942,13 +966,16 @@ export async function getCycleCounts(
       confirmed_at: cc.confirmedAt,
       confirmed_by: cc.confirmedBy
         ? {
-          user_id: (cc.confirmedBy as any)._id?.toString() || cc.confirmedBy.toString(),
+          user_id:
+            (cc.confirmedBy as any)?._id?.toString?.() ||
+            (cc.confirmedBy as any)?.toString?.() ||
+            "",
           name: (cc.confirmedBy as any).name,
           email: (cc.confirmedBy as any).email
         }
         : undefined,
       assigned_staff: assignments.map((a) => ({
-        user_id: (a.staffId as any)._id?.toString() || a.staffId.toString(),
+        user_id: (a.staffId as any)?._id?.toString?.() || (a.staffId as any)?.toString?.() || "",
         name: (a.staffId as any).name,
         email: (a.staffId as any).email,
         assigned_at: a.assignedAt
@@ -959,7 +986,10 @@ export async function getCycleCounts(
       recount_requested_at: cc.recountRequestedAt,
       recount_requested_by: cc.recountRequestedBy
         ? {
-          user_id: (cc.recountRequestedBy as any)._id?.toString() || cc.recountRequestedBy.toString(),
+          user_id:
+            (cc.recountRequestedBy as any)?._id?.toString?.() ||
+            (cc.recountRequestedBy as any)?.toString?.() ||
+            "",
           name: (cc.recountRequestedBy as any).name,
           email: (cc.recountRequestedBy as any).email
         }
@@ -967,7 +997,10 @@ export async function getCycleCounts(
       recount_decision_at: cc.recountDecisionAt,
       recount_decision_by: cc.recountDecisionBy
         ? {
-          user_id: (cc.recountDecisionBy as any)._id?.toString() || cc.recountDecisionBy.toString(),
+          user_id:
+            (cc.recountDecisionBy as any)?._id?.toString?.() ||
+            (cc.recountDecisionBy as any)?.toString?.() ||
+            "",
           name: (cc.recountDecisionBy as any).name,
           email: (cc.recountDecisionBy as any).email
         }
@@ -1015,7 +1048,11 @@ export async function getCycleCountById(
 
   // Role-based access control
   if (userRole === "customer") {
-    if ((cycleCount.createdByCustomerId as any)._id?.toString() !== userId) {
+    const cycleCustomerId =
+      (cycleCount.createdByCustomerId as any)?._id?.toString?.() ||
+      (cycleCount.createdByCustomerId as any)?.toString?.() ||
+      "";
+    if (cycleCustomerId !== userId) {
       throw new Error("Customer can only view their own cycle counts");
     }
   } else if (userRole === "staff") {
@@ -1069,13 +1106,11 @@ export async function getCycleCountById(
 
       return {
         item_id: item._id.toString(),
-
-        stored_item_id: storedItem._id.toString(),
-        shelf_id: shelf._id.toString(),
-
-        shelf_code: shelf.shelfCode,
-        item_name: storedItem.itemName,
-        unit: storedItem.unit,
+        stored_item_id: storedItem?._id?.toString?.() || "",
+        shelf_id: shelf?._id?.toString?.() || "",
+        shelf_code: shelf?.shelfCode || "",
+        item_name: storedItem?.itemName || "(deleted item)",
+        unit: storedItem?.unit || "",
 
         system_quantity: item.systemQuantity,
         counted_quantity: item.countedQuantity,
@@ -1109,8 +1144,8 @@ export async function getCycleCountById(
       const shelf = typeof si.shelfId === "object" ? si.shelfId : { _id: si.shelfId, shelfCode: "" };
       return {
         stored_item_id: si._id.toString(),
-        shelf_id: shelf._id.toString(),
-        shelf_code: shelf.shelfCode || "",
+        shelf_id: shelf?._id?.toString?.() || "",
+        shelf_code: shelf?.shelfCode || "",
         item_name: si.itemName,
         unit: si.unit,
         system_quantity: si.quantity
@@ -1120,10 +1155,19 @@ export async function getCycleCountById(
 
   return {
     cycle_count_id: cycleCount._id.toString(),
-    contract_id: (cycleCount.contractId as any)._id?.toString() || cycleCount.contractId.toString(),
-    contract_code: (cycleCount.contractId as any).contractCode,
-    customer_id: (cycleCount.createdByCustomerId as any)._id?.toString() || cycleCount.createdByCustomerId.toString(),
-    customer_name: (cycleCount.createdByCustomerId as any).name,
+    contract_id:
+      (cycleCount.contractId as any)?._id?.toString?.() ||
+      (typeof cycleCount.contractId === "object" && (cycleCount.contractId as any)?.toString
+        ? (cycleCount.contractId as any).toString()
+        : ""),
+    contract_code: (cycleCount.contractId as any)?.contractCode || "",
+    customer_id:
+      (cycleCount.createdByCustomerId as any)?._id?.toString?.() ||
+      (typeof cycleCount.createdByCustomerId === "object" &&
+      (cycleCount.createdByCustomerId as any)?.toString
+        ? (cycleCount.createdByCustomerId as any).toString()
+        : ""),
+    customer_name: (cycleCount.createdByCustomerId as any)?.name || "",
     status: cycleCount.status,
     note: cycleCount.note,
     preferred_date: cycleCount.preferredDate,
@@ -1131,7 +1175,10 @@ export async function getCycleCountById(
     approved_at: cycleCount.approvedAt,
     approved_by: cycleCount.approvedBy
       ? {
-        user_id: (cycleCount.approvedBy as any)._id?.toString() || cycleCount.approvedBy.toString(),
+        user_id:
+          (cycleCount.approvedBy as any)?._id?.toString?.() ||
+          (cycleCount.approvedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.approvedBy as any).name,
         email: (cycleCount.approvedBy as any).email
       }
@@ -1139,7 +1186,10 @@ export async function getCycleCountById(
     rejected_at: cycleCount.rejectedAt,
     rejected_by: cycleCount.rejectedBy
       ? {
-        user_id: (cycleCount.rejectedBy as any)._id?.toString() || cycleCount.rejectedBy.toString(),
+        user_id:
+          (cycleCount.rejectedBy as any)?._id?.toString?.() ||
+          (cycleCount.rejectedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.rejectedBy as any).name,
         email: (cycleCount.rejectedBy as any).email
       }
@@ -1150,13 +1200,16 @@ export async function getCycleCountById(
     confirmed_at: cycleCount.confirmedAt,
     confirmed_by: cycleCount.confirmedBy
       ? {
-        user_id: (cycleCount.confirmedBy as any)._id?.toString() || cycleCount.confirmedBy.toString(),
+        user_id:
+          (cycleCount.confirmedBy as any)?._id?.toString?.() ||
+          (cycleCount.confirmedBy as any)?.toString?.() ||
+          "",
         name: (cycleCount.confirmedBy as any).name,
         email: (cycleCount.confirmedBy as any).email
       }
       : undefined,
     assigned_staff: assignments.map((a) => ({
-      user_id: (a.staffId as any)._id?.toString() || a.staffId.toString(),
+      user_id: (a.staffId as any)?._id?.toString?.() || (a.staffId as any)?.toString?.() || "",
       name: (a.staffId as any).name,
       email: (a.staffId as any).email,
       assigned_at: a.assignedAt
@@ -1169,8 +1222,9 @@ export async function getCycleCountById(
     recount_requested_by: (cycleCount as any).recountRequestedBy
       ? {
         user_id:
-          (cycleCount as any).recountRequestedBy._id?.toString() ||
-          (cycleCount as any).recountRequestedBy.toString(),
+          (cycleCount as any).recountRequestedBy?._id?.toString?.() ||
+          (cycleCount as any).recountRequestedBy?.toString?.() ||
+          "",
         name: (cycleCount as any).recountRequestedBy.name,
         email: (cycleCount as any).recountRequestedBy.email
       }
@@ -1179,8 +1233,9 @@ export async function getCycleCountById(
     recount_decision_by: (cycleCount as any).recountDecisionBy
       ? {
         user_id:
-          (cycleCount as any).recountDecisionBy._id?.toString() ||
-          (cycleCount as any).recountDecisionBy.toString(),
+          (cycleCount as any).recountDecisionBy?._id?.toString?.() ||
+          (cycleCount as any).recountDecisionBy?.toString?.() ||
+          "",
         name: (cycleCount as any).recountDecisionBy.name,
         email: (cycleCount as any).recountDecisionBy.email
       }

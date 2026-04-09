@@ -101,6 +101,10 @@ export interface ManagerReportStats {
   outbound: number;
   completion: number;
   discrepancies: number;
+  totalRevenue: number;
+  contractRevenue: number;
+  serviceRevenue: number;
+  paidTransactions: number;
 }
 
 export interface ManagerReportCapacitySlice {
@@ -266,4 +270,23 @@ export interface PenaltyTopCustomerRow {
   totalDamageUnits: number;
   affectedRequestCount: number;
   topDamagedItems: Array<{ itemName: string; damageUnits: number }>;
+}
+
+export interface RevenueTrendPoint {
+  period: string;
+  contractRevenue: number;
+  serviceRevenue: number;
+  totalRevenue: number;
+  paidTransactions: number;
+}
+
+export interface ManagerRevenueReportResponse {
+  summary: {
+    totalRevenue: number;
+    contractRevenue: number;
+    serviceRevenue: number;
+    paidTransactions: number;
+  };
+  trend: RevenueTrendPoint[];
+  granularity: 'week' | 'month';
 }

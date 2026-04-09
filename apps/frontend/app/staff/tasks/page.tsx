@@ -51,6 +51,11 @@ const CYCLE_STATUS_LABEL: Record<string, string> = {
   RECOUNT_REQUIRED: 'Recount required',
 };
 
+function formatStatusLabel(status: string): string {
+  const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+}
+
 function safeToDate(v: string): Date | null {
   if (!v) return null;
   const d = new Date(v);
@@ -359,8 +364,8 @@ export default function StaffTasksPage() {
   }, [allRows]);
 
   const statusBadgeText = (row: StaffTaskRow) => {
-    if (row.type === 'INVENTORY_CHECKING') return CYCLE_STATUS_LABEL[row.status] || row.status;
-    return row.status;
+    if (row.type === 'INVENTORY_CHECKING') return CYCLE_STATUS_LABEL[row.status] || formatStatusLabel(row.status);
+    return formatStatusLabel(row.status);
   };
 
   return (

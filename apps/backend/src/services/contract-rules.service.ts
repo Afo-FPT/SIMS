@@ -90,8 +90,11 @@ export function assertManagerMayApproveOutbound(contract: ContractLike): void {
   throw new Error("Cannot approve outbound: contract is not active.");
 }
 
-export function assertContractActiveForRequestCredits(contract: ContractLike): void {
-  if (contract.status !== "active") {
-    throw new Error("Request credits can only be purchased for an active contract.");
+export function assertContractEligibleForRequestCredits(contract: ContractLike): void {
+  const s = contract.status as ContractStatus;
+  if (s === "active" || s === "expired") return;
+  if (s === "terminated") {
+    throw new Error("Request credits cannot be purchased for a terminated contract.");
   }
+  throw new Error("Request credits can only be purchased for active or expired contracts.");
 }

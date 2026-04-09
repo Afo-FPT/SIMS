@@ -7,7 +7,8 @@ import {
   getProcessingTimeController,
   getManagerExpiryStackedController,
   getManagerZonePricingComboController,
-  getManagerPenaltyTopCustomersController
+  getManagerPenaltyTopCustomersController,
+  getManagerRevenueReportController
 } from "../controllers/reports.controller";
 
 const router = express.Router();
@@ -52,6 +53,13 @@ router.get(
   authenticate,
   authorizeRoles("manager", "admin"),
   getManagerZonePricingComboController
+);
+
+router.get(
+  "/manager/revenue",
+  authenticate,
+  authorizeRoles("manager", "admin"),
+  getManagerRevenueReportController
 );
 
 router.get(

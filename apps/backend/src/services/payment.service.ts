@@ -5,7 +5,8 @@ import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
 import RequestCreditPayment, { type IRequestCreditPayment } from "../models/RequestCreditPayment";
 import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
-import { assertContractActiveForRequestCredits } from "./contract-rules.service";
+import { assertContractEligibleForRequestCredits } from "./contract-rules.service";
+import { getOrCreateRequestCreditPricing } from "./system-setting.service";
 
 export interface StartVNPayPaymentResult {
   payment: IPayment;
@@ -231,9 +232,9 @@ export async function handleVNPayReturn(
 
   if (newStatus === "paid") {
     const contractRc = await Contract.findById(requestCreditPayment.contractId);
-    if (!contractRc || contractRc.status !== "active") {
+    if (!contractRc || !["active", "expired"].includes(contractRc.status)) {
       message =
-        "Payment successful, but credits were not granted because the contract is no longer active. Please contact support for a refund or adjustment.";
+        "Payment successful, but credits were not granted because contract status is no longer eligible. Please contact support for a refund or adjustment.";
     } else {
       await grantRequestCredits({
         customerId: requestCreditPayment.customerId.toString(),
@@ -273,7 +274,7 @@ export async function startVNPayPaymentForRequestCredits(
   if (contractForCredit.customerId.toString() !== customerId) {
     throw new Error("Contract does not belong to the authenticated customer");
   }
-  assertContractActiveForRequestCredits(contractForCredit);
+  assertContractEligibleForRequestCredits(contractForCredit);
 
   const existingPending = await RequestCreditPayment.findOne({
     customerId: new Types.ObjectId(customerId),
@@ -285,9 +286,31 @@ export async function startVNPayPaymentForRequestCredits(
   }
 
   const creditsGranted = 1;
-  const amount = REQUEST_CREDIT_PRICE_VND;
+  const pricing = await getOrCreateRequestCreditPricing();
+  const now = new Date();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const latestZoneEndDate = (contractForCredit.rentedZones || [])
+    .map((z: any) => new Date(z.endDate))
+    .filter((d: Date) => !Number.isNaN(d.getTime()))
+    .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0];
+  const requestedEndDate = (contractForCredit as any).requestedEndDate
+    ? new Date((contractForCredit as any).requestedEndDate)
+    : null;
+  const contractEndDate =
+    latestZoneEndDate ||
+    (requestedEndDate && !Number.isNaN(requestedEndDate.getTime()) ? requestedEndDate : null);
+  const overdueDays =
+    contractForCredit.status === "expired" && contractEndDate
+      ? Math.max(1, Math.ceil((now.getTime() - contractEndDate.getTime()) / msPerDay))
+      : 0;
+  const baseAmount = pricing.base_request_credit_price_vnd || REQUEST_CREDIT_PRICE_VND;
+  const penaltyAmount = overdueDays * (pricing.expired_contract_penalty_per_day_vnd || 0);
+  const amount = baseAmount + penaltyAmount;
 
-  const orderInfo = `Thanh toan request credit (${creditsGranted}x)`;
+  const orderInfo =
+    overdueDays > 0
+      ? `Thanh toan request credit (${creditsGranted}x) + phat tre ${overdueDays} ngay`
+      : `Thanh toan request credit (${creditsGranted}x)`;
   const txnRef = `RC-${customerId}-${Date.now()}`;
 
   const vnpResult = buildVNPayPaymentUrl({
@@ -311,19 +334,42 @@ export async function startVNPayPaymentForRequestCredits(
   return { payment, paymentUrl: vnpResult.url, expireAt: vnpResult.vnp_ExpireDate };
 }
 
-export async function getPaymentsForManager(): Promise<IPayment[]> {
-  return Payment.find({})
-    .populate({
-      path: "contractId",
-      select: "contractCode status customerId warehouseId",
-      populate: [
-        { path: "customerId", select: "name email" },
-        { path: "warehouseId", select: "name" }
-      ]
-    })
-    .sort({ createdAt: -1 })
-    .limit(200)
-    .lean()
-    .exec() as unknown as IPayment[];
+export interface ManagerPaymentsResult {
+  contractPayments: IPayment[];
+  servicePayments: IRequestCreditPayment[];
+}
+
+export async function getPaymentsForManager(): Promise<ManagerPaymentsResult> {
+  const [contractPayments, servicePayments] = await Promise.all([
+    Payment.find({})
+      .populate({
+        path: "contractId",
+        select: "contractCode status customerId warehouseId",
+        populate: [
+          { path: "customerId", select: "name email" },
+          { path: "warehouseId", select: "name" }
+        ]
+      })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean()
+      .exec() as unknown as IPayment[],
+    RequestCreditPayment.find({})
+      .populate("customerId", "name email")
+      .populate({
+        path: "contractId",
+        select: "contractCode status warehouseId",
+        populate: [{ path: "warehouseId", select: "name" }]
+      })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean()
+      .exec() as unknown as IRequestCreditPayment[]
+  ]);
+
+  return {
+    contractPayments,
+    servicePayments
+  };
 }
 

@@ -22,6 +22,7 @@ import {
   getManagerExpiryStackedReport,
   getManagerZonePricingCombo,
   getManagerPenaltyTopCustomers,
+  getManagerRevenueReport,
   type ReportGranularity,
 } from '../../../lib/reports.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
@@ -31,6 +32,7 @@ import {
   parseLocalDateStart,
   parseLocalDateEndOfDay,
   defaultReportDateRange,
+  rollingPresetRange,
   type QuickPreset,
 } from '../../../lib/report-date-range';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
@@ -54,6 +56,7 @@ import type {
   ZonePricingComboRow,
   PenaltyTopCustomerRow,
   ManagerDeepGranularity,
+  ManagerRevenueReportResponse,
 } from '../../../types/manager';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
@@ -191,6 +194,10 @@ export default function ManagerReportsPage() {
   const [deepPenaltyStart, setDeepPenaltyStart] = useState(initR.start);
   const [deepPenaltyEnd, setDeepPenaltyEnd] = useState(initR.end);
   const [deepPenaltyPreset, setDeepPenaltyPreset] = useState<QuickPreset | null>(null);
+  const revenueInitRange = useMemo(() => rollingPresetRange('7d'), []);
+  const [revenueStart, setRevenueStart] = useState(revenueInitRange.start);
+  const [revenueEnd, setRevenueEnd] = useState(revenueInitRange.end);
+  const [revenuePreset, setRevenuePreset] = useState<QuickPreset | null>('7d');
   const deepSnapshotDate = useMemo(() => defaultReportDateRange().end, []);
 
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
@@ -201,7 +208,11 @@ export default function ManagerReportsPage() {
     inbound: 0,
     outbound: 0,
     completion: 0,
-    discrepancies: 0
+    discrepancies: 0,
+    totalRevenue: 0,
+    contractRevenue: 0,
+    serviceRevenue: 0,
+    paidTransactions: 0,
   });
 
   const [capacityData, setCapacityData] = useState<{ name: string; value: number }[]>([]);
@@ -235,6 +246,8 @@ export default function ManagerReportsPage() {
   const [deepPenaltyData, setDeepPenaltyData] = useState<PenaltyTopCustomerRow[] | null>(null);
   const [deepPenaltyLoading, setDeepPenaltyLoading] = useState(false);
   const [deepTopStockData, setDeepTopStockData] = useState<{ name: string; qty: number }[]>([]);
+  const [revenueData, setRevenueData] = useState<ManagerRevenueReportResponse | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(false);
 
   const deepExpiryGranularity = useMemo(
     () => inferManagerDeepGranularity(deepExpiryStart, deepExpiryEnd),
@@ -741,6 +754,28 @@ export default function ManagerReportsPage() {
       cancelled = true;
     };
   }, [tab, deepPenaltyStart, deepPenaltyEnd, toast, reportsRealtimeVersion]);
+
+  useEffect(() => {
+    if (tab !== 'deep') return;
+    let cancelled = false;
+    (async () => {
+      setRevenueLoading(true);
+      try {
+        const data = await getManagerRevenueReport(revenueStart, revenueEnd, 'week');
+        if (!cancelled) setRevenueData(data);
+      } catch (e) {
+        if (!cancelled) {
+          setRevenueData(null);
+          toast.error(e instanceof Error ? e.message : 'Could not load revenue report');
+        }
+      } finally {
+        if (!cancelled) setRevenueLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, revenueStart, revenueEnd, toast, reportsRealtimeVersion]);
 
   useEffect(() => {
     const socket = getNotificationSocket();
@@ -1422,6 +1457,36 @@ export default function ManagerReportsPage() {
 
       {tab === 'deep' && (
         <div className="space-y-8">
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">System Revenue</h2>
+                <p className="text-xs text-slate-500">Revenue by paid transactions</p>
+              </div>
+            </div>
+            <ChartDateFilterBar
+              enableToggle
+              startDate={revenueStart}
+              endDate={revenueEnd}
+              activePreset={revenuePreset}
+              onStartChange={setRevenueStart}
+              onEndChange={setRevenueEnd}
+              onClearPreset={() => setRevenuePreset(null)}
+              onApplyPreset={(r, preset) => {
+                setRevenueStart(r.start);
+                setRevenueEnd(r.end);
+                setRevenuePreset(preset);
+              }}
+            />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <StatCard title="Total revenue" value={formatZonePricingVnd(revenueData?.summary.totalRevenue ?? 0)} />
+              <StatCard title="Contract revenue" value={formatZonePricingVnd(revenueData?.summary.contractRevenue ?? 0)} />
+              <StatCard title="Service revenue" value={formatZonePricingVnd(revenueData?.summary.serviceRevenue ?? 0)} />
+              <StatCard title="Paid transactions" value={revenueData?.summary.paidTransactions ?? 0} unit="payments" />
+            </div>
+            {revenueLoading && <LoadingSkeleton className="h-16 mt-4" />}
+          </section>
+
           {/* 1. Expiry stacked */}
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">

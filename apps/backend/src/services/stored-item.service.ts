@@ -281,7 +281,7 @@ export async function getMyStoredItems(
 
   const items = await StoredItem.find(query)
     .populate("shelfId", "shelfCode")
-    .populate("contractId", "contractCode status")
+    .populate("contractId", "contractCode status warehouseId rentedZones")
     .sort({ updatedAt: -1 });
 
   const shelfIds = items.map((it: any) => it.shelfId?._id ?? it.shelfId).filter(Boolean);
@@ -309,34 +309,82 @@ export async function getMyStoredItems(
     });
   }
 
-  return items.map((it) => ({
-    stored_item_id: it._id.toString(),
-    contract_id:
-      typeof (it as any).contractId === "object" && (it as any).contractId?._id
-        ? (it as any).contractId._id.toString()
-        : (it.contractId as any).toString(),
-    contract_code:
-      typeof (it as any).contractId === "object" && "contractCode" in (it as any).contractId
-        ? (it as any).contractId.contractCode
-        : undefined,
-    contract_status:
-      typeof (it as any).contractId === "object" && "status" in (it as any).contractId
-        ? String((it as any).contractId.status)
-        : undefined,
-    shelf_id: (it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString(),
-    shelf_code:
-      typeof (it as any).shelfId === "object" && "shelfCode" in (it as any).shelfId
-        ? (it as any).shelfId.shelfCode
-        : undefined,
-    zone_code: shelfMetaById.get(((it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString()))?.zone_code,
-    warehouse_name: shelfMetaById.get(((it as any).shelfId?._id?.toString?.() ?? (it.shelfId as any).toString()))?.warehouse_name,
-    item_name: it.itemName,
-    quantity: it.quantity,
-    unit: it.unit,
-    quantity_per_unit: (it as any).quantityPerUnit,
-    volume_per_unit_m3: (it as any).volumePerUnitM3,
-    updated_at: it.updatedAt
-  }));
+  // Fallback contract-level metadata when shelf/zone refs are missing.
+  const contractIdsFromItems = Array.from(
+    new Set(
+      items
+        .map((it: any) => it.contractId?._id?.toString?.() || it.contractId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const contractsForFallback = contractIdsFromItems.length
+    ? await Contract.find({ _id: { $in: contractIdsFromItems.map((id) => new Types.ObjectId(id)) } })
+        .populate("warehouseId", "name")
+        .populate("rentedZones.zoneId", "zoneCode")
+        .select("_id warehouseId rentedZones")
+        .lean()
+    : [];
+  const contractFallbackById = new Map<
+    string,
+    { warehouse_name?: string; zone_codes?: string[] }
+  >();
+  for (const c of contractsForFallback as any[]) {
+    const zones = (c.rentedZones || [])
+      .map((rz: any) => rz.zoneId?.zoneCode)
+      .filter(Boolean);
+    contractFallbackById.set(String(c._id), {
+      warehouse_name: c.warehouseId?.name,
+      zone_codes: Array.from(new Set(zones)),
+    });
+  }
+
+  return items.map((it) => {
+    const shelfIdStr =
+      (it as any).shelfId?._id?.toString?.() ||
+      ((it as any).shelfId?.toString ? (it as any).shelfId.toString() : "");
+    const contractIdStr =
+      (it as any).contractId?._id?.toString?.() ||
+      ((it as any).contractId?.toString ? (it as any).contractId.toString() : "");
+
+    if (!shelfIdStr) {
+      console.warn(`[StoredItem][MissingRef] stored_item_id=${it._id.toString()} missing=shelfId`);
+    }
+    if (!contractIdStr) {
+      console.warn(
+        `[StoredItem][MissingRef] stored_item_id=${it._id.toString()} missing=contractId`
+      );
+    }
+
+    return {
+      stored_item_id: it._id.toString(),
+      contract_id: contractIdStr || "",
+      contract_code:
+        typeof (it as any).contractId === "object" && "contractCode" in (it as any).contractId
+          ? (it as any).contractId.contractCode
+          : undefined,
+      contract_status:
+        typeof (it as any).contractId === "object" && "status" in (it as any).contractId
+          ? String((it as any).contractId.status)
+          : undefined,
+      shelf_id: shelfIdStr || "",
+      shelf_code:
+        typeof (it as any).shelfId === "object" && "shelfCode" in (it as any).shelfId
+          ? (it as any).shelfId.shelfCode
+          : undefined,
+      zone_code:
+        shelfMetaById.get(shelfIdStr || "")?.zone_code ||
+        contractFallbackById.get(contractIdStr || "")?.zone_codes?.[0],
+      warehouse_name:
+        shelfMetaById.get(shelfIdStr || "")?.warehouse_name ||
+        contractFallbackById.get(contractIdStr || "")?.warehouse_name,
+      item_name: it.itemName,
+      quantity: it.quantity,
+      unit: it.unit,
+      quantity_per_unit: (it as any).quantityPerUnit,
+      volume_per_unit_m3: (it as any).volumePerUnitM3,
+      updated_at: it.updatedAt,
+    };
+  });
 }
 
 function normalizeSku(s: string): string {

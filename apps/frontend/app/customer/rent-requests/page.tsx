@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
+import { getRentalDraftTerms } from '../../../lib/system-settings.api';
 import {
   listWarehousesForRent,
   createDraftContractRequest,
@@ -13,6 +14,7 @@ import {
   listZonesByWarehouse,
   type ZoneOption,
 } from '../../../lib/rent-requests.api';
+import { Modal } from '../../../components/ui/Modal';
 
 const today = new Date().toISOString().slice(0, 10);
 /** Start date must be at least 1 day from today. */
@@ -72,6 +74,14 @@ export default function RentRequestsPage() {
   const [warehouseError, setWarehouseError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [createdContractCode, setCreatedContractCode] = useState<string | null>(null);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [rentalTermsContent, setRentalTermsContent] = useState(
+    'Please read and accept the terms below before creating a draft contract.',
+  );
+  const [rentalTermsAgreementLabel, setRentalTermsAgreementLabel] = useState(
+    'I have read and agree to the rental terms and system rules.',
+  );
   const [zones, setZones] = useState<ZoneOption[]>([]);
   const [loadingZones, setLoadingZones] = useState(false);
   const [zonesError, setZonesError] = useState<string | null>(null);
@@ -101,6 +111,30 @@ export default function RentRequestsPage() {
     };
     load();
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRentalTerms = async () => {
+      try {
+        const terms = await getRentalDraftTerms();
+        if (cancelled) return;
+        setRentalTermsContent(
+          String(terms.rental_draft_terms_content || '').trim() ||
+            'Please read and accept the terms below before creating a draft contract.',
+        );
+        setRentalTermsAgreementLabel(
+          String(terms.rental_draft_terms_agreement_label || '').trim() ||
+            'I have read and agree to the rental terms and system rules.',
+        );
+      } catch {
+        // Keep fallback text when settings API is unavailable.
+      }
+    };
+    loadRentalTerms();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -250,13 +284,8 @@ export default function RentRequestsPage() {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitDraftContract = async () => {
     setSubmitError(null);
-    if (!validate()) {
-      toast.warning('Please fix the errors below');
-      return;
-    }
     const payload: CreateDraftContractPayload = {
       warehouseId,
       startDate,
@@ -271,6 +300,8 @@ export default function RentRequestsPage() {
       const contract = await createDraftContractRequest(payload);
       setCreatedContractCode(contract.code);
       toast.success(`Draft contract ${contract.code} created. Manager will approve to assign a zone automatically.`);
+      setShowTermsModal(false);
+      setTermsAccepted(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create draft contract';
       setSubmitError(msg);
@@ -278,6 +309,17 @@ export default function RentRequestsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError(null);
+    if (!validate()) {
+      toast.warning('Please fix the errors below');
+      return;
+    }
+    setTermsAccepted(false);
+    setShowTermsModal(true);
   };
 
   return (
@@ -578,6 +620,55 @@ export default function RentRequestsPage() {
           )}
         </div>
       </form>
+
+      <Modal
+        open={showTermsModal}
+        onOpenChange={(open) => {
+          setShowTermsModal(open);
+          if (!open) setTermsAccepted(false);
+        }}
+        title="Rental terms & conditions"
+        size="lg"
+      >
+        <div className="space-y-4 text-sm text-slate-700">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 whitespace-pre-wrap">
+            {rentalTermsContent}
+          </div>
+
+          <label className="flex items-start gap-2 cursor-pointer pt-2">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-slate-800 font-medium">
+              {rentalTermsAgreementLabel}
+            </span>
+          </label>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowTermsModal(false);
+                setTermsAccepted(false);
+              }}
+              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!termsAccepted || loading}
+              onClick={submitDraftContract}
+              className="px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Creating…' : 'Accept & create draft'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {createdContractCode && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6">

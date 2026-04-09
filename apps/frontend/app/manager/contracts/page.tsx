@@ -12,7 +12,11 @@ import {
   type ManagerWarehouse,
 } from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
-import { listManagerPayments, type ManagerPayment } from '../../../lib/payment.api';
+import {
+  listManagerPayments,
+  type ManagerContractPayment,
+  type ManagerServicePayment,
+} from '../../../lib/payment.api';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
@@ -123,14 +127,16 @@ export default function ManagerContractsPage() {
     rentedZones: [{ zoneId: '', startDate: '', endDate: '', price: '' }] as RentedZoneRow[],
   });
   const [paymentsOpen, setPaymentsOpen] = useState(false);
-  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [paymentTab, setPaymentTab] = useState<'contract' | 'service'>('contract');
+  const [contractPayments, setContractPayments] = useState<ManagerContractPayment[]>([]);
+  const [servicePayments, setServicePayments] = useState<ManagerServicePayment[]>([]);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [paymentsRefreshing, setPaymentsRefreshing] = useState(false);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | Contract['status']>('all');
   const [warehouseFilter, setWarehouseFilter] = useState<'all' | string>('all');
-  const [detailPayments, setDetailPayments] = useState<ManagerPayment[]>([]);
+  const [detailPayments, setDetailPayments] = useState<ManagerContractPayment[]>([]);
   const [detailPaymentsLoading, setDetailPaymentsLoading] = useState(false);
 
   const loadPayments = useCallback(async (silent = false) => {
@@ -139,7 +145,8 @@ export default function ManagerContractsPage() {
       else setPaymentsLoading(true);
       setPaymentsError(null);
       const data = await listManagerPayments();
-      setPayments(data);
+      setContractPayments(data.contractPayments);
+      setServicePayments(data.servicePayments);
     } catch (err) {
       setPaymentsError(err instanceof Error ? err.message : 'Failed to load payments');
     } finally {
@@ -169,6 +176,7 @@ export default function ManagerContractsPage() {
   useEffect(() => {
     if (paymentsOpen) {
       loadPayments(false);
+      setPaymentTab('contract');
     }
   }, [paymentsOpen, loadPayments]);
 
@@ -222,7 +230,7 @@ export default function ManagerContractsPage() {
       try {
         setDetailPaymentsLoading(true);
         const all = await listManagerPayments();
-        const rows = all
+        const rows = all.contractPayments
           .filter((p) => p.contractId === detail.id)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setDetailPayments(rows);
@@ -654,83 +662,109 @@ export default function ManagerContractsPage() {
               <LoadingSkeleton className="h-32" />
             ) : paymentsError ? (
               <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => loadPayments(false)} />
-            ) : payments.length === 0 ? (
+            ) : contractPayments.length === 0 && servicePayments.length === 0 ? (
               <EmptyState icon="payments" title="No payments" message="No payments found yet." />
             ) : (
-              <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
-                      <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payments.map((p) => (
-                      <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                        <td className="px-4 py-2 text-slate-600">
-                          {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          <div className="font-bold">{p.contractCode || p.contractId}</div>
-                          {p.warehouseName && (
-                            <div className="text-xs text-slate-500">{p.warehouseName}</div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          {p.customerName || '—'}
-                        </td>
-                        <td className="px-4 py-2 text-slate-900 font-bold">
-                          {p.amount.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td className="px-4 py-2">
-                          <Badge
-                            variant={
-                              p.status === 'paid'
-                                ? 'success'
-                                : p.status === 'pending'
-                                ? 'info'
-                                : 'error'
-                            }
-                          >
-                            {p.status === 'paid'
-                              ? 'Paid'
-                              : p.status === 'pending'
-                              ? 'Pending'
-                              : p.status === 'expired'
-                              ? 'Expired'
-                              : 'Failed'}
-                          </Badge>
-                          {p.paidAt && (
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              at{' '}
-                              {new Date(p.paidAt).toLocaleString('vi-VN', {
-                                dateStyle: 'short',
-                                timeStyle: 'short',
-                              })}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-slate-700">
-                          <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
-                          {p.vnpResponseCode && (
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              Resp: {p.vnpResponseCode}
-                            </div>
-                          )}
-                        </td>
+              <>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+                      paymentTab === 'contract' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    }`}
+                    onClick={() => setPaymentTab('contract')}
+                  >
+                    Contract ({contractPayments.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
+                      paymentTab === 'service' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    }`}
+                    onClick={() => setPaymentTab('service')}
+                  >
+                    Service ({servicePayments.length})
+                  </button>
+                </div>
+                <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
+                        {paymentTab === 'service' && (
+                          <th className="px-4 py-2 text-left font-bold text-slate-600">Credits</th>
+                        )}
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
+                        <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(paymentTab === 'contract' ? contractPayments : servicePayments).map((p) => (
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                          <td className="px-4 py-2 text-slate-600">
+                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">
+                            <div className="font-bold">{p.contractCode || p.contractId}</div>
+                            {p.warehouseName && <div className="text-xs text-slate-500">{p.warehouseName}</div>}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">{p.customerName || '—'}</td>
+                          {paymentTab === 'service' && (
+                            <td className="px-4 py-2 font-semibold text-slate-700">
+                              {(p as ManagerServicePayment).creditsGranted} credit
+                            </td>
+                          )}
+                          <td className="px-4 py-2 text-slate-900 font-bold">
+                            {p.amount.toLocaleString('vi-VN')} đ
+                          </td>
+                          <td className="px-4 py-2">
+                            <Badge
+                              variant={
+                                p.status === 'paid'
+                                  ? 'success'
+                                  : p.status === 'pending'
+                                  ? 'info'
+                                  : 'error'
+                              }
+                            >
+                              {p.status === 'paid'
+                                ? 'Paid'
+                                : p.status === 'pending'
+                                ? 'Pending'
+                                : p.status === 'expired'
+                                ? 'Expired'
+                                : 'Failed'}
+                            </Badge>
+                            {p.paidAt && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                at{' '}
+                                {new Date(p.paidAt).toLocaleString('vi-VN', {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short',
+                                })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-slate-700">
+                            <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
+                            {p.vnpResponseCode && (
+                              <div className="text-[11px] text-slate-500 mt-0.5">
+                                Resp: {p.vnpResponseCode}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
             <p className="text-xs text-slate-500">
-              Nhấn Refresh để tải lại danh sách thanh toán từ backend.
+              Click Refresh to reload the payment list from backend.
             </p>
           </div>
         </Modal>

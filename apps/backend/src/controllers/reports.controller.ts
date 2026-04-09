@@ -7,6 +7,7 @@ import {
   getManagerExpiryStackedReport,
   getManagerZonePricingComboData,
   getManagerPenaltyTopCustomers,
+  getManagerRevenueReport,
   type ManagerDeepReportGranularity
 } from "../services/reports.service";
 
@@ -257,6 +258,37 @@ export async function getManagerPenaltyTopCustomersController(req: Request, res:
     }
 
     const data = await getManagerPenaltyTopCustomers(startDate, endDate, limit);
+    res.json({ data });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+}
+
+/**
+ * GET /api/reports/manager/revenue?startDate&endDate&granularity=week|month
+ */
+export async function getManagerRevenueReportController(req: Request, res: Response) {
+  try {
+    const startDate = (req.query.startDate as string) || "";
+    const endDate = (req.query.endDate as string) || "";
+    const granularity = ((req.query.granularity as string) || "week") === "month" ? "month" : "week";
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        message: "startDate and endDate are required (YYYY-MM-DD)"
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ message: "Invalid startDate or endDate format" });
+    }
+    if (start > end) {
+      return res.status(400).json({ message: "startDate must be before or equal to endDate" });
+    }
+
+    const data = await getManagerRevenueReport(startDate, endDate, granularity);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
