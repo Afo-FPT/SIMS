@@ -81,11 +81,12 @@ const startServer = async () => {
   startContractScheduler();
 
   const PORT = process.env.PORT || 3001;
+  const HOST = process.env.HOST || "0.0.0.0";
 
   const server = http.createServer(app);
   initSocket(server);
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  server.listen(Number(PORT), HOST, () => {
+    console.log(`Server running on ${HOST}:${PORT}`);
   });
   console.log("INDEX JWT_SECRET =", process.env.JWT_SECRET);
 };
