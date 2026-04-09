@@ -63,7 +63,7 @@ export default function StaffCycleCountPage() {
           Cycle Count
         </h1>
         <p className="text-slate-500 mt-1">
-          Perform inventory counts assigned by manager
+          Perform inventory counts auto-assigned by warehouse
         </p>
       </div>
 
@@ -75,7 +75,7 @@ export default function StaffCycleCountPage() {
         <EmptyState
           icon="fact_check"
           title="No cycle counts"
-          message="Cycle counts assigned by manager will appear here"
+          message="Auto-assigned cycle count tasks will appear here"
         />
       ) : pending.length === 0 ? (
         <EmptyState
