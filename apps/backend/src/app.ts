@@ -40,15 +40,28 @@ const configuredOrigins = [
   .filter((v): v is string => !!v);
 
 const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...configuredOrigins]));
+function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const parsed = new URL(origin);
+    // Allow same Render domain pattern for FE/BE services.
+    if (parsed.protocol === "https:" && parsed.hostname.endsWith(".onrender.com")) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    // Allow non-browser/server-to-server requests (no Origin header)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    // Never throw here; throwing causes responses without CORS headers.
+    callback(null, isAllowedOrigin(origin));
   },
   methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
   credentials: true,
   optionsSuccessStatus: 204
 };
