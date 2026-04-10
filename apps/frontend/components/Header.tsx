@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Persona } from '../types';
 import { deleteReadNotifications, listMyNotifications, markNotificationRead, type AppNotification, getMyUnreadCount, markAllNotificationsRead } from '../lib/notifications.api';
 import { getNotificationSocket } from '../lib/notifications.socket';
 import { Badge } from './ui/Badge';
+import { Modal } from './ui/Modal';
 
 interface HeaderProps {
   activeView: string;
@@ -11,7 +11,6 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<AppNotification[]>([]);
@@ -19,6 +18,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,11 +120,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
       }
     }
 
-    const requestId = n.relatedEntityId || (n.meta as any)?.request_id;
-    if (requestId) {
-      const prefix = persona.toLowerCase();
-      router.push(`/${prefix}/service-requests?requestId=${encodeURIComponent(requestId)}`);
-    }
+    setSelectedNotification(n);
   };
 
   const getTitle = () => {
@@ -251,6 +247,43 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
             </button>
           </div>
         </div>
+      )}
+
+      {selectedNotification && (
+        <Modal
+          open={!!selectedNotification}
+          onOpenChange={(v) => !v && setSelectedNotification(null)}
+          title={selectedNotification.title || 'Notification detail'}
+          size="md"
+        >
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                {selectedNotification.message || 'No details.'}
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                {new Date(selectedNotification.createdAt).toLocaleString('en-GB')}
+              </p>
+            </div>
+            {(selectedNotification.meta as any)?.reason && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Reason from manager</p>
+                <p className="text-sm text-amber-900 mt-1 whitespace-pre-wrap">
+                  {String((selectedNotification.meta as any).reason)}
+                </p>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedNotification(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-sm font-bold hover:bg-slate-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </header>
   );

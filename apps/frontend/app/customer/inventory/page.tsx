@@ -174,48 +174,51 @@ export default function CustomerInventoryPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="relative flex-1 min-w-[200px]">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            search
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by SKU / item"
-            className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          />
+      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-end">
+          <div className="space-y-1 xl:col-span-2">
+            <p className="text-xs font-bold text-slate-500">Search</p>
+            <div className="relative">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                search
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search SKU..."
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+          <div className="space-y-1 xl:col-span-2">
+            <p className="text-xs font-bold text-slate-500">Contract</p>
+            <select
+              value={contractFilter}
+              onChange={(e) => setContractFilter(e.target.value as any)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              title="Select contract"
+            >
+              <option value="ALL">All contracts</option>
+              {contracts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.code}
+                  {c.status !== 'active' ? ` (${c.status})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="h-11 px-3 rounded-xl border border-slate-200 bg-white inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={lowStockOnly}
+              onChange={(e) => setLowStockOnly(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            <span className="text-sm font-medium">Low stock only</span>
+          </label>
         </div>
-        <div className="relative">
-          <select
-            value={contractFilter}
-            onChange={(e) => setContractFilter(e.target.value as any)}
-            className="h-[50px] appearance-none rounded-2xl border border-slate-200 bg-white pl-4 pr-10 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-colors hover:border-primary/40"
-            title="Select contract"
-          >
-            <option value="ALL">All contracts</option>
-            {contracts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.code}
-                {c.status !== 'active' ? ` (${c.status})` : ''}
-              </option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-slate-400">
-            <span className="material-symbols-outlined text-base">expand_more</span>
-          </span>
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={lowStockOnly}
-            onChange={(e) => setLowStockOnly(e.target.checked)}
-            className="rounded border-slate-300"
-          />
-          <span className="text-sm font-medium">Low stock only</span>
-        </label>
-      </div>
+      </section>
 
       {/* Table */}
       <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">

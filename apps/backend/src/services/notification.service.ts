@@ -294,6 +294,61 @@ export async function notifyContractTerminatedForCustomer(params: {
   }
 }
 
+export async function notifyContractDraftDeletedForCustomer(params: {
+  contractId: string;
+  customerId: string;
+  contractCode?: string;
+  reason?: string;
+}): Promise<void> {
+  try {
+    const { contractId, customerId, contractCode, reason } = params;
+    if (!Types.ObjectId.isValid(contractId) || !Types.ObjectId.isValid(customerId)) return;
+
+    const dedupeKey = `CONTRACT_DRAFT_DELETED:${contractId}`;
+    const title = "Draft contract removed";
+    const baseMessage = contractCode
+      ? `Draft contract ${contractCode} was removed by manager.`
+      : "A draft contract was removed by manager.";
+    const message = `${baseMessage} Reason: ${reason || "No reason provided"}. Please review and submit a new rent request if needed.`;
+
+    const raw = await Notification.findOneAndUpdate(
+      { userId: new Types.ObjectId(customerId), dedupeKey },
+      {
+        $setOnInsert: {
+          userId: new Types.ObjectId(customerId),
+          dedupeKey,
+          type: "CONTRACT_DRAFT_DELETED",
+          title,
+          message,
+          relatedEntityType: "contract",
+          relatedEntityId: new Types.ObjectId(contractId),
+          read: false,
+          meta: { contract_id: contractId, contract_code: contractCode, reason: reason || null }
+        }
+      },
+      { upsert: true, new: true, rawResult: true, setDefaultsOnInsert: true }
+    );
+
+    const inserted = !(raw as any)?.lastErrorObject?.updatedExisting;
+    const doc = (raw as any)?.value;
+    if (inserted && doc) {
+      emitToUser(customerId, "notification:new", {
+        id: doc._id.toString(),
+        type: doc.type,
+        title: doc.title,
+        message: doc.message,
+        relatedEntityType: doc.relatedEntityType,
+        relatedEntityId: doc.relatedEntityId?.toString(),
+        read: doc.read,
+        createdAt: doc.createdAt,
+        meta: doc.meta
+      });
+    }
+  } catch (err) {
+    console.error("[Notification] notifyContractDraftDeletedForCustomer failed", err);
+  }
+}
+
 export async function listMyNotifications(params: {
   userId: string;
   page?: number;

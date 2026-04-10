@@ -281,7 +281,7 @@ export default function CustomerHistoryPage() {
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as HistoryType)}
-                className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
               >
                 <option value="ALL">All types</option>
                 <option value="INBOUND">Inbound</option>

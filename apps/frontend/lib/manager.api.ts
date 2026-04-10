@@ -475,6 +475,21 @@ export async function updateContractStatus(id: string, status: Contract['status'
   return mapBackendContractToContract(contract);
 }
 
+export async function deleteDraftContract(
+  id: string,
+  reason: string
+): Promise<{ contract_id: string; contract_code: string; deleted: true }> {
+  const res = await fetchWithAuth(`/contracts/${id}/draft`, {
+    method: 'DELETE',
+    body: JSON.stringify({ reason }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || 'Failed to delete draft contract');
+  }
+  return data.data || data;
+}
+
 export async function listShelvesByWarehouse(warehouseId: string): Promise<Shelf[]> {
   const res = await fetchWithAuth(`/warehouses/${warehouseId}/shelves`, { method: 'GET' });
   const data = await res.json();

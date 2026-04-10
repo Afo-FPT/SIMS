@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { getCustomerContracts } from '../../../lib/customer.api';
 import type { Contract } from '../../../lib/customer-types';
@@ -87,12 +87,28 @@ function getDateRangeDisplay(contract: Contract): string {
   return '—';
 }
 
+function getContractEndDate(contract: Contract): string | undefined {
+  if (contract.rentedZones?.length) {
+    const endDates = contract.rentedZones
+      .map((rz) => rz.endDate)
+      .filter((d): d is string => Boolean(d));
+    if (endDates.length > 0) {
+      return new Date(Math.max(...endDates.map((d) => new Date(d).getTime()))).toISOString();
+    }
+  }
+  return contract.requestedEndDate;
+}
+
 export default function ContractsPage() {
   const PAGE_SIZE = 10;
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [warehouseFilter, setWarehouseFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | Contract['status']>('all');
+  const [sortBy, setSortBy] = useState<'updated_desc' | 'updated_asc' | 'expiry_asc' | 'expiry_desc'>('updated_desc');
 
   useEffect(() => {
     loadContracts();
@@ -112,9 +128,71 @@ export default function ContractsPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(contracts.length / PAGE_SIZE));
+  const warehouseOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    contracts.forEach((c) => {
+      const key = c.warehouseId || c.warehouseName;
+      if (!key) return;
+      map.set(key, c.warehouseName || c.warehouseId || key);
+    });
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [contracts]);
+
+  const filteredContracts = useMemo(() => {
+    let list = [...contracts];
+    const q = search.trim().toLowerCase();
+
+    if (q) {
+      list = list.filter((c) => {
+        const zones = (c.rentedZones ?? []).map((z) => z.zoneCode || z.zoneName || z.zoneId).join(' ');
+        const haystack = [
+          c.code,
+          c.warehouseName,
+          c.warehouseAddress,
+          c.status,
+          zones,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    if (warehouseFilter !== 'all') {
+      list = list.filter((c) => (c.warehouseId || c.warehouseName) === warehouseFilter);
+    }
+    if (statusFilter !== 'all') {
+      list = list.filter((c) => c.status === statusFilter);
+    }
+
+    list.sort((a, b) => {
+      if (sortBy === 'updated_desc') {
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      }
+      if (sortBy === 'updated_asc') {
+        return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      }
+      const aEnd = getContractEndDate(a);
+      const bEnd = getContractEndDate(b);
+      const aTs = aEnd ? new Date(aEnd).getTime() : Number.POSITIVE_INFINITY;
+      const bTs = bEnd ? new Date(bEnd).getTime() : Number.POSITIVE_INFINITY;
+      if (sortBy === 'expiry_asc') return aTs - bTs;
+      return bTs - aTs;
+    });
+
+    return list;
+  }, [contracts, search, warehouseFilter, statusFilter, sortBy]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, warehouseFilter, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredContracts.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
-  const paged = contracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const paged = filteredContracts.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
     <div className="space-y-8">
@@ -139,6 +217,68 @@ export default function ContractsPage() {
         </div>
       ) : (
         <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-end">
+              <div className="space-y-1 xl:col-span-2">
+                <p className="text-xs font-bold text-slate-500">Search</p>
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    search
+                  </span>
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search contract code, zone, warehouse..."
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500">Warehouse</p>
+                <select
+                  value={warehouseFilter}
+                  onChange={(e) => setWarehouseFilter(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="all">All warehouses</option>
+                  {warehouseOptions.map((w) => (
+                    <option key={w.value} value={w.value}>
+                      {w.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500">Status</p>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Rented</option>
+                  <option value="draft">Pending confirmation</option>
+                  <option value="pending_payment">Pending payment</option>
+                  <option value="expired">Expired</option>
+                  <option value="terminated">Terminated</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500">Sort</p>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="updated_desc">Newest updated</option>
+                  <option value="updated_asc">Oldest updated</option>
+                  <option value="expiry_asc">Expiry date: nearest first</option>
+                  <option value="expiry_desc">Expiry date: farthest first</option>
+                </select>
+              </div>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -207,25 +347,32 @@ export default function ContractsPage() {
                     </td>
                   </tr>
                 ))}
+                {paged.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
+                      No contracts match your filters.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </section>
       )}
 
-      {!loading && !error && contracts.length > 0 && (
+      {!loading && !error && contracts.length > 0 && filteredContracts.length > 0 && (
         <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
           <p className="text-sm text-slate-500 whitespace-nowrap">
             Showing{' '}
             <span className="font-bold text-slate-700">
-              {Math.min((safePage - 1) * PAGE_SIZE + 1, contracts.length)}
+              {Math.min((safePage - 1) * PAGE_SIZE + 1, filteredContracts.length)}
             </span>
             {' '}to{' '}
             <span className="font-bold text-slate-700">
-              {Math.min(safePage * PAGE_SIZE, contracts.length)}
+              {Math.min(safePage * PAGE_SIZE, filteredContracts.length)}
             </span>
             {' '}of{' '}
-            <span className="font-bold text-slate-700">{contracts.length}</span>
+            <span className="font-bold text-slate-700">{filteredContracts.length}</span>
           </p>
           <Pagination currentPage={safePage} totalPages={totalPages} onPageChange={setPage} />
         </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../../lib/toast';
 import {
@@ -32,8 +32,11 @@ function utilizationBadge(pct: number): { label: string; className: string } | n
 export default function StaffInboundPutawayDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const toast = useToastHelpers();
   const id = params.id as string;
+  const from = searchParams.get('from');
+  const backHref = from === 'inbound' ? '/staff/inbound-requests' : '/staff/tasks';
 
   const [req, setReq] = useState<StorageRequestView | null>(null);
   const [shelves, setShelves] = useState<ContractShelfOption[]>([]);
@@ -214,7 +217,7 @@ export default function StaffInboundPutawayDetailPage() {
         })),
       });
       toast.success('Putaway completed. Stored quantities updated.');
-      router.push('/staff/inbound-requests');
+      router.push(backHref);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to complete putaway');
     } finally {
@@ -238,7 +241,7 @@ export default function StaffInboundPutawayDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/staff/inbound-requests" className="text-sm font-bold text-slate-500 hover:text-primary">
+      <Link href={backHref} className="text-sm font-bold text-slate-500 hover:text-primary">
         ← Back
       </Link>
 
@@ -250,7 +253,7 @@ export default function StaffInboundPutawayDetailPage() {
             <div className="space-y-1 text-sm">
               <p><span className="font-bold text-slate-600">Contract code:</span> {req.contract_code ?? req.contract_id}</p>
               <p><span className="font-bold text-slate-600">Requested zone:</span> {req.requested_zone_code ?? req.requested_zone_id ?? '—'}</p>
-              <p><span className="font-bold text-slate-600">Customer:</span> {req.customer_id}</p>
+              <p><span className="font-bold text-slate-600">Customer:</span> {req.customer_name || req.customer_id}</p>
               <p><span className="font-bold text-slate-600">Created at:</span> {formatDate(req.created_at)}</p>
               <p><span className="font-bold text-slate-600">Status:</span> 
                 <span className={`ml-2 px-2 py-0.5 rounded-lg text-xs font-bold ${
@@ -505,7 +508,7 @@ export default function StaffInboundPutawayDetailPage() {
 
       {/* Actions */}
       <div className="flex justify-end gap-2 items-center">
-        <Button variant="ghost" onClick={() => router.push('/staff/inbound-requests')}>
+        <Button variant="ghost" onClick={() => router.push(backHref)}>
           Cancel
         </Button>
         {req.status === 'APPROVED' ? (

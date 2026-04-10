@@ -4,7 +4,8 @@ import {
   requestDraftContractController,
   getContractsController,
   getContractByIdController,
-  updateContractStatusController
+  updateContractStatusController,
+  deleteDraftContractController
 } from "../controllers/contract.controller";
 import { listContractShelvesController } from "../controllers/shelf.controller";
 import { authenticate, authorizeRoles } from "../middleware/auth.middleware";
@@ -81,6 +82,18 @@ router.patch(
   authenticate,
   authorizeRoles("manager"),
   updateContractStatusController
+);
+
+/**
+ * DELETE /api/contracts/:id/draft
+ * Delete a broken draft contract
+ * Authorization: Manager only
+ */
+router.delete(
+  "/:id/draft",
+  authenticate,
+  authorizeRoles("manager"),
+  deleteDraftContractController
 );
 
 export default router;

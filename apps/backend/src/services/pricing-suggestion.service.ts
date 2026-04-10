@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAiRuntimeSettings } from "./ai-settings.service";
+import { withGeminiRetry } from "./ai-gemini.util";
 
 export type ZonePricingInputRow = {
   zoneCode: string;
@@ -40,7 +41,7 @@ export async function suggestZoneMonthlyPrices(rows: ZonePricingInputRow[]): Pro
     });
 
     const prompt = `zones(JSON): ${JSON.stringify(rows)}`;
-    const result = await model.generateContent(prompt);
+    const result = await withGeminiRetry(() => model.generateContent(prompt));
     const text = result?.response?.text?.() ?? "";
     const match = text.match(/\[[\s\d.,-]+\]/);
     const jsonStr = match ? match[0] : text.trim();

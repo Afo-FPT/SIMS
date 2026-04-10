@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { runAiChat, type ChatMessage } from "../services/ai-chat.service";
+import { isGeminiHighDemandError } from "../services/ai-gemini.util";
 
 const MAX_MESSAGES = 24;
 const MAX_CONTENT = 8000;
@@ -50,6 +51,11 @@ export async function aiChatController(req: Request, res: Response) {
     });
   } catch (error: any) {
     const msg = error?.message || "Chat failed";
+    if (isGeminiHighDemandError(error)) {
+      return res.status(503).json({
+        message: "AI service is currently under high demand. Please try again in a moment.",
+      });
+    }
     if (
       msg.includes("GEMINI_API_KEY") ||
       msg.includes("not configured") ||

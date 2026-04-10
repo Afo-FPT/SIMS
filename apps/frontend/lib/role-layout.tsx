@@ -97,7 +97,6 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
       'INBOUND_REQUESTS': 'inbound-requests',
       'OUTBOUND_REQUESTS': 'outbound-requests',
       'CYCLE_COUNT': 'cycle-count',
-      'NOTIFICATIONS': 'notifications',
     };
 
     const targetPath = pathMap[view] || view.toLowerCase();
@@ -177,7 +176,6 @@ export default function RoleLayout({ children, requiredRole }: RoleLayoutProps) 
     'settings': 'SETTINGS',
     'inbound-requests': 'INBOUND_REQUESTS',
     'outbound-requests': 'OUTBOUND_REQUESTS',
-    'notifications': 'NOTIFICATIONS',
     'history': 'HISTORY',
   };
 

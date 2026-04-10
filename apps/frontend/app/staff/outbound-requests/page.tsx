@@ -58,7 +58,8 @@ export default function StaffOutboundRequestsPage() {
           <Table>
             <TableHead>
               <TableHeader>Outbound reference</TableHeader>
-              <TableHeader>Contract code</TableHeader>
+              <TableHeader>Warehouse</TableHeader>
+              <TableHeader>Customer</TableHeader>
               <TableHeader>Items</TableHeader>
               <TableHeader>Status</TableHeader>
               <TableHeader>Action</TableHeader>
@@ -67,11 +68,12 @@ export default function StaffOutboundRequestsPage() {
               {items.map((r) => (
                 <TableRow key={r.request_id}>
                   <TableCell className="font-bold text-slate-900">{r.reference ?? r.request_id}</TableCell>
-                  <TableCell className="text-slate-700">{r.contract_code ?? r.contract_id}</TableCell>
+                  <TableCell className="text-slate-700">{r.warehouse_name ?? r.warehouse_id ?? '—'}</TableCell>
+                  <TableCell className="text-slate-700">{r.customer_name ?? r.customer_id ?? '—'}</TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell><Badge variant="info">{formatStatusLabel(r.status)}</Badge></TableCell>
                   <TableCell>
-                    <Link href={`/staff/outbound-requests/${r.request_id}`} className="text-sm font-bold text-primary hover:underline">
+                    <Link href={`/staff/outbound-requests/${r.request_id}?from=outbound`} className="text-sm font-bold text-primary hover:underline">
                       Pick & dispatch
                     </Link>
                   </TableCell>

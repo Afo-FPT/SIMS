@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { getReportInsight } from "../services/ai-insights.service";
+import { isGeminiHighDemandError } from "../services/ai-gemini.util";
 
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0;
@@ -32,6 +33,11 @@ export async function aiInsightsController(req: Request, res: Response) {
     });
   } catch (error: any) {
     const msg = error?.message || "Failed to generate insight";
+    if (isGeminiHighDemandError(error)) {
+      return res.status(503).json({
+        message: "AI insight service is currently under high demand. Please try again in a moment.",
+      });
+    }
     if (
       msg.includes("GEMINI_API_KEY") ||
       msg.includes("not configured") ||

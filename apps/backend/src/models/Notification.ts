@@ -11,6 +11,7 @@ export type NotificationType =
   | "REQUEST_ASSIGNED"
   | "REQUEST_DONE_BY_STAFF"
   | "REQUEST_COMPLETED"
+  | "CONTRACT_DRAFT_DELETED"
   | "CONTRACT_EXPIRED"
   | "CONTRACT_TERMINATED";
 
@@ -47,6 +48,7 @@ const NotificationSchema = new Schema<INotification>(
         "REQUEST_ASSIGNED",
         "REQUEST_DONE_BY_STAFF",
         "REQUEST_COMPLETED",
+        "CONTRACT_DRAFT_DELETED",
         "CONTRACT_EXPIRED",
         "CONTRACT_TERMINATED"
       ]

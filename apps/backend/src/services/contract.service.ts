@@ -7,6 +7,7 @@ import { ContractPackage } from "../models/ContractPackage";
 import { Types } from "mongoose";
 import { runContractExpirySideEffects } from "./contract-expiry-side-effects.service";
 import { runContractTerminationSideEffects } from "./contract-termination-side-effects.service";
+import { notifyContractDraftDeletedForCustomer } from "./notification.service";
 
 /**
  * DTO for creating a contract (manager: assign zones)
@@ -871,4 +872,49 @@ export async function updateContractStatus(
   } finally {
     session.endSession();
   }
+}
+
+export async function deleteDraftContract(
+  contractId: string,
+  userId: string,
+  userRole: string,
+  reason: string
+): Promise<{ contract_id: string; contract_code: string; deleted: true }> {
+  if (!Types.ObjectId.isValid(contractId)) {
+    throw new Error("Invalid contract ID");
+  }
+  if (!Types.ObjectId.isValid(userId) || userRole !== "manager") {
+    throw new Error("Only managers can delete draft contracts");
+  }
+
+  const contract = await Contract.findById(contractId).select("_id contractCode status customerId");
+  if (!contract) {
+    throw new Error("Contract not found");
+  }
+  if (contract.status !== "draft") {
+    throw new Error("Only draft contracts can be deleted");
+  }
+  const cleanedReason = String(reason || "").trim();
+  if (!cleanedReason) {
+    throw new Error("Delete reason is required");
+  }
+
+  await Contract.deleteOne({ _id: contract._id });
+
+  try {
+    await notifyContractDraftDeletedForCustomer({
+      contractId: contract._id.toString(),
+      customerId: contract.customerId.toString(),
+      contractCode: contract.contractCode,
+      reason: cleanedReason
+    });
+  } catch (e: any) {
+    console.error("[Contract] notifyContractDraftDeletedForCustomer failed", e?.message || e);
+  }
+
+  return {
+    contract_id: contract._id.toString(),
+    contract_code: contract.contractCode,
+    deleted: true
+  };
 }

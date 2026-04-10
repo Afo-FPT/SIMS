@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { Contract } from '../../../lib/customer-types';
-import { listContracts, listShelvesByWarehouse, updateContractStatus } from '../../../lib/manager.api';
+import { deleteDraftContract, listContracts, listShelvesByWarehouse, updateContractStatus } from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
@@ -36,6 +36,9 @@ export default function ManagerRentRequestsPage() {
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const [loadingShelves, setLoadingShelves] = useState(false);
   const [shelvesError, setShelvesError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
 
   useEffect(() => {
     load();
@@ -67,6 +70,27 @@ export default function ManagerRentRequestsPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to approve draft contract');
     } finally {
       setApprovingId(null);
+    }
+  };
+
+  const doDeleteDraft = async (c: Contract) => {
+    const reason = deleteReason.trim();
+    if (!reason) {
+      toast.warning('Please enter a reason before deleting this draft contract');
+      return;
+    }
+    try {
+      setDeletingId(c.id);
+      await deleteDraftContract(c.id, reason);
+      toast.success(`Draft contract ${c.code} was deleted. Customer has been notified.`);
+      if (detail?.id === c.id) setDetail(null);
+      setDeleteTarget(null);
+      setDeleteReason('');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete draft contract');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -338,8 +362,62 @@ export default function ManagerRentRequestsPage() {
               >
                 Process
               </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setDeleteTarget(detail);
+                  setDeleteReason('');
+                }}
+                disabled={approvingId === detail.id}
+              >
+                Delete draft
+              </Button>
               <Button variant="ghost" onClick={() => setDetail(null)}>
                 Close
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal
+          open={!!deleteTarget}
+          onOpenChange={(o) => {
+            if (!o) {
+              setDeleteTarget(null);
+              setDeleteReason('');
+            }
+          }}
+          title="Delete draft contract?"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-700">
+              This will permanently delete draft contract <span className="font-bold">{deleteTarget.code}</span>.
+            </p>
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              The customer will receive a notification that this draft was removed.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500">Reason to customer</label>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="Enter reason for deleting this draft..."
+                className="w-full min-h-[88px] rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-y"
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => doDeleteDraft(deleteTarget)}
+                isLoading={deletingId === deleteTarget.id}
+              >
+                Confirm delete
               </Button>
             </div>
           </div>

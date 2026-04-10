@@ -271,7 +271,10 @@ export default function StaffTasksPage() {
           zoneCode: r.requested_zone_code,
           status: r.status,
           updatedAt,
-          actionHref: kind === 'INBOUND' ? `/staff/inbound-requests/${r.request_id}` : `/staff/outbound-requests/${r.request_id}`,
+          actionHref:
+            kind === 'INBOUND'
+              ? `/staff/inbound-requests/${r.request_id}?from=tasks`
+              : `/staff/outbound-requests/${r.request_id}?from=tasks`,
           actionLabel: r.status === 'APPROVED' ? 'Open' : 'View',
         });
       };

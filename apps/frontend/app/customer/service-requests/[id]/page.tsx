@@ -16,7 +16,7 @@ import { Button } from '../../../../components/ui/Button';
 const statusLabel: Record<string, string> = {
   PENDING: 'Pending',
   APPROVED: 'Approved',
-  DONE_BY_STAFF: 'In progress',
+  DONE_BY_STAFF: 'Done by staff',
   COMPLETED: 'Completed',
   REJECTED: 'Rejected',
 };
@@ -183,12 +183,6 @@ export default function CustomerServiceRequestDetailPage() {
             <span className="font-bold text-slate-700">{totals.actual}</span>
           </div>
         </div>
-        <p className="text-xs text-slate-500">
-          <strong className="text-slate-600">Before / After:</strong> quantity of this product on the shelf line before and
-          after staff completed the {data.request_type === 'IN' ? 'inbound' : 'outbound'} (recorded when the request is
-          processed). Older requests may show &quot;—&quot;.
-        </p>
-
         {data.items.length === 0 ? (
           <p className="text-slate-500 text-sm py-6">No items in this request.</p>
         ) : (

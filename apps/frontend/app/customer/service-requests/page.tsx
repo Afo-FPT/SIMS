@@ -537,7 +537,7 @@ export default function ServiceRequestsPage() {
   const statusLabel: Record<string, string> = {
     PENDING: 'Pending',
     APPROVED: 'Approved',
-    DONE_BY_STAFF: 'In progress',
+    DONE_BY_STAFF: 'Done by staff',
     COMPLETED: 'Completed',
     REJECTED: 'Rejected',
   };

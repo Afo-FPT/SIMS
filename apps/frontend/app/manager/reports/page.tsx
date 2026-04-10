@@ -186,9 +186,10 @@ export default function ManagerReportsPage() {
   const [contractRiskEnd, setContractRiskEnd] = useState(initR.end);
   const [contractRiskPreset, setContractRiskPreset] = useState<QuickPreset | null>(null);
 
-  const [deepExpiryStart, setDeepExpiryStart] = useState(initR.start);
-  const [deepExpiryEnd, setDeepExpiryEnd] = useState(initR.end);
-  const [deepExpiryPreset, setDeepExpiryPreset] = useState<QuickPreset | null>(null);
+  const deepExpiryInitRange = useMemo(() => rollingPresetRange('2w'), []);
+  const [deepExpiryStart, setDeepExpiryStart] = useState(deepExpiryInitRange.start);
+  const [deepExpiryEnd, setDeepExpiryEnd] = useState(deepExpiryInitRange.end);
+  const [deepExpiryPreset, setDeepExpiryPreset] = useState<QuickPreset | null>('2w');
 
 
   const [deepPenaltyStart, setDeepPenaltyStart] = useState(initR.start);

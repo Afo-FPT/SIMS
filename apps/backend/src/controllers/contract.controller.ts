@@ -5,6 +5,7 @@ import {
   getContracts,
   getContractById,
   updateContractStatus,
+  deleteDraftContract,
   CreateContractRequest,
   RequestDraftContractRequest
 } from "../services/contract.service";
@@ -258,5 +259,40 @@ export async function updateContractStatusController(
     res.status(500).json({
       message: error.message || "Internal server error"
     });
+  }
+}
+
+/**
+ * Delete draft contract
+ * DELETE /api/contracts/:id/draft
+ * Authorization: Manager only
+ */
+export async function deleteDraftContractController(req: Request, res: Response) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+    const reason = String(req.body?.reason ?? "").trim();
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+
+    const result = await deleteDraftContract(id, userId, userRole, reason);
+    return res.json({
+      message: "Draft contract deleted successfully",
+      data: result
+    });
+  } catch (error: any) {
+    if (
+      error.message.includes("not found") ||
+      error.message.includes("Invalid") ||
+      error.message.includes("Only managers") ||
+      error.message.includes("Only draft contracts") ||
+      error.message.includes("required")
+    ) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: error.message || "Internal server error" });
   }
 }

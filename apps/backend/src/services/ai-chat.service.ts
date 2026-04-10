@@ -22,6 +22,7 @@ import { searchAndFilterWarehouses } from "./warehouse.service";
 import { getManagerReport } from "./reports.service";
 import { getAllUsers } from "./user.service";
 import { getAiRuntimeSettings } from "./ai-settings.service";
+import { withGeminiRetry } from "./ai-gemini.util";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1557,7 +1558,7 @@ export async function runAiChat(
     history: history as any,
   });
 
-  let result = await chat.sendMessage(lastUser.content);
+  let result = await withGeminiRetry(() => chat.sendMessage(lastUser.content));
   let response = result.response;
 
   function safeText(): string {
@@ -1606,7 +1607,7 @@ export async function runAiChat(
       functionResponse: r.functionResponse,
     }));
 
-    result = await chat.sendMessage(functionResponses as any);
+    result = await withGeminiRetry(() => chat.sendMessage(functionResponses as any));
     response = result.response;
   }
 

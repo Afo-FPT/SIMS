@@ -84,8 +84,6 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
           {
             section: 'Operations', items: [
               { id: 'TASKS', label: 'Tasks', icon: 'assignment' },
-              { id: 'INVENTORY', label: 'Inventory Movement', icon: 'inventory_2' },
-              { id: 'NOTIFICATIONS', label: 'Notifications', icon: 'notifications' },
             ]
           },
           {
@@ -113,10 +111,14 @@ const Sidebar: React.FC<SidebarProps> = ({ persona, activeView, onNavigate, user
             ]
           },
           {
-            section: 'Contracts & Insights', items: [
+            section: 'Contracts', items: [
               { id: 'CONTRACTS', label: 'Contracts', icon: 'description' },
               { id: 'INVENTORY', label: 'Inventory', icon: 'inventory_2' },
               { id: 'HISTORY', label: 'History', icon: 'history' },
+            ]
+          },
+          {
+            section: 'Reports', items: [
               { id: 'REPORTS', label: 'Reports', icon: 'monitoring' },
             ]
           },

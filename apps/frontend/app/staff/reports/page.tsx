@@ -18,10 +18,12 @@ import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterB
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Button } from '../../../components/ui/Button';
+import { Pagination } from '../../../components/ui/Pagination';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
-import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { rollingPresetRange, type QuickPreset } from '../../../lib/report-date-range';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
+const CYCLE_LIST_PAGE_SIZE = 8;
 
 ChartJSCore.register(ArcElement, BarElement, CategoryScale, ChartLegend, LinearScale, ChartTooltip);
 
@@ -30,14 +32,14 @@ function toIsoDate(date: Date): string {
 }
 
 export default function StaffReportsPage() {
-  const init = useMemo(() => defaultReportDateRange(), []);
+  const init = useMemo(() => rollingPresetRange('7d'), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   const [historyStartDate, setHistoryStartDate] = useState(init.start);
   const [historyEndDate, setHistoryEndDate] = useState(init.end);
-  const [historyPreset, setHistoryPreset] = useState<QuickPreset | null>('1m');
+  const [historyPreset, setHistoryPreset] = useState<QuickPreset | null>('7d');
 
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
@@ -45,6 +47,8 @@ export default function StaffReportsPage() {
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
+  const [cycleSort, setCycleSort] = useState<'risk_first' | 'best_first' | 'latest_first'>('risk_first');
+  const [cyclePage, setCyclePage] = useState(1);
 
   const aiStartDate = useMemo(() => {
     const d = new Date();
@@ -84,7 +88,12 @@ export default function StaffReportsPage() {
           setLoading(true);
           setError(null);
         }
-        const [req, cc] = await Promise.all([listStorageRequests(), getCycleCounts()]);
+        const [req, cc] = await Promise.all([
+          // Staff reports must include all assigned requests across statuses,
+          // not only default APPROVED items.
+          listStorageRequests({ allAssigned: true }),
+          getCycleCounts(),
+        ]);
         if (cancelled) return;
         setRequests(req || []);
         setCycleCounts(cc || []);
@@ -145,29 +154,81 @@ export default function StaffReportsPage() {
       const iso = new Date(r.updated_at || r.created_at).toISOString().slice(0, 10);
       const row = byDay.get(iso);
       if (!row) return;
-      const qty = (r.items || []).reduce((sum: number, i: any) => sum + (i.quantity_actual ?? i.quantity_requested ?? 0), 0);
-      if (r.request_type === 'IN') row.inbound += qty;
-      else row.outbound += qty;
+      // Count completed tasks per day (not item units).
+      if (r.request_type === 'IN') row.inbound += 1;
+      else row.outbound += 1;
     });
 
     historyCycleCounts.forEach((c) => {
       const iso = new Date(c.updated_at || c.created_at).toISOString().slice(0, 10);
       const row = byDay.get(iso);
       if (!row) return;
-      row.cycle += (c.items || c.target_items || []).length;
+      row.cycle += 1;
     });
 
     return base.map(({ day, inbound, outbound, cycle }) => ({ day, inbound, outbound, cycle }));
   }, [historyRequests, historyCycleCounts, historyStartDate, historyEndDate]);
 
   const discrepancySummary = useMemo(() => {
-    const damaged = requests.reduce((sum, r) => sum + (r.items || []).reduce((s: number, i: any) => s + (i.damage_quantity || 0), 0), 0);
-    const mismatch = cycleCounts.reduce((sum, c) => sum + (c.items || []).reduce((s: number, i: any) => s + Math.abs(i.discrepancy || 0), 0), 0);
-    const location = requests.filter((r) => r.status === 'REJECTED').length;
+    const damagedRequestIds = new Set<string>();
+    const mismatchRequestIds = new Set<string>();
+    const locationRequestIds = new Set<string>();
+
+    const mapLossReasonToCategory = (
+      reasonRaw: unknown
+    ): 'Damaged' | 'Quantity mismatch' | 'Location/flow issue' | null => {
+      const reason = String(reasonRaw || '').trim().toLowerCase();
+      if (!reason) return null;
+      if (
+        reason === 'damage' ||
+        reason === 'damage_storage' ||
+        reason === 'damage_picking' ||
+        reason === 'quality' ||
+        reason === 'expired'
+      ) {
+        return 'Damaged';
+      }
+      if (reason === 'location_error') return 'Location/flow issue';
+      // Everything else (shortage, other, unknown future reasons) falls into mismatch bucket.
+      return 'Quantity mismatch';
+    };
+
+    requests.forEach((r) => {
+      const requestKey = `req:${r.request_id}`;
+      const items = r.items || [];
+
+      let hasDamaged = false;
+      let hasMismatch = false;
+      let hasLocation = false;
+
+      for (const it of items) {
+        if ((it.damage_quantity ?? 0) > 0) hasDamaged = true;
+
+        const requested = Number(it.quantity_requested ?? 0);
+        const actual = Number(it.quantity_actual ?? requested);
+        if (actual !== requested) hasMismatch = true;
+
+        const category = mapLossReasonToCategory(it.loss_reason);
+        if (category === 'Damaged') hasDamaged = true;
+        else if (category === 'Quantity mismatch') hasMismatch = true;
+        else if (category === 'Location/flow issue') hasLocation = true;
+      }
+
+      if (hasDamaged) damagedRequestIds.add(requestKey);
+      if (hasMismatch) mismatchRequestIds.add(requestKey);
+      if (hasLocation) locationRequestIds.add(requestKey);
+    });
+
+    // Cycle count issues are request-level mismatches when any item has discrepancy.
+    cycleCounts.forEach((c) => {
+      const hasDiscrepancy = (c.items || []).some((it: any) => Number(it.discrepancy || 0) !== 0);
+      if (hasDiscrepancy) mismatchRequestIds.add(`cycle:${c.cycle_count_id}`);
+    });
+
     return [
-      { name: 'Damaged', value: damaged },
-      { name: 'Quantity mismatch', value: mismatch },
-      { name: 'Location/flow issue', value: location },
+      { name: 'Damaged', value: damagedRequestIds.size },
+      { name: 'Quantity mismatch', value: mismatchRequestIds.size },
+      { name: 'Location/flow issue', value: locationRequestIds.size },
     ];
   }, [requests, cycleCounts]);
 
@@ -178,8 +239,6 @@ export default function StaffReportsPage() {
       const accuracy = system === 0 ? 100 : Math.max(0, Math.round(100 - (Math.abs(system - actual) / system) * 100));
       return {
         id: String(c.cycle_count_id).slice(-6).toUpperCase(),
-        system,
-        actual,
         accuracy,
       };
     });
@@ -234,6 +293,28 @@ export default function StaffReportsPage() {
     const lowAccuracy = realtimeCycleAccuracy.filter((item) => item.accuracy < 80).length;
     return { avgAccuracy, checkedCycles, highAccuracy, lowAccuracy };
   }, [realtimeCycleAccuracy]);
+
+  const cycleAccuracyRows = useMemo(() => {
+    const rows = realtimeCycleAccuracy.map((row, idx) => ({ ...row, rowIndex: idx }));
+    if (cycleSort === 'risk_first') {
+      return rows.sort((a, b) => a.accuracy - b.accuracy || b.rowIndex - a.rowIndex);
+    }
+    if (cycleSort === 'best_first') {
+      return rows.sort((a, b) => b.accuracy - a.accuracy || b.rowIndex - a.rowIndex);
+    }
+    return rows.sort((a, b) => b.rowIndex - a.rowIndex);
+  }, [realtimeCycleAccuracy, cycleSort]);
+
+  const cycleTotalPages = Math.max(1, Math.ceil(cycleAccuracyRows.length / CYCLE_LIST_PAGE_SIZE));
+  const cycleSafePage = Math.min(cyclePage, cycleTotalPages);
+  const cyclePagedRows = useMemo(() => {
+    const start = (cycleSafePage - 1) * CYCLE_LIST_PAGE_SIZE;
+    return cycleAccuracyRows.slice(start, start + CYCLE_LIST_PAGE_SIZE);
+  }, [cycleAccuracyRows, cycleSafePage]);
+
+  useEffect(() => {
+    setCyclePage(1);
+  }, [cycleSort, realtimeCycleAccuracy.length]);
 
   const workloadKpis = useMemo(() => {
     const pendingTotal = realtimeWorkloadByStatus.find((d) => d.status === 'Pending');
@@ -299,7 +380,7 @@ export default function StaffReportsPage() {
           <KpiCard title="Inbound orders" value={historyKpis.inboundOrders} />
           <KpiCard title="Outbound orders" value={historyKpis.outboundOrders} />
           <KpiCard title="Cycle tasks" value={historyKpis.cycleTasks} />
-          <KpiCard title="Moved units" value={historyKpis.movedUnits} />
+          <KpiCard title="Total IN/OUT tasks" value={historyKpis.movedUnits} />
         </div>
         <div className="h-72">
           <Bar
@@ -404,32 +485,56 @@ export default function StaffReportsPage() {
           <KpiCard title=">= 95% accuracy" value={cycleKpis.highAccuracy} />
           <KpiCard title="< 80% accuracy" value={cycleKpis.lowAccuracy} />
         </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="h-72">
-            <Bar
-              data={{
-                labels: realtimeCycleAccuracy.map((d) => d.id),
-                datasets: [
-                  { label: 'System', data: realtimeCycleAccuracy.map((d) => d.system), backgroundColor: '#0ea5e9' },
-                  { label: 'Actual', data: realtimeCycleAccuracy.map((d) => d.actual), backgroundColor: '#22c55e' },
-                ],
-              }}
-              options={{ maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }}
-            />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              Showing <span className="font-bold text-slate-700">{cycleAccuracyRows.length === 0 ? 0 : (cycleSafePage - 1) * CYCLE_LIST_PAGE_SIZE + 1}</span>
+              {' '}to{' '}
+              <span className="font-bold text-slate-700">{Math.min(cycleSafePage * CYCLE_LIST_PAGE_SIZE, cycleAccuracyRows.length)}</span>
+              {' '}of{' '}
+              <span className="font-bold text-slate-700">{cycleAccuracyRows.length}</span> cycles
+            </p>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              Sort:
+              <select
+                value={cycleSort}
+                onChange={(e) => setCycleSort(e.target.value as 'risk_first' | 'best_first' | 'latest_first')}
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="risk_first">Lowest accuracy first</option>
+                <option value="best_first">Highest accuracy first</option>
+                <option value="latest_first">Latest first</option>
+              </select>
+            </label>
           </div>
-          <div className="space-y-3">
-            {realtimeCycleAccuracy.slice(0, 6).map((row) => (
-              <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="font-bold text-slate-900">Cycle {row.id}</p>
-                  <p className="text-sm font-bold text-slate-700">{row.accuracy}%</p>
+
+          {cyclePagedRows.length === 0 ? (
+            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No cycle count records yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {cyclePagedRows.map((row) => (
+                <div key={row.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="font-bold text-slate-900">Cycle {row.id}</p>
+                    <p className="text-sm font-bold text-slate-700">{row.accuracy}%</p>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className={`${row.accuracy >= 95 ? 'bg-emerald-500' : row.accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'} h-full`} style={{ width: `${row.accuracy}%` }} />
+                  </div>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className={`${row.accuracy >= 95 ? 'bg-emerald-500' : row.accuracy >= 80 ? 'bg-amber-500' : 'bg-red-500'} h-full`} style={{ width: `${row.accuracy}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {cycleAccuracyRows.length > CYCLE_LIST_PAGE_SIZE && (
+            <div className="flex justify-center pt-1">
+              <Pagination
+                currentPage={cycleSafePage}
+                totalPages={cycleTotalPages}
+                onPageChange={(p) => setCyclePage(Math.min(Math.max(1, p), cycleTotalPages))}
+              />
+            </div>
+          )}
         </div>
         {insightsByKey.staff_cycle_count_execution && <InsightPanel content={insightsByKey.staff_cycle_count_execution} onClear={() => clearInsight('staff_cycle_count_execution')} />}
       </section>
