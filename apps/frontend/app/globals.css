@@ -2,41 +2,75 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Base layer ─────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --color-primary: #006c75;
+    --color-primary-light: #e6f3f4;
+    --color-primary-dark: #005a63;
+    --color-surface: #ffffff;
+    --color-surface-muted: #f8fafc;
+    --color-border: #e2e8f0;
+    --radius-default: 0.75rem;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ─── Material Symbols ───────────────────────────────────────── */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-.custom-scrollbar::-webkit-scrollbar { 
-  width: 6px; 
-  height: 6px; 
+/* ─── Scrollbar ──────────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track { 
-  background: transparent; 
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb { 
-  background: #cbd5e1; 
-  border-radius: 10px; 
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
 }
 
-.no-scrollbar::-webkit-scrollbar { 
-  display: none; 
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Shimmer skeleton ───────────────────────────────────────── */
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #e2e8f0 40%,
+    #f1f5f9 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+
+/* ─── Animations ─────────────────────────────────────────────── */
 @keyframes slideUpAndFade {
-  from { 
-    opacity: 0; 
-    transform: translateY(10px); 
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-}
-
-.animate-slide-up { 
-  animation: slideUpAndFade 0.4s ease-out forwards; 
 }
 
 @keyframes toastSlideIn {
@@ -48,4 +82,129 @@
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ─── Utility classes ────────────────────────────────────────── */
+.animate-slide-up {
+  animation: slideUpAndFade 0.4s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-zoom-in {
+  animation: zoomIn 0.2s ease-out forwards;
+}
+
+/* ─── Landing page effects ───────────────────────────────────── */
+
+/* Dot grid background */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
+}
+
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-8px) rotate(3deg); }
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+
+@keyframes borderGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,108,117,0); }
+  50%       { box-shadow: 0 0 24px 4px rgba(0,108,117,0.18); }
+}
+
+@keyframes scanline {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(400%); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: floatSlow 6s ease-in-out infinite;
+}
+
+.animate-gradient-shift {
+  background-size: 200% 200%;
+  animation: gradientShift 4s ease infinite;
+}
+
+.animate-border-glow {
+  animation: borderGlow 3s ease-in-out infinite;
+}
+
+/* Staggered entrance - for landing sections */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.10s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.20s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.30s; }
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, #006c75 0%, #4599a1 50%, #006c75 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 4s ease infinite;
+}
+
+/* Feature card glow on hover */
+.feature-card-glow:hover {
+  box-shadow: 0 0 0 1px rgba(0,108,117,0.15), 0 8px 24px rgba(0,108,117,0.10);
+}
+
+/* Pricing featured card animated border */
+.pricing-featured {
+  position: relative;
+}
+.pricing-featured::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #006c75, #4599a1, #006c75);
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease infinite;
+  z-index: -1;
+}
+
+/* Hero grid overlay */
+.hero-grid-overlay {
+  background-image:
+    linear-gradient(rgba(0,108,117,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,108,117,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
 }

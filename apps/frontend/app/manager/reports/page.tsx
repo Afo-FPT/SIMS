@@ -42,6 +42,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import type {
   ManagerReportTrendPoint,
   ManagerReportExpiringAndCapacity,
@@ -838,11 +839,9 @@ export default function ManagerReportsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-        </div>
-        <LoadingSkeleton className="h-64 rounded-3xl" />
+      <div className="space-y-6">
+        <PageHeader title="Manager Reports" />
+        <LoadingSkeleton className="h-64 rounded-2xl" />
       </div>
     );
   }
@@ -852,11 +851,11 @@ export default function ManagerReportsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Reports</h1>
-        <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Manager Reports"
+        description={`Last updated: ${lastUpdated ?? '--:--:--'}`}
+      />
       {insightError && (
         <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-3 rounded-xl">
           {insightError}
@@ -887,7 +886,7 @@ export default function ManagerReportsPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
               <div className="mb-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Space utilization</h3>
               </div>
@@ -951,7 +950,7 @@ export default function ManagerReportsPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
               <div className="mb-6">
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Stock by category</h3>
               </div>
@@ -969,7 +968,7 @@ export default function ManagerReportsPage() {
                   setStockPreset(preset);
                 }}
               />
-              <div className="max-h-[28rem] overflow-y-auto pr-1">
+              <div>
                 <div style={{ height: `${stockChartHeight}px`, minHeight: '18rem' }} className="relative">
                   <Button
                     variant="ghost"
@@ -1007,7 +1006,7 @@ export default function ManagerReportsPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
             <div className="mb-6">
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Inbound / outbound trend</h3>
             </div>
@@ -1121,7 +1120,7 @@ export default function ManagerReportsPage() {
       )}
 
       {tab === 'outbound' && (
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
         <div className="mb-6">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Top 10 outbound products</h3>
         </div>
@@ -1235,7 +1234,7 @@ export default function ManagerReportsPage() {
       )}
 
       {tab === 'processing' && (
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
         <div className="mb-6">
           <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Processing time</h3>
         </div>
@@ -1373,7 +1372,7 @@ export default function ManagerReportsPage() {
       )}
 
       {tab === 'contracts' && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
           <div className="mb-6">
             <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest">Contracts &amp; capacity</h3>
           </div>
@@ -1458,7 +1457,7 @@ export default function ManagerReportsPage() {
 
       {tab === 'deep' && (
         <div className="space-y-8">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-4">
               <div>
                 <h2 className="text-lg font-black text-slate-900">System Revenue</h2>
@@ -1489,7 +1488,7 @@ export default function ManagerReportsPage() {
           </section>
 
           {/* 1. Expiry stacked */}
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Contract &amp; Zone Expiry Snapshot</h2>
@@ -1745,7 +1744,7 @@ export default function ManagerReportsPage() {
           </section>
 
           {/* 2. Combo pricing */}
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Zone fill vs suggested rent</h2>
@@ -1955,7 +1954,7 @@ export default function ManagerReportsPage() {
           </section>
 
           {/* 3. Top stock products */}
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Top 10 Products by Inventory Volume</h2>
@@ -2071,7 +2070,7 @@ export default function ManagerReportsPage() {
           </section>
 
           {/* 4. Penalty horizontal bar */}
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="text-lg font-black text-slate-900">Damage exposure by customer</h2>

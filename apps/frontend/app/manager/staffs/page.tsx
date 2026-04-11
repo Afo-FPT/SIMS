@@ -6,6 +6,7 @@ import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/Table';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { useToastHelpers } from '../../../lib/toast';
 import {
@@ -91,14 +92,12 @@ export default function ManagerStaffsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staffs</h1>
-        <p className="text-slate-500 mt-1">
-          Assign exactly one staff to each warehouse. A staff can be assigned to many warehouses.
-        </p>
-      </div>
+      <PageHeader
+        title="Staff Assignment"
+        description="Assign exactly one staff per warehouse. A staff member can manage multiple warehouses."
+      />
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
         <div className="grid grid-cols-1 gap-4">
           <Input
             label="Search warehouse"
@@ -114,7 +113,7 @@ export default function ManagerStaffsPage() {
         </div>
       </section>
 
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
         <Table>
           <TableHead>
             <TableHeader>Warehouse</TableHeader>

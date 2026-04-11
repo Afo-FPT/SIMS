@@ -4,6 +4,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
+import { Badge } from '../../../components/ui/Badge';
+import { PageHeader } from '../../../components/ui/PageHeader';
+import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
+import { EmptyState } from '../../../components/ui/EmptyState';
+import {
+  Table,
+  TableHead,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableCell,
+} from '../../../components/ui/Table';
 import { useToastHelpers } from '../../../lib/toast';
 import {
   ContractPackage,
@@ -50,18 +62,15 @@ export default function ManagerContractPackagesPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await listContractPackages();
+        const [data, whs] = await Promise.all([listContractPackages(), listWarehouses()]);
         setPackages(data);
-        const whs = await listWarehouses();
         setWarehouses(whs);
       } catch (err: any) {
-        console.error(err);
         toast.error(err.message || 'Failed to load contract packages');
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -90,32 +99,20 @@ export default function ManagerContractPackagesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim()) {
-      toast.error('Package name is required');
-      return;
-    }
+    if (!form.name.trim()) { toast.error('Package name is required'); return; }
     const duration = Number(form.duration);
     if (!form.duration.trim() || !Number.isFinite(duration) || duration <= 0) {
-      toast.error('Duration must be a positive number');
-      return;
+      toast.error('Duration must be a positive number'); return;
     }
-    if (!form.warehouseId) {
-      toast.error('Please select a warehouse');
-      return;
-    }
-    if (!form.unit) {
-      toast.error('Please select a unit');
-      return;
-    }
+    if (!form.warehouseId) { toast.error('Please select a warehouse'); return; }
+    if (!form.unit) { toast.error('Please select a unit'); return; }
     const pricePerM2 = Number(form.pricePerM2);
     const pricePerDay = Number(form.pricePerDay);
     if (!form.pricePerM2.trim() || !Number.isFinite(pricePerM2) || pricePerM2 <= 0) {
-      toast.error('Price /1m² must be > 0');
-      return;
+      toast.error('Price /1m² must be > 0'); return;
     }
     if (!form.pricePerDay.trim() || !Number.isFinite(pricePerDay) || pricePerDay <= 0) {
-      toast.error('Price /day must be > 0');
-      return;
+      toast.error('Price /day must be > 0'); return;
     }
 
     setSaving(true);
@@ -142,16 +139,13 @@ export default function ManagerContractPackagesPage() {
 
       setPackages((prev) => {
         const idx = prev.findIndex((p) => p._id === saved._id);
-        if (idx === -1) {
-          return [saved, ...prev];
-        }
+        if (idx === -1) return [saved, ...prev];
         const next = [...prev];
         next[idx] = saved;
         return next;
       });
       resetForm();
     } catch (err: any) {
-      console.error(err);
       toast.error(err.message || 'Failed to save package');
     } finally {
       setSaving(false);
@@ -165,98 +159,88 @@ export default function ManagerContractPackagesPage() {
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Contract Packages</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Create and manage pricing packages for warehouse rental contracts.
-          </p>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Contract Packages"
+        description="Create and manage pricing packages for warehouse rental contracts."
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)] gap-8 items-start">
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900">Package list</h2>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6 items-start">
+        {/* Package list */}
+        <section className="bg-white rounded-2xl shadow-card border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <h2 className="text-base font-bold text-slate-900">Package list</h2>
+            <span className="text-xs text-slate-500">{packages.length} package{packages.length !== 1 ? 's' : ''}</span>
           </div>
 
           {loading ? (
-            <div className="py-12 text-center text-slate-500 text-sm">Loading packages...</div>
+            <div className="p-6">
+              <LoadingSkeleton className="h-40" />
+            </div>
           ) : packages.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 text-sm">
-              No packages yet. Create the first one in the form.
-            </div>
+            <EmptyState
+              icon="inventory_2"
+              title="No packages yet"
+              message="Create the first package using the form."
+            />
           ) : (
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <table className="min-w-full divide-y divide-slate-100 text-sm">
-                <thead className="bg-slate-50/60">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Package
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Duration
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Warehouse
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {packages.map((pkg) => (
-                    <tr key={pkg._id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900">{pkg.name}</div>
-                        <div className="text-xs text-slate-500">
-                          Updated:{' '}
-                          {new Date(pkg.updatedAt).toLocaleDateString('vi-VN', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                        {pkg.duration}{' '}
-                        {pkg.unit === 'day' ? 'day' : pkg.unit === 'month' ? 'month' : 'year'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap font-semibold text-slate-700">
-                        {warehouses.find((w) => w.id === pkg.warehouseId)?.name || '—'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 rounded-lg text-xs font-bold ${pkg.isActive !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>
-                          {pkg.isActive !== false ? 'ACTIVE' : 'DISABLED'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleEditClick(pkg)}
-                          >
-                            Edit
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHead>
+                <TableHeader>Package</TableHeader>
+                <TableHeader>Duration</TableHeader>
+                <TableHeader>Warehouse</TableHeader>
+                <TableHeader>Status</TableHeader>
+                <TableHeader className="text-right">Action</TableHeader>
+              </TableHead>
+              <TableBody>
+                {packages.map((pkg) => (
+                  <TableRow
+                    key={pkg._id}
+                    onClick={() => handleEditClick(pkg)}
+                    className={selectedId === pkg._id ? 'bg-primary-light/40' : ''}
+                  >
+                    <TableCell>
+                      <div className="font-semibold text-slate-900">{pkg.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Updated{' '}
+                        {new Date(pkg.updatedAt).toLocaleDateString('vi-VN', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-slate-700">
+                      {pkg.duration} {pkg.unit === 'day' ? 'day' : pkg.unit === 'month' ? 'month' : 'year'}
+                    </TableCell>
+                    <TableCell className="font-medium text-slate-700">
+                      {warehouses.find((w) => w.id === pkg.warehouseId)?.name || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={pkg.isActive !== false ? 'success' : 'default'}>
+                        {pkg.isActive !== false ? 'Active' : 'Disabled'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={(e) => { e.stopPropagation(); handleEditClick(pkg); }}
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
-        </div>
+        </section>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900">
+        {/* Create / Edit form */}
+        <section className="bg-white rounded-2xl shadow-card border border-slate-200 overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <h2 className="text-base font-bold text-slate-900">
               {isEditing ? 'Update package' : 'Create package'}
             </h2>
             {isEditing && (
@@ -270,7 +254,7 @@ export default function ManagerContractPackagesPage() {
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
             <Input
               label="Package name"
               placeholder="e.g. 6-month rental package"
@@ -290,7 +274,7 @@ export default function ManagerContractPackagesPage() {
               required
             />
 
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Duration"
                 type="number"
@@ -309,7 +293,7 @@ export default function ManagerContractPackagesPage() {
               />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Price /1m² (VND)"
                 type="number"
@@ -330,51 +314,46 @@ export default function ManagerContractPackagesPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Description</label>
-              <textarea
-                rows={4}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-colors text-sm"
-                placeholder="Notes about this package..."
-                value={form.description}
-                onChange={(e) => handleChange('description', e.target.value)}
-              />
-            </div>
+            <Input
+              label="Description"
+              as="textarea"
+              placeholder="Notes about this package..."
+              value={form.description}
+              onChange={(e) => handleChange('description', e.target.value)}
+            />
 
-            <div className="pt-2 flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">
-                Pricing is fixed for all zones in the selected warehouse. Formula: (Zone area × price /1m²) + (Rental days × price /day).
-              </p>
-              <div className="flex items-center gap-2">
-                {isEditing && selectedId && (
-                  <Button
-                    type="button"
-                    size="md"
-                    variant={form.isActive ? 'danger' : 'primary'}
-                    onClick={async () => {
-                      try {
-                        const updated = await updateContractPackage(selectedId, { isActive: !form.isActive });
-                        const refreshed = await listContractPackages();
-                        setPackages(refreshed);
-                        setForm((prev) => ({ ...prev, isActive: updated.isActive !== false }));
-                        toast.success(updated.isActive !== false ? 'Package enabled' : 'Package disabled');
-                      } catch (err: any) {
-                        toast.error(err.message || 'Failed to update package status');
-                      }
-                    }}
-                  >
-                    {form.isActive ? 'Disable package' : 'Enable package'}
-                  </Button>
-                )}
-                <Button type="submit" size="md" isLoading={saving}>
-                  {isEditing ? 'Save update' : 'Create package'}
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Pricing formula: (Zone area × price /1m²) + (Rental days × price /day). Fixed for all zones in the selected warehouse.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              {isEditing && selectedId && (
+                <Button
+                  type="button"
+                  size="md"
+                  variant={form.isActive ? 'danger' : 'primary'}
+                  onClick={async () => {
+                    try {
+                      const updated = await updateContractPackage(selectedId, { isActive: !form.isActive });
+                      const refreshed = await listContractPackages();
+                      setPackages(refreshed);
+                      setForm((prev) => ({ ...prev, isActive: updated.isActive !== false }));
+                      toast.success(updated.isActive !== false ? 'Package enabled' : 'Package disabled');
+                    } catch (err: any) {
+                      toast.error(err.message || 'Failed to update package status');
+                    }
+                  }}
+                >
+                  {form.isActive ? 'Disable' : 'Enable'}
                 </Button>
-              </div>
+              )}
+              <Button type="submit" size="md" isLoading={saving}>
+                {isEditing ? 'Save update' : 'Create package'}
+              </Button>
             </div>
           </form>
-        </div>
+        </section>
       </div>
     </div>
   );
 }
-

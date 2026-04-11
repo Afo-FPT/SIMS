@@ -27,6 +27,7 @@ import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSk
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 /**
  * Format date for display
@@ -333,19 +334,23 @@ export default function ManagerContractsPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Contracts</h1>
-          <p className="text-slate-500 mt-1">Manage zone rental contracts</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setPaymentsOpen(true)}>
-            View payments
-          </Button>
-          <Button onClick={() => setCreateOpen(true)}>Create contract</Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Contracts"
+        description="Manage zone rental contracts"
+        actions={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setPaymentsOpen(true)}>
+              View payments
+            </Button>
+            <Button size="sm" onClick={() => setCreateOpen(true)}
+              leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>}
+            >
+              Create contract
+            </Button>
+          </>
+        }
+      />
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
@@ -355,7 +360,7 @@ export default function ManagerContractsPage() {
         <EmptyState icon="description" title="No contracts" message="No contracts yet" />
       ) : (
         <div className="space-y-4">
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm">
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Input
                 label="Search contract"
@@ -391,7 +396,7 @@ export default function ManagerContractsPage() {
           {filteredContracts.length === 0 ? (
             <EmptyState icon="search_off" title="No matching contracts" message="Try changing search keywords or filters." />
           ) : (
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
               <Table>
                 <TableHead>
                   <TableHeader>Contract code</TableHeader>

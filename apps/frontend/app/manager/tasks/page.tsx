@@ -9,6 +9,8 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
+import { Select } from '../../../components/ui/Select';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import { useToastHelpers } from '../../../lib/toast';
 
 const PAGE_SIZE = 10;
@@ -83,37 +85,35 @@ export default function ManagerTasksPage() {
   const pagedTasks = filteredTasks.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Tasks</h1>
-        <p className="text-slate-500 mt-1">Task list after assignment (approved, done by staff, completed)</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Tasks"
+        description="Task list after assignment — approved, done by staff, completed."
+      />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <p className="text-xs font-bold text-slate-500">Task type</p>
-          <select
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Select
+            label="Task type"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'IN' | 'OUT')}
-            className="h-10 rounded-xl border border-slate-200 px-3 text-sm min-w-[140px]"
-          >
-            <option value="ALL">All types</option>
-            <option value="IN">Inbound</option>
-            <option value="OUT">Outbound</option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <p className="text-xs font-bold text-slate-500">Status</p>
-          <select
+            options={[
+              { value: 'ALL', label: 'All types' },
+              { value: 'IN', label: 'Inbound' },
+              { value: 'OUT', label: 'Outbound' },
+            ]}
+          />
+          <Select
+            label="Status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as TaskStatusFilter)}
-            className="h-10 rounded-xl border border-slate-200 px-3 text-sm min-w-[180px]"
-          >
-            <option value="ALL">All statuses</option>
-            <option value="APPROVED">Approved</option>
-            <option value="DONE_BY_STAFF">Done by staff</option>
-            <option value="COMPLETED">Completed</option>
-          </select>
+            options={[
+              { value: 'ALL', label: 'All statuses' },
+              { value: 'APPROVED', label: 'Approved' },
+              { value: 'DONE_BY_STAFF', label: 'Done by staff' },
+              { value: 'COMPLETED', label: 'Completed' },
+            ]}
+          />
         </div>
       </div>
 
@@ -124,7 +124,7 @@ export default function ManagerTasksPage() {
       ) : filteredTasks.length === 0 ? (
         <EmptyState icon="assignment" title="No tasks" message="No tasks found for this filter" />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Reference</TableHeader>

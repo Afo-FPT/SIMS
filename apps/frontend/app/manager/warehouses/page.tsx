@@ -13,6 +13,8 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Modal } from '../../../components/ui/Modal';
 import { Pagination } from '../../../components/ui/Pagination';
+import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 export default function ManagerWarehousesPage() {
   const toast = useToastHelpers();
@@ -109,33 +111,22 @@ export default function ManagerWarehousesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Warehouses</h1>
-      </div>
-
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black text-slate-900">Create warehouse</h2>
-          <p className="text-sm text-slate-600 mt-1">
-            Define a new warehouse with size and address. Then open <strong>Manage</strong> to add zones and shelves.
-          </p>
-        </div>
-        <div className="sm:flex-shrink-0 sm:self-start">
+    <div className="space-y-6">
+      <PageHeader
+        title="Warehouses"
+        description="Manage your warehouse locations and configurations. Open Manage to configure zones and shelves."
+        actions={
           <Button
             onClick={() => {
               setAcceptedWarehouseTerms(false);
               setCreateWarehouseModalOpen(true);
             }}
-            className="inline-flex items-center gap-2 leading-none shadow-sm"
+            leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>}
           >
-            <span className="inline-flex size-5 items-center justify-center rounded-full bg-white/20 text-xs font-black leading-none">
-              +
-            </span>
-            <span className="leading-none">New warehouse</span>
+            New Warehouse
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <Modal
         open={createWarehouseModalOpen}
@@ -214,44 +205,37 @@ export default function ManagerWarehousesPage() {
       </Modal>
 
       {warehouses.length > 0 && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-            <h2 className="text-lg font-black text-slate-900">Existing warehouses</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-500 border-b border-slate-100">
-                    <th className="py-2 pr-4">Name</th>
-                    <th className="py-2 pr-4">Address</th>
-                    <th className="py-2 pr-4">Area (m²)</th>
-                    <th className="py-2 pr-4">Status</th>
-                    <th className="py-2 pr-4 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedWarehouses.map((w) => (
-                    <tr key={w.id} className="border-b border-slate-50">
-                      <td className="py-2 pr-4 font-bold text-slate-900">{w.name}</td>
-                      <td className="py-2 pr-4 text-slate-700">{w.address}</td>
-                      <td className="py-2 pr-4 text-slate-700">{w.area}</td>
-                      <td className="py-2 pr-4">
-                        <Badge variant={w.status === 'ACTIVE' ? 'success' : 'warning'}>{w.status}</Badge>
-                      </td>
-                      <td className="py-2 pr-4 text-right">
-                        <Link
-                          href={`/manager/warehouses/${w.id}`}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-primary hover:bg-primary/5"
-                        >
-                          <span className="material-symbols-outlined text-sm">manage_accounts</span>
-                          Manage
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
+          <Table>
+            <TableHead>
+              <TableHeader>Name</TableHeader>
+              <TableHeader>Address</TableHeader>
+              <TableHeader>Area (m²)</TableHeader>
+              <TableHeader>Status</TableHeader>
+              <TableHeader className="text-right">Action</TableHeader>
+            </TableHead>
+            <TableBody>
+              {pagedWarehouses.map((w) => (
+                <TableRow key={w.id}>
+                  <TableCell className="font-semibold text-slate-900">{w.name}</TableCell>
+                  <TableCell className="text-slate-600">{w.address}</TableCell>
+                  <TableCell className="text-slate-600">{w.area}</TableCell>
+                  <TableCell>
+                    <Badge variant={w.status === 'ACTIVE' ? 'success' : 'warning'}>{w.status}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link
+                      href={`/manager/warehouses/${w.id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-primary hover:bg-primary-light transition-colors"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 15 }}>manage_accounts</span>
+                      Manage
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

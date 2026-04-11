@@ -19,6 +19,7 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 function formatStatusLabel(status: string): string {
   const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
@@ -58,13 +59,8 @@ export default function ManagerOutboundRequestsPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Outbound Tasks</h1>
-        <p className="text-slate-500 mt-1">
-          Manager can monitor outbound task execution by assigned staff.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Outbound Tasks" description="Monitor outbound task execution by assigned staff." />
 
       {loading ? (
         <TableSkeleton rows={6} cols={5} />
@@ -77,18 +73,15 @@ export default function ManagerOutboundRequestsPage() {
           message="No outbound requests found."
         />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
-              <TableHeader>Outbound reference</TableHeader>
-              <TableHeader>Warehouse</TableHeader>
-              <TableHeader>Zone</TableHeader>
+              <TableHeader>Reference</TableHeader>
+              <TableHeader>Warehouse / Zone</TableHeader>
               <TableHeader>Items</TableHeader>
               <TableHeader>Assigned Staff</TableHeader>
               <TableHeader>Status</TableHeader>
-              <TableHeader>Executed At</TableHeader>
               <TableHeader>Created</TableHeader>
-              <TableHeader>Last Updated</TableHeader>
             </TableHead>
             <TableBody>
               {paged.map((r) => (
@@ -96,13 +89,13 @@ export default function ManagerOutboundRequestsPage() {
                   <TableCell className="font-bold text-slate-900">
                     {r.reference ?? r.request_id}
                   </TableCell>
-                  <TableCell className="text-slate-700">
-                    {r.warehouse_name ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-slate-700">
-                    {r.requested_zone_code ??
-                      r.items.find((it) => it.zone_code)?.zone_code ??
-                      '—'}
+                  <TableCell>
+                    <p className="text-slate-700">{r.warehouse_name ?? '—'}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {r.requested_zone_code ??
+                        r.items.find((it) => it.zone_code)?.zone_code ??
+                        '—'}
+                    </p>
                   </TableCell>
                   <TableCell className="text-slate-700">{r.items.length}</TableCell>
                   <TableCell className="text-slate-700">
@@ -126,21 +119,7 @@ export default function ManagerOutboundRequestsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {r.status === 'DONE_BY_STAFF' || r.status === 'COMPLETED'
-                      ? new Date(r.updated_at).toLocaleString('vi-VN', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : '—'}
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-sm">
                     {new Date(r.created_at).toLocaleString('vi-VN', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-sm">
-                    {new Date(r.updated_at).toLocaleString('vi-VN', {
                       dateStyle: 'short',
                       timeStyle: 'short',
                     })}

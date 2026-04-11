@@ -161,10 +161,10 @@ export default function ManagerDashboard() {
 
   if (loading) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
-          <p className="text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
         </div>
         <TableSkeleton rows={4} cols={4} />
       </div>
@@ -173,10 +173,10 @@ export default function ManagerDashboard() {
 
   if (error) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
-          <p className="text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
         </div>
         <ErrorState title="Failed to load dashboard" message={error || 'Unknown error'} onRetry={loadData} />
       </div>
@@ -185,56 +185,44 @@ export default function ManagerDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      {/* Page header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Manager Dashboard</h1>
-          <p className="text-slate-500 mt-1">Operations control center for approvals, contracts, inventory risk, and team workload.</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Dashboard</h1>
+          <p className="text-sm text-slate-500 mt-1">Operations overview — approvals, contracts, inventory risk, and team workload.</p>
         </div>
         <button
           type="button"
           onClick={loadData}
-          className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-900 text-white text-xs font-black uppercase tracking-widest hover:bg-primary transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-card"
         >
-          <span className="material-symbols-outlined text-lg">refresh</span>
-          Refresh data
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>refresh</span>
+          Refresh
         </button>
       </div>
 
-      <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-900 to-primary p-6 md:p-8 text-white shadow-lg">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="space-y-3 lg:col-span-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-white/70">Today focus</p>
-            <h2 className="text-2xl font-black tracking-tight leading-snug">
-              Keep approvals flowing and prevent warehouse bottlenecks
-            </h2>
-            <p className="text-sm text-white/75">
-              Prioritize pending approvals first, then resolve inventory discrepancies and cycle count submissions.
-            </p>
-          </div>
-
-          <div className="lg:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/75">Contracts active</p>
-              <p className="text-3xl font-black mt-2">{stats.contractsActive}</p>
+      {/* KPI Stat Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { icon: 'description', label: 'Active Contracts', value: stats.contractsActive, color: 'bg-primary-light', iconColor: 'text-primary' },
+          { icon: 'pending_actions', label: 'Pending Approvals', value: stats.pendingApprovals, color: 'bg-amber-50', iconColor: 'text-amber-600' },
+          { icon: 'groups', label: 'Staff Assigned', value: stats.assignedToStaff, color: 'bg-blue-50', iconColor: 'text-blue-600' },
+          { icon: 'warning', label: 'Alerts', value: stats.discrepancyFlags, color: 'bg-red-50', iconColor: 'text-red-500' },
+        ].map((card) => (
+          <div key={card.label} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-card flex items-start gap-4">
+            <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}>
+              <span className={`material-symbols-outlined ${card.iconColor}`} style={{ fontSize: 20 }}>{card.icon}</span>
             </div>
-            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/75">Pending approvals</p>
-              <p className="text-3xl font-black mt-2">{stats.pendingApprovals}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/75">Staff-assigned</p>
-              <p className="text-3xl font-black mt-2">{stats.assignedToStaff}</p>
-            </div>
-            <div className="rounded-2xl bg-white/10 border border-white/15 p-4">
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/75">Alerts</p>
-              <p className="text-3xl font-black mt-2">{stats.discrepancyFlags}</p>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-slate-500 leading-none">{card.label}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1.5 leading-none">{card.value}</p>
             </div>
           </div>
-        </div>
-      </section>
+        ))}
+      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <section className="xl:col-span-2 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
           <div className="flex items-center justify-between gap-3 mb-5">
             <h2 className="text-lg font-black text-slate-900">Quick actions</h2>
             <Badge variant={utilizationTone as 'success' | 'warning' | 'error'}>
@@ -266,8 +254,8 @@ export default function ManagerDashboard() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-black text-slate-900 mb-4">Needs attention</h2>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+          <h2 className="text-base font-bold text-slate-900 mb-4">Needs Attention</h2>
           <div className="space-y-3">
             <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-amber-700">Pending approvals</p>
@@ -294,8 +282,8 @@ export default function ManagerDashboard() {
         </section>
       </div>
 
-      <div className="space-y-8">
-        <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="space-y-6">
+        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <div className="flex items-center justify-between p-6">
             <h2 className="text-lg font-black text-slate-900">Approval queue</h2>
             <Link href="/manager/rent-requests" className="text-sm font-bold text-primary hover:underline">
@@ -442,7 +430,7 @@ export default function ManagerDashboard() {
           )}
         </section>
 
-        <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <div className="flex items-center justify-between p-6">
             <h2 className="text-lg font-black text-slate-900">Quick Rent Requests Review</h2>
             <Link href="/manager/rent-requests" className="text-sm font-bold text-primary hover:underline">
@@ -454,7 +442,7 @@ export default function ManagerDashboard() {
           ) : (
             <div className="space-y-4">
               <div className="hidden lg:block">
-                <Table className="max-h-[380px] overflow-y-auto">
+                <Table>
                   <TableHead>
                     <TableHeader>Contract</TableHeader>
                     <TableHeader>Customer</TableHeader>
@@ -542,7 +530,7 @@ export default function ManagerDashboard() {
         </section>
       </div>
 
-      <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
         <div className="flex items-center justify-between p-6">
           <h2 className="text-lg font-black text-slate-900">Pending Cycle Count Reviews</h2>
           <Link href="/manager/tasks" className="text-sm font-bold text-primary hover:underline">

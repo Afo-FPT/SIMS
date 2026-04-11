@@ -576,7 +576,7 @@ export default function ManagerWarehouseDetailPage() {
       </div>
 
       {/* Warehouse info */}
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
         <div className="flex items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-black text-slate-900">Warehouse information</h2>
           <Button
@@ -676,7 +676,7 @@ export default function ManagerWarehouseDetailPage() {
       </section>
 
       {/* Zones */}
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Zones</h2>
         </div>
@@ -861,7 +861,7 @@ export default function ManagerWarehouseDetailPage() {
       </section>
 
       {/* Shelves */}
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Shelves</h2>
           {shelves.length > 0 && (
@@ -961,7 +961,7 @@ export default function ManagerWarehouseDetailPage() {
           ) : shelves.length === 0 ? (
             <EmptyState icon="warehouse" title="No shelves" message="No shelf data" />
           ) : (
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
               {utilLoading && (
                 <p className="text-xs text-slate-500 px-4 py-2 border-b border-slate-100">
                   Loading shelf capacity...
@@ -1177,7 +1177,7 @@ export default function ManagerWarehouseDetailPage() {
       </section>
 
       {/* Manage: visibility — at bottom of page (active/inactive for rent requests) */}
-      <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
         <h2 className="text-lg font-black text-slate-900 mb-2">Manage warehouse</h2>
         <p className="text-sm text-slate-600 mb-4">
           Only <strong className="text-slate-800">active</strong> warehouses appear in the customer rent-requests list.

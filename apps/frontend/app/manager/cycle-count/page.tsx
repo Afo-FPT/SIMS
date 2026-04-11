@@ -21,6 +21,8 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Button } from '../../../components/ui/Button';
+import { Select } from '../../../components/ui/Select';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_MANAGER_APPROVAL: 'Pending approval',
@@ -100,58 +102,46 @@ export default function ManagerCycleCountPage() {
 
   if (loading) {
     return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
-          <p className="text-slate-500 mt-1">
-            Monitor customer cycle count requests and execution status
-          </p>
-        </div>
-        <TableSkeleton rows={5} cols={10} />
+      <div className="space-y-6">
+        <PageHeader title="Cycle Count" description="Monitor customer cycle count requests and execution status." />
+        <TableSkeleton rows={5} cols={7} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
-          <p className="text-slate-500 mt-1">
-            Monitor customer cycle count requests and execution status
-          </p>
-        </div>
+      <div className="space-y-6">
+        <PageHeader title="Cycle Count" description="Monitor customer cycle count requests and execution status." />
         <ErrorState title="Failed to load" message={error} onRetry={load} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Cycle Count</h1>
-        <p className="text-slate-500 mt-1">
-          Monitor customer cycle count requests and execution status
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Cycle Count" description="Monitor customer cycle count requests and execution status." />
 
-      <div className="flex flex-wrap gap-4 items-end">
-        <div>
-          <label className="block text-xs font-bold text-slate-600 mb-1">Status</label>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="px-4 py-2.5 rounded-2xl border border-slate-200 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-          >
-            <option value="">All</option>
-            <option value="PENDING_MANAGER_APPROVAL">Pending approval</option>
-            <option value="ASSIGNED_TO_STAFF">Assigned to staff</option>
-            <option value="STAFF_SUBMITTED">Submitted by staff</option>
-            <option value="RECOUNT_REQUIRED">Recount required</option>
-            <option value="ADJUSTMENT_REQUESTED">Adjustment requested</option>
-            <option value="CONFIRMED">Confirmed</option>
-            <option value="REJECTED">Rejected</option>
-          </select>
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Filters</p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="min-w-[200px]">
+            <Select
+              label="Status"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              options={[
+                { value: '', label: 'All statuses' },
+                { value: 'PENDING_MANAGER_APPROVAL', label: 'Pending approval' },
+                { value: 'ASSIGNED_TO_STAFF', label: 'Assigned to staff' },
+                { value: 'STAFF_SUBMITTED', label: 'Submitted by staff' },
+                { value: 'RECOUNT_REQUIRED', label: 'Recount required' },
+                { value: 'ADJUSTMENT_REQUESTED', label: 'Adjustment requested' },
+                { value: 'CONFIRMED', label: 'Confirmed' },
+                { value: 'REJECTED', label: 'Rejected' },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
@@ -162,33 +152,31 @@ export default function ManagerCycleCountPage() {
           message="No cycle counts match the current filter."
         />
       ) : (
-        <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
-              <TableHeader>Contract</TableHeader>
-              <TableHeader>Customer</TableHeader>
-              <TableHeader>Warehouse</TableHeader>
-              <TableHeader>Assigned Staff</TableHeader>
+              <TableHeader>Contract / Customer</TableHeader>
+              <TableHeader>Warehouse / Staff</TableHeader>
               <TableHeader>Status</TableHeader>
-              <TableHeader>Requested at</TableHeader>
+              <TableHeader>Requested</TableHeader>
               <TableHeader>Deadline</TableHeader>
-              <TableHeader>Executed At</TableHeader>
-              <TableHeader>Last Updated</TableHeader>
               <TableHeader>Notes</TableHeader>
               <TableHeader>Action</TableHeader>
             </TableHead>
             <TableBody>
               {filtered.map((cc) => (
                 <TableRow key={cc.cycle_count_id}>
-                  <TableCell className="font-bold text-slate-900">
-                    {cc.contract_code}
+                  <TableCell>
+                    <p className="font-bold text-slate-900">{cc.contract_code}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{cc.customer_name}</p>
                   </TableCell>
-                  <TableCell className="text-slate-700">{cc.customer_name}</TableCell>
-                  <TableCell className="text-slate-700">{cc.warehouse_name}</TableCell>
-                  <TableCell className="text-slate-700">
-                    {cc.assigned_staff?.length
-                      ? cc.assigned_staff.map((s) => s.name).join(', ')
-                      : '—'}
+                  <TableCell>
+                    <p className="text-slate-700">{cc.warehouse_name}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {cc.assigned_staff?.length
+                        ? cc.assigned_staff.map((s) => s.name).join(', ')
+                        : 'Unassigned'}
+                    </p>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -225,32 +213,18 @@ export default function ManagerCycleCountPage() {
                         })
                       : '—'}
                   </TableCell>
-                  <TableCell className="text-slate-600 text-sm">
-                    {cc.completed_at
-                      ? new Date(cc.completed_at).toLocaleString('vi-VN', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : '—'}
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-sm">
-                    {new Date(cc.updated_at).toLocaleString('vi-VN', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
-                  </TableCell>
-                  <TableCell className="text-slate-600 text-sm max-w-[240px] truncate">
+                  <TableCell className="text-slate-600 text-sm max-w-[200px] truncate" title={cc.note || undefined}>
                     {cc.note || '—'}
                   </TableCell>
                   <TableCell>
                     {cc.status === 'RECOUNT_REQUIRED' ? (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
                           onClick={() => handleApproveRecount(cc.cycle_count_id)}
                           disabled={processingId === cc.cycle_count_id}
                         >
-                          Approve recount
+                          Approve
                         </Button>
                         <Button
                           size="sm"

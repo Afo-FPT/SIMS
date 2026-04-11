@@ -1,13 +1,14 @@
 import React from 'react';
+import { cn } from '../../lib/utils';
 
 interface TableProps {
   children: React.ReactNode;
   className?: string;
 }
 
-export function Table({ children, className = '' }: TableProps) {
+export function Table({ children, className }: TableProps) {
   return (
-    <div className={`overflow-x-auto rounded-2xl border border-slate-200 bg-white ${className}`}>
+    <div className={cn('overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-card', className)}>
       <table className="w-full text-left">{children}</table>
     </div>
   );
@@ -15,7 +16,7 @@ export function Table({ children, className = '' }: TableProps) {
 
 export function TableHead({ children }: { children: React.ReactNode }) {
   return (
-    <thead className="bg-slate-50 border-b border-slate-200">
+    <thead className="bg-surface-muted border-b border-slate-200">
       <tr>{children}</tr>
     </thead>
   );
@@ -23,16 +24,42 @@ export function TableHead({ children }: { children: React.ReactNode }) {
 
 export function TableHeader({
   children,
-  className = '',
+  className,
+  sortable,
+  sortDirection,
+  onSort,
 }: {
   children: React.ReactNode;
   className?: string;
+  sortable?: boolean;
+  sortDirection?: 'asc' | 'desc' | null;
+  onSort?: () => void;
 }) {
+  const inner = (
+    <span className="inline-flex items-center gap-1">
+      {children}
+      {sortable && (
+        <span className="material-symbols-outlined text-[14px] text-slate-400">
+          {sortDirection === 'asc'
+            ? 'arrow_upward'
+            : sortDirection === 'desc'
+            ? 'arrow_downward'
+            : 'unfold_more'}
+        </span>
+      )}
+    </span>
+  );
+
   return (
     <th
-      className={`px-6 py-4 text-xs font-black text-slate-500 uppercase tracking-widest ${className}`}
+      className={cn(
+        'px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider',
+        sortable && 'cursor-pointer select-none hover:text-slate-700 transition-colors',
+        className,
+      )}
+      onClick={sortable ? onSort : undefined}
     >
-      {children}
+      {inner}
     </th>
   );
 }
@@ -43,12 +70,22 @@ export function TableBody({ children }: { children: React.ReactNode }) {
 
 export function TableRow({
   children,
-  className = '',
+  className,
   onClick,
-}: { children: React.ReactNode; className?: string; onClick?: () => void }) {
+}: {
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+}) {
   return (
     <tr
-      className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${className}`}
+      className={cn(
+        'border-b border-slate-100 transition-colors',
+        onClick
+          ? 'cursor-pointer hover:bg-primary-light/30'
+          : 'hover:bg-slate-50/60',
+        className,
+      )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
     >
@@ -57,6 +94,24 @@ export function TableRow({
   );
 }
 
-export function TableCell({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-6 py-4 ${className}`}>{children}</td>;
+export function TableCell({
+  children,
+  className,
+  truncate,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  truncate?: boolean;
+}) {
+  return (
+    <td
+      className={cn(
+        'px-6 py-4 text-sm text-slate-700',
+        truncate && 'max-w-[200px] truncate',
+        className,
+      )}
+    >
+      {children}
+    </td>
+  );
 }

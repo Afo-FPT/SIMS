@@ -11,6 +11,7 @@ import { Modal } from '../../../components/ui/Modal';
 import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { PageHeader } from '../../../components/ui/PageHeader';
 import type { Shelf } from '../../../types/manager';
 
 function formatDate(dateStr?: string) {
@@ -176,14 +177,11 @@ export default function ManagerRentRequestsPage() {
   }, [detail, shelves, zonesForDisplay]);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Rent Requests</h1>
-        <p className="text-slate-500 mt-1">
-          Review draft contracts created from customer rental requests. Processing will move them to Contracts with
-          status <span className="font-bold">pending payment</span>.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Rent Requests"
+        description="Review draft contracts from customer rental requests. Processing moves them to Contracts with status pending payment."
+      />
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
@@ -196,7 +194,7 @@ export default function ManagerRentRequestsPage() {
           message="No draft contracts from rental requests to review."
         />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Contract code</TableHeader>
