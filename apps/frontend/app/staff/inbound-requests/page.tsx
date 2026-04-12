@@ -9,6 +9,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 function formatStatusLabel(status: string): string {
   const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
@@ -41,11 +42,11 @@ export default function StaffInboundRequestsPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Inbound Putaway</h1>
-        <p className="text-slate-500 mt-1">Approved inbound requests ready for putaway</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Inbound Putaway"
+        description="Approved inbound requests ready for putaway"
+      />
 
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
@@ -54,7 +55,7 @@ export default function StaffInboundRequestsPage() {
       ) : items.length === 0 ? (
         <EmptyState icon="inbox" title="No inbound requests" message="No approved inbound requests" />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Inbound reference</TableHeader>

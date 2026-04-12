@@ -188,31 +188,50 @@ export default function ManagerTasksPage() {
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
           title={detail.reference ?? detail.request_id}
-          size="xl"
+          description={`${detail.request_type === 'IN' ? 'Inbound' : 'Outbound'} · ${formatRequestStatus(detail.status)}`}
+          size="lg"
+          footer={
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setDetail(null)}>Close</Button>
+            </div>
+          }
         >
           <div className="space-y-5">
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Type</dt>
-                <dd className="font-bold text-slate-900">{detail.request_type === 'IN' ? 'Inbound' : 'Outbound'}</dd>
+            {/* Task overview */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Type</p>
+                <Badge variant={detail.request_type === 'IN' ? 'info' : 'warning'} size="sm">
+                  {detail.request_type === 'IN' ? 'Inbound' : 'Outbound'}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Contract</dt>
-                <dd className="font-bold text-slate-900">{detail.contract_code ?? detail.contract_id}</dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Status</p>
+                <Badge size="sm" variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>
+                  {formatRequestStatus(detail.status)}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Status</dt>
-                <dd><Badge variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>{formatRequestStatus(detail.status)}</Badge></dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Contract</p>
+                <p className="font-semibold text-slate-900">{detail.contract_code ?? detail.contract_id}</p>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Updated</dt>
-                <dd className="font-bold text-slate-900">{new Date(detail.updated_at || detail.created_at).toLocaleString('en-GB')}</dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Last updated</p>
+                <p className="font-semibold text-slate-900">
+                  {new Date(detail.updated_at || detail.created_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
               </div>
-            </dl>
+            </div>
 
-            <section>
-              <h3 className="text-sm font-black text-slate-900 mb-3">Items</h3>
-              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+            {/* Items */}
+            <div className="border-t border-slate-100 pt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-bold text-slate-800">Items</h3>
+                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-semibold">
+                  {detail.items.length}
+                </span>
+              </div>
+              <div className="rounded-2xl border border-slate-200 overflow-hidden max-h-72 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHead>
                     <TableHeader>Item name</TableHeader>
@@ -223,16 +242,21 @@ export default function ManagerTasksPage() {
                   <TableBody>
                     {detail.items.map((it) => (
                       <TableRow key={it.request_detail_id}>
-                        <TableCell className="text-slate-900">{it.item_name}</TableCell>
-                        <TableCell className="text-slate-700">{it.quantity_requested} {it.unit}</TableCell>
-                        <TableCell className="text-slate-700">{it.quantity_actual ?? '—'}</TableCell>
-                        <TableCell className="text-slate-700">{it.shelf_code ?? '—'}</TableCell>
+                        <TableCell className="font-medium text-slate-900">{it.item_name}</TableCell>
+                        <TableCell className="text-slate-600">{it.quantity_requested} {it.unit}</TableCell>
+                        <TableCell className="text-slate-600">{it.quantity_actual ?? '—'}</TableCell>
+                        <TableCell>
+                          {it.shelf_code
+                            ? <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">{it.shelf_code}</span>
+                            : <span className="text-slate-400">—</span>
+                          }
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-            </section>
+            </div>
           </div>
         </Modal>
       )}

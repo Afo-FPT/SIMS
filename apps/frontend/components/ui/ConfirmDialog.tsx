@@ -33,8 +33,8 @@ export function ConfirmDialog({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50 animate-in fade-in" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl shadow-2xl z-50 w-full max-w-md animate-in fade-in zoom-in-95 duration-300">
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[200] animate-fade-in" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl shadow-2xl z-[200] w-full max-w-md animate-zoom-in">
           <div className="p-6">
             <Dialog.Title className="text-xl font-black text-slate-900 mb-2">{title}</Dialog.Title>
             <Dialog.Description className="text-sm text-slate-600 mb-6">{message}</Dialog.Description>

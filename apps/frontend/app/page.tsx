@@ -127,8 +127,9 @@ export default function LandingPage() {
   }, []);
 
   const MAX_PRICING_PACKAGES = 6;
-  const packagesPreview = useMemo(() => packages.slice(0, MAX_PRICING_PACKAGES), [packages]);
-  const hasMorePackages = packages.length > MAX_PRICING_PACKAGES;
+  const activePackages = useMemo(() => packages.filter((p) => p.isActive), [packages]);
+  const packagesPreview = useMemo(() => activePackages.slice(0, MAX_PRICING_PACKAGES), [activePackages]);
+  const hasMorePackages = activePackages.length > MAX_PRICING_PACKAGES;
 
   const navigateTo = (path: string) => router.push(path);
   const handleLogout = () => {
@@ -374,7 +375,7 @@ export default function LandingPage() {
               message={pricingError}
               onRetry={() => window.location.reload()}
             />
-          ) : packages.length === 0 ? (
+          ) : activePackages.length === 0 ? (
             <EmptyState
               icon="inventory_2"
               title="No packages available yet"
@@ -390,7 +391,7 @@ export default function LandingPage() {
               {hasMorePackages && (
                 <p className="text-center text-xs text-slate-400 mb-8">
                   Showing <span className="font-bold text-slate-700">{MAX_PRICING_PACKAGES}</span> of{' '}
-                  <span className="font-bold text-slate-700">{packages.length}</span> packages
+                  <span className="font-bold text-slate-700">{activePackages.length}</span> packages
                 </p>
               )}
 

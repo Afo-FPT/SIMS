@@ -464,79 +464,115 @@ export default function ManagerContractsPage() {
       )}
 
       {detail && (
-        <Modal open={!!detail} onOpenChange={(o) => !o && setDetail(null)} title={detail.code} size="lg">
-          <div className="space-y-6">
-            <dl className="grid grid-cols-2 gap-4 text-sm">
+        <Modal
+          open={!!detail}
+          onOpenChange={(o) => !o && setDetail(null)}
+          title={detail.code}
+          description={`Contract · ${getStatusDisplay(detail.status)}`}
+          size="lg"
+          footer={
+            <div className="space-y-3">
+              {detail.status === 'draft' && (
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Approving auto-assigns the first available zone for the requested period and moves this contract to pending payment.
+                </p>
+              )}
+              {detail.status === 'scheduled' && (
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Customer has paid. The contract activates automatically on the start date — or activate it early below.
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex gap-2 flex-wrap">
+                  {detail.status === 'draft' && (
+                    <Button onClick={() => handleStatusChange(detail.id, 'pending_payment')} disabled={updating} isLoading={updating}>
+                      Approve &amp; set pending payment
+                    </Button>
+                  )}
+                  {detail.status === 'scheduled' && (
+                    <>
+                      <Button onClick={() => handleStatusChange(detail.id, 'active')} disabled={updating} isLoading={updating}>
+                        Activate now
+                      </Button>
+                      <Button variant="secondary" onClick={() => handleStatusChange(detail.id, 'terminated')} disabled={updating}>
+                        Terminate
+                      </Button>
+                    </>
+                  )}
+                  {detail.status === 'active' && (
+                    <>
+                      <Button variant="secondary" onClick={() => handleStatusChange(detail.id, 'terminated')} disabled={updating}>
+                        Terminate
+                      </Button>
+                      <Button variant="danger" onClick={() => handleStatusChange(detail.id, 'expired')} disabled={updating}>
+                        Mark expired
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setDetail(null)}>Close</Button>
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-5">
+            {/* Contract overview */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
               <div>
-                <dt className="text-slate-500">Customer</dt>
-                <dd className="font-bold">{detail.customerName || '—'}</dd>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Customer</p>
+                <p className="font-semibold text-slate-900">{detail.customerName || '—'}</p>
               </div>
               <div>
-                <dt className="text-slate-500">Zones</dt>
-                <dd className="font-bold">{getZonesRentedDisplay(detail)}</dd>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Zones</p>
+                <p className="font-semibold text-slate-900">{getZonesRentedDisplay(detail)}</p>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Warehouse</p>
+                <p className="font-semibold text-slate-900">
+                  {detail.warehouseName || '—'}{detail.warehouseAddress ? ` — ${detail.warehouseAddress}` : ''}
+                </p>
               </div>
               <div>
-                <dt className="text-slate-500">Warehouse</dt>
-                <dd className="font-bold">
-                  {detail.warehouseName || '—'}
-                  {detail.warehouseAddress ? ` — ${detail.warehouseAddress}` : ''}
-                </dd>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Start / End</p>
+                <p className="font-semibold text-slate-900">{getDateRangeDisplay(detail)}</p>
               </div>
               <div>
-                <dt className="text-slate-500">Start / End</dt>
-                <dd className="font-bold">{getDateRangeDisplay(detail)}</dd>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Status</p>
+                <Badge variant={getStatusVariant(detail.status)} size="sm">{getStatusDisplay(detail.status)}</Badge>
               </div>
-              <div>
-                <dt className="text-slate-500">Status</dt>
-                <dd className="font-bold">
-                  <Badge variant={getStatusVariant(detail.status)}>{getStatusDisplay(detail.status)}</Badge>
-                </dd>
-              </div>
-            </dl>
-            <div>
-              <h4 className="text-sm font-bold text-slate-700 mb-2">Payment Information</h4>
+            </div>
+
+            {/* Payment history */}
+            <div className="border-t border-slate-100 pt-5">
+              <h4 className="text-sm font-bold text-slate-800 mb-3">Payment History</h4>
               {detailPaymentsLoading ? (
-                <LoadingSkeleton className="h-16" />
+                <LoadingSkeleton className="h-16 rounded-2xl" />
               ) : detailPayments.length === 0 ? (
-                <p className="text-sm text-slate-500">No payment records found for this contract.</p>
+                <p className="text-sm text-slate-400 italic">No payment records for this contract.</p>
               ) : (
                 <div className="rounded-2xl border border-slate-200 overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-3 py-2 text-left font-bold text-slate-600">Time</th>
-                        <th className="px-3 py-2 text-left font-bold text-slate-600">Amount</th>
-                        <th className="px-3 py-2 text-left font-bold text-slate-600">Status</th>
-                        <th className="px-3 py-2 text-left font-bold text-slate-600">VNPay ref</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Amount</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">VNPay ref</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detailPayments.slice(0, 5).map((p) => (
-                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                          <td className="px-3 py-2 text-slate-600">
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition-colors">
+                          <td className="px-3 py-2.5 text-xs text-slate-500">
                             {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
-                          <td className="px-3 py-2 font-bold text-slate-900">{p.amount.toLocaleString('vi-VN')} đ</td>
-                          <td className="px-3 py-2">
-                            <Badge
-                              variant={
-                                p.status === 'paid'
-                                  ? 'success'
-                                  : p.status === 'pending'
-                                  ? 'info'
-                                  : 'error'
-                              }
-                            >
-                              {p.status === 'paid'
-                                ? 'Paid'
-                                : p.status === 'pending'
-                                ? 'Pending'
-                                : p.status === 'expired'
-                                ? 'Expired'
-                                : 'Failed'}
+                          <td className="px-3 py-2.5 font-bold text-slate-900">{p.amount.toLocaleString('vi-VN')} đ</td>
+                          <td className="px-3 py-2.5">
+                            <Badge size="sm" variant={p.status === 'paid' ? 'success' : p.status === 'pending' ? 'info' : 'error'}>
+                              {p.status === 'paid' ? 'Paid' : p.status === 'pending' ? 'Pending' : p.status === 'expired' ? 'Expired' : 'Failed'}
                             </Badge>
                           </td>
-                          <td className="px-3 py-2 font-mono text-xs text-slate-700 break-all">{p.vnpTxnRef}</td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-slate-400 break-all">{p.vnpTxnRef}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -544,144 +580,120 @@ export default function ManagerContractsPage() {
                 </div>
               )}
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-700 mb-2">Actions</h4>
-              <div className="flex flex-wrap gap-2">
-                {detail.status === 'draft' && (
-                  <>
-                    <p className="text-sm text-slate-600 mb-2">
-                      Approving will automatically assign a zone to this contract (first available zone in the warehouse for the requested period, no overlap with other active contracts) and mark it as pending payment.
-                    </p>
-                    <Button onClick={() => handleStatusChange(detail.id, 'pending_payment')} disabled={updating}>
-                      Approve &amp; set pending payment
-                    </Button>
-                  </>
-                )}
-                {detail.status === 'scheduled' && (
-                  <>
-                    <p className="text-sm text-slate-600 mb-2 w-full">
-                      Customer has paid. The contract becomes active automatically on the rental start date, or you can activate it early.
-                    </p>
-                    <Button onClick={() => handleStatusChange(detail.id, 'active')} disabled={updating}>
-                      Activate now
-                    </Button>
-                    <Button variant="secondary" onClick={() => handleStatusChange(detail.id, 'terminated')} disabled={updating}>
-                      Terminate
-                    </Button>
-                  </>
-                )}
-                {detail.status === 'active' && (
-                  <Button variant="secondary" onClick={() => handleStatusChange(detail.id, 'terminated')} disabled={updating}>
-                    Terminate
-                  </Button>
-                )}
-                {detail.status === 'active' && (
-                  <Button variant="danger" onClick={() => handleStatusChange(detail.id, 'expired')} disabled={updating}>
-                    Mark Expired
-                  </Button>
-                )}
-              </div>
-            </div>
           </div>
         </Modal>
       )}
 
       {createOpen && (
-        <Modal open={createOpen} onOpenChange={setCreateOpen} title="Create contract (assign zones)" size="lg">
-          <form onSubmit={handleCreateContract} className="space-y-4">
-            <Input
-              label="Customer ID"
-              value={createForm.customerId}
-              onChange={(e) => setCreateForm((p) => ({ ...p, customerId: e.target.value }))}
-              placeholder="Customer user ID"
-              required
-            />
-            <Select
-              label="Warehouse"
-              value={createForm.warehouseId}
-              onChange={(e) => setCreateForm((p) => ({ ...p, warehouseId: e.target.value }))}
-              options={[{ value: '', label: 'Select warehouse' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
-            />
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-bold text-slate-700">Zones (start, end, price)</label>
-                <Button type="button" variant="ghost" size="sm" onClick={addRentedZoneRow}>+ Add zone</Button>
+        <Modal
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          title="Create contract"
+          description="Assign zones directly to a customer with custom pricing."
+          size="lg"
+          footer={
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button type="submit" form="create-contract-form" isLoading={creating}>Create contract</Button>
+            </div>
+          }
+        >
+          <form id="create-contract-form" onSubmit={handleCreateContract} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Customer ID"
+                  value={createForm.customerId}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, customerId: e.target.value }))}
+                  placeholder="Customer user ID"
+                  required
+                />
               </div>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
+              <div className="sm:col-span-2">
+                <Select
+                  label="Warehouse"
+                  value={createForm.warehouseId}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, warehouseId: e.target.value }))}
+                  options={[{ value: '', label: 'Select warehouse' }, ...warehouses.map((w) => ({ value: w.id, label: w.name }))]}
+                />
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-bold text-slate-700">Zone assignments</p>
+                <Button type="button" variant="ghost" size="sm" onClick={addRentedZoneRow}
+                  leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 15 }}>add</span>}
+                >
+                  Add zone
+                </Button>
+              </div>
+              <div className="space-y-2">
                 {createForm.rentedZones.map((r, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-end text-sm">
+                  <div key={i} className="grid grid-cols-12 gap-2 items-end p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <div className="col-span-4">
                       <Select
-                        label=""
+                        label="Zone"
                         value={r.zoneId}
                         onChange={(e) => updateRentedZoneRow(i, 'zoneId', e.target.value)}
-                        options={[{ value: '', label: 'Zone' }, ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` }))]}
+                        options={[{ value: '', label: 'Select zone' }, ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` }))]}
                       />
                     </div>
-                    <div className="col-span-2">
-                      <Input
-                        label=""
-                        type="date"
-                        value={r.startDate}
-                        onChange={(e) => updateRentedZoneRow(i, 'startDate', e.target.value)}
-                        placeholder="Start"
-                      />
+                    <div className="col-span-3">
+                      <Input label="Start date" type="date" value={r.startDate}
+                        onChange={(e) => updateRentedZoneRow(i, 'startDate', e.target.value)} />
+                    </div>
+                    <div className="col-span-3">
+                      <Input label="End date" type="date" value={r.endDate}
+                        onChange={(e) => updateRentedZoneRow(i, 'endDate', e.target.value)} />
                     </div>
                     <div className="col-span-2">
-                      <Input
-                        label=""
-                        type="date"
-                        value={r.endDate}
-                        onChange={(e) => updateRentedZoneRow(i, 'endDate', e.target.value)}
-                        placeholder="End"
-                      />
+                      <Input label="Price (VND)" type="number" min="0" step="0.01" value={r.price}
+                        onChange={(e) => updateRentedZoneRow(i, 'price', e.target.value)} placeholder="0" />
                     </div>
-                    <div className="col-span-2">
-                      <Input
-                        label=""
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={r.price}
-                        onChange={(e) => updateRentedZoneRow(i, 'price', e.target.value)}
-                        placeholder="Price"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      {createForm.rentedZones.length > 1 ? (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeRentedZoneRow(i)}>Remove</Button>
-                      ) : null}
-                    </div>
+                    {createForm.rentedZones.length > 1 && (
+                      <div className="col-span-12 flex justify-end">
+                        <button type="button" onClick={() => removeRentedZoneRow(i)}
+                          className="text-xs text-red-500 hover:text-red-700 font-semibold transition-colors">
+                          Remove zone
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="flex gap-2 justify-end pt-2">
-              <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" isLoading={creating}>Create contract</Button>
             </div>
           </form>
         </Modal>
       )}
 
       {paymentsOpen && (
-        <Modal open={paymentsOpen} onOpenChange={setPaymentsOpen} title="Payments (VNPay)" size="lg">
-          <div className="space-y-4">
-            <div className="flex justify-end">
+        <Modal
+          open={paymentsOpen}
+          onOpenChange={setPaymentsOpen}
+          title="Payment Records"
+          description="VNPay transaction history across all contracts."
+          size="xl"
+          footer={
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-400">Showing all records. Use Refresh to sync with backend.</p>
               <Button
                 type="button"
                 variant="secondary"
-                className="inline-flex items-center gap-1"
+                size="sm"
                 onClick={() => loadPayments(true)}
                 isLoading={paymentsRefreshing}
                 disabled={paymentsLoading}
+                leftIcon={<span className="material-symbols-outlined" style={{ fontSize: 16 }}>refresh</span>}
               >
-                <span className="material-symbols-outlined text-lg leading-none">refresh</span>
                 Refresh
               </Button>
             </div>
+          }
+        >
+          <div className="space-y-4">
             {paymentsLoading ? (
-              <LoadingSkeleton className="h-32" />
+              <LoadingSkeleton className="h-48 rounded-2xl" />
             ) : paymentsError ? (
               <ErrorState title="Failed to load payments" message={paymentsError} onRetry={() => loadPayments(false)} />
             ) : contractPayments.length === 0 && servicePayments.length === 0 ? (
@@ -691,91 +703,72 @@ export default function ManagerContractsPage() {
                 <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
-                      paymentTab === 'contract' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold transition-colors ${
+                      paymentTab === 'contract' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                     }`}
                     onClick={() => setPaymentTab('contract')}
                   >
-                    Contract ({contractPayments.length})
+                    Contract <span className="ml-1 text-xs text-slate-400">({contractPayments.length})</span>
                   </button>
                   <button
                     type="button"
-                    className={`rounded-lg px-3 py-1.5 text-sm font-bold ${
-                      paymentTab === 'service' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
+                    className={`rounded-lg px-3 py-1.5 text-sm font-bold transition-colors ${
+                      paymentTab === 'service' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                     }`}
                     onClick={() => setPaymentTab('service')}
                   >
-                    Service ({servicePayments.length})
+                    Service <span className="ml-1 text-xs text-slate-400">({servicePayments.length})</span>
                   </button>
                 </div>
-                <div className="max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200">
+
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">Time</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">Contract</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">Customer</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Contract</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Customer</th>
                         {paymentTab === 'service' && (
-                          <th className="px-4 py-2 text-left font-bold text-slate-600">Credits</th>
+                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Credits</th>
                         )}
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">Amount</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">Status</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-600">VNPay code</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Amount</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Status</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">VNPay ref</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(paymentTab === 'contract' ? contractPayments : servicePayments).map((p) => (
-                        <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                          <td className="px-4 py-2 text-slate-600">
+                        <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition-colors">
+                          <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
                             {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
-                          <td className="px-4 py-2 text-slate-700">
-                            <div className="font-bold">{p.contractCode || p.contractId}</div>
-                            {p.warehouseName && <div className="text-xs text-slate-500">{p.warehouseName}</div>}
+                          <td className="px-4 py-2.5">
+                            <p className="font-semibold text-slate-900">{p.contractCode || p.contractId}</p>
+                            {p.warehouseName && <p className="text-xs text-slate-400 mt-0.5">{p.warehouseName}</p>}
                           </td>
-                          <td className="px-4 py-2 text-slate-700">{p.customerName || '—'}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{p.customerName || '—'}</td>
                           {paymentTab === 'service' && (
-                            <td className="px-4 py-2 font-semibold text-slate-700">
-                              {(p as ManagerServicePayment).creditsGranted} credit
+                            <td className="px-4 py-2.5 font-semibold text-slate-700">
+                              {(p as ManagerServicePayment).creditsGranted} cr
                             </td>
                           )}
-                          <td className="px-4 py-2 text-slate-900 font-bold">
+                          <td className="px-4 py-2.5 font-bold text-slate-900 whitespace-nowrap">
                             {p.amount.toLocaleString('vi-VN')} đ
                           </td>
-                          <td className="px-4 py-2">
-                            <Badge
-                              variant={
-                                p.status === 'paid'
-                                  ? 'success'
-                                  : p.status === 'pending'
-                                  ? 'info'
-                                  : 'error'
-                              }
-                            >
-                              {p.status === 'paid'
-                                ? 'Paid'
-                                : p.status === 'pending'
-                                ? 'Pending'
-                                : p.status === 'expired'
-                                ? 'Expired'
-                                : 'Failed'}
+                          <td className="px-4 py-2.5">
+                            <Badge size="sm" variant={p.status === 'paid' ? 'success' : p.status === 'pending' ? 'info' : 'error'}>
+                              {p.status === 'paid' ? 'Paid' : p.status === 'pending' ? 'Pending' : p.status === 'expired' ? 'Expired' : 'Failed'}
                             </Badge>
                             {p.paidAt && (
-                              <div className="text-[11px] text-slate-500 mt-0.5">
-                                at{' '}
-                                {new Date(p.paidAt).toLocaleString('vi-VN', {
-                                  dateStyle: 'short',
-                                  timeStyle: 'short',
-                                })}
-                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
+                                {new Date(p.paidAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                              </p>
                             )}
                           </td>
-                          <td className="px-4 py-2 text-slate-700">
-                            <div className="font-mono text-xs break-all">{p.vnpTxnRef}</div>
+                          <td className="px-4 py-2.5">
+                            <p className="font-mono text-xs text-slate-500 break-all">{p.vnpTxnRef}</p>
                             {p.vnpResponseCode && (
-                              <div className="text-[11px] text-slate-500 mt-0.5">
-                                Resp: {p.vnpResponseCode}
-                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5">Code: {p.vnpResponseCode}</p>
                             )}
                           </td>
                         </tr>
@@ -785,9 +778,6 @@ export default function ManagerContractsPage() {
                 </div>
               </>
             )}
-            <p className="text-xs text-slate-500">
-              Click Refresh to reload the payment list from backend.
-            </p>
           </div>
         </Modal>
       )}

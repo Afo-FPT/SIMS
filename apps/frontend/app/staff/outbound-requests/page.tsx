@@ -9,6 +9,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 function formatStatusLabel(status: string): string {
   const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
@@ -41,11 +42,11 @@ export default function StaffOutboundRequestsPage() {
   }, []);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Outbound Picking</h1>
-        <p className="text-slate-500 mt-1">Approved outbound requests ready for picking</p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Outbound Picking"
+        description="Approved outbound requests ready for picking"
+      />
 
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
@@ -54,7 +55,7 @@ export default function StaffOutboundRequestsPage() {
       ) : items.length === 0 ? (
         <EmptyState icon="inbox" title="No outbound requests" message="No approved outbound requests" />
       ) : (
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Outbound reference</TableHeader>

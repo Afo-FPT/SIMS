@@ -19,6 +19,7 @@ import {
 import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_MANAGER_APPROVAL: 'Pending approval',
@@ -57,15 +58,11 @@ export default function StaffCycleCountPage() {
   const pending = list.filter((cc) => cc.status === 'ASSIGNED_TO_STAFF');
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">
-          Cycle Count
-        </h1>
-        <p className="text-slate-500 mt-1">
-          Perform inventory counts auto-assigned by warehouse
-        </p>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Cycle Count"
+        description="Perform inventory counts auto-assigned by warehouse"
+      />
 
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
@@ -85,6 +82,7 @@ export default function StaffCycleCountPage() {
         />
       ) : (
         <>
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Contract</TableHeader>
@@ -139,6 +137,7 @@ export default function StaffCycleCountPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </>
       )}
     </div>

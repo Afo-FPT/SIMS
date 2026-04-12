@@ -487,6 +487,7 @@ export default function StaffTasksPage() {
         />
       ) : (
         <>
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader className="w-16">#</TableHeader>
@@ -549,6 +550,7 @@ export default function StaffTasksPage() {
               })}
             </TableBody>
           </Table>
+          </div>
 
           {totalPages > 1 && (
             <div className="flex justify-center">

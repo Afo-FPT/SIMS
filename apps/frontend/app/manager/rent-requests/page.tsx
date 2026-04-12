@@ -242,137 +242,124 @@ export default function ManagerRentRequestsPage() {
         <Modal
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
-          title={`Draft contract ${detail.code}`}
-          size="md"
+          title={detail.code}
+          description="Review this rental request before processing."
+          size="lg"
+          footer={
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => { setDeleteTarget(detail); setDeleteReason(''); }}
+                disabled={approvingId === detail.id}
+              >
+                Delete draft
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setDetail(null)}>Close</Button>
+                <Button
+                  onClick={() => { doApprove(detail.id); setDetail(null); }}
+                  isLoading={approvingId === detail.id}
+                  disabled={loadingShelves}
+                >
+                  Process request
+                </Button>
+              </div>
+            </div>
+          }
         >
-          <div className="space-y-4">
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <dt className="text-slate-500">Customer</dt>
-              <dd className="font-bold">{detail.customerName || '—'}</dd>
-              <dt className="text-slate-500">Warehouse</dt>
-              <dd className="font-bold">{detail.warehouseName || detail.warehouseId}</dd>
-              <dt className="text-slate-500">Rental period</dt>
-              <dd className="font-bold">
-                {detail.requestedStartDate && detail.requestedEndDate
-                  ? `${formatDate(detail.requestedStartDate)} → ${formatDate(detail.requestedEndDate)}`
-                  : '—'}
-              </dd>
-              <dt className="text-slate-500">Contract price</dt>
-              <dd className="font-bold">
-                {getContractPrice(detail) > 0 ? `${getContractPrice(detail).toLocaleString('en-GB')} VND` : '—'}
-              </dd>
-              <dt className="text-slate-500">Status</dt>
-              <dd className="font-bold">draft</dd>
-            </dl>
+          <div className="space-y-5">
+            {/* Contract info */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Customer</p>
+                <p className="font-semibold text-slate-900">{detail.customerName || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Status</p>
+                <Badge variant="info" size="sm">Draft</Badge>
+              </div>
+              <div className="col-span-2">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Warehouse</p>
+                <p className="font-semibold text-slate-900">{detail.warehouseName || detail.warehouseId}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Rental period</p>
+                <p className="font-semibold text-slate-900">
+                  {detail.requestedStartDate && detail.requestedEndDate
+                    ? `${formatDate(detail.requestedStartDate)} → ${formatDate(detail.requestedEndDate)}`
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Contract price</p>
+                <p className="font-bold text-primary">
+                  {getContractPrice(detail) > 0 ? `${getContractPrice(detail).toLocaleString('en-GB')} VND` : '—'}
+                </p>
+              </div>
+            </div>
 
-            <div className="pt-4 border-t border-slate-100">
-              <h3 className="text-sm font-black text-slate-900 mb-3">Zones in this draft</h3>
+            {/* Zone availability */}
+            <div className="border-t border-slate-100 pt-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-800">Zone Availability</h3>
+                {!loadingShelves && zoneAvailability && (zonesForDisplay.length > 1) && (
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <span className="size-2 rounded-full bg-emerald-500 inline-block" />
+                      {zoneAvailability.totalAvailable} available
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="size-2 rounded-full bg-amber-500 inline-block" />
+                      {zoneAvailability.totalOccupied} occupied
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {zonesForDisplay.length === 0 ? (
-                <p className="text-xs text-amber-600">No zone information on this draft.</p>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/50 px-4 py-3 text-sm text-amber-700">
+                  No zone information available on this draft.
+                </div>
+              ) : loadingShelves ? (
+                <div className="space-y-2">
+                  <LoadingSkeleton className="h-20 rounded-2xl" />
+                  <LoadingSkeleton className="h-20 rounded-2xl" />
+                </div>
+              ) : shelvesError ? (
+                <p className="text-xs text-red-500">{shelvesError}</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {zoneAvailability?.perZone.map((z) => (
-                    <div
-                      key={z.zone.zoneId}
-                      className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-4">
+                    <div key={z.zone.zoneId} className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                      <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-900 truncate">
+                          <p className="font-semibold text-slate-900 text-sm">
                             {z.zone.zoneCode || z.zone.zoneName || z.zone.zoneId}
                           </p>
-                          <p className="text-xs text-slate-500 mt-1">
+                          <p className="text-xs text-slate-400 mt-0.5">
                             {z.zone.startDate && z.zone.endDate
                               ? `${formatDate(z.zone.startDate)} → ${formatDate(z.zone.endDate)}`
                               : '—'}
+                            {z.zone.price ? ` · ${Number(z.zone.price).toLocaleString('vi-VN')} VND` : ''}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            Zone price
-                          </p>
-                          <p className="text-lg font-black text-primary">
-                            {z.zone.price ? Number(z.zone.price).toLocaleString('vi-VN') : '—'} VND
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3 py-2">
-                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Available</p>
-                          {loadingShelves ? (
-                            <LoadingSkeleton className="h-6 w-10 mt-2 rounded-xl" />
-                          ) : (
-                            <p className="text-xl font-black text-emerald-700">{z.available}</p>
-                          )}
-                          {!loadingShelves && z.sampleAvailableShelves.length > 0 && (
-                            <p className="text-[11px] text-emerald-800 mt-1 truncate" title={z.sampleAvailableShelves.join(', ')}>
-                              {z.sampleAvailableShelves.join(', ')}
-                            </p>
-                          )}
-                        </div>
-                        <div className="rounded-2xl border border-amber-100 bg-amber-50/40 px-3 py-2">
-                          <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Occupied</p>
-                          {loadingShelves ? (
-                            <LoadingSkeleton className="h-6 w-10 mt-2 rounded-xl" />
-                          ) : (
-                            <p className="text-xl font-black text-amber-700">{z.occupied}</p>
-                          )}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-center">
+                            <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wide">Available</p>
+                            <p className="text-xl font-black text-emerald-600">{z.available}</p>
+                          </div>
+                          <div className="w-px h-8 bg-slate-200" />
+                          <div className="text-center">
+                            <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide">Occupied</p>
+                            <p className="text-xl font-black text-amber-600">{z.occupied}</p>
+                          </div>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
-
-            <div className="pt-4 border-t border-slate-100">
-              <h3 className="text-sm font-black text-slate-900 mb-3">Inventory status (by selected zones)</h3>
-              {loadingShelves ? (
-                <LoadingSkeleton className="h-28 rounded-2xl w-full" />
-              ) : shelvesError ? (
-                <p className="text-xs text-red-500">{shelvesError}</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
-                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Total available shelves</p>
-                    <p className="text-3xl font-black text-emerald-700 mt-2">{zoneAvailability?.totalAvailable ?? 0}</p>
-                  </div>
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
-                    <p className="text-[10px] font-bold text-amber-700 uppercase tracking-widest">Total occupied shelves</p>
-                    <p className="text-3xl font-black text-amber-700 mt-2">{zoneAvailability?.totalOccupied ?? 0}</p>
-                  </div>
-                </div>
-              )}
-              <p className="text-xs text-slate-500 mt-3">
-                Inventory status is based on the current shelf availability in the warehouse.
-              </p>
-            </div>
-
-            <div className="flex gap-3 pt-4">
-              <Button
-                onClick={() => {
-                  doApprove(detail.id);
-                  setDetail(null);
-                }}
-                isLoading={approvingId === detail.id}
-                disabled={loadingShelves}
-              >
-                Process
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  setDeleteTarget(detail);
-                  setDeleteReason('');
-                }}
-                disabled={approvingId === detail.id}
-              >
-                Delete draft
-              </Button>
-              <Button variant="ghost" onClick={() => setDetail(null)}>
-                Close
-              </Button>
             </div>
           </div>
         </Modal>
