@@ -20,7 +20,9 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 type Props = InputProps | TextareaProps;
 
-export function Input(props: Props) {
+export function Input(props: TextareaProps): React.JSX.Element;
+export function Input(props: InputProps): React.JSX.Element;
+export function Input(props: Props): React.JSX.Element {
   const { label, error, helperText, leftIcon, rightIcon, className, ...rest } =
     props as InputProps & { as?: 'textarea' };
   const isTextarea = (props as TextareaProps).as === 'textarea';
