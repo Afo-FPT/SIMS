@@ -217,7 +217,7 @@ export default function ManagerContractPackagesPage() {
                       {warehouses.find((w) => w.id === pkg.warehouseId)?.name || '—'}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={pkg.isActive !== false ? 'success' : 'default'}>
+                      <Badge variant={pkg.isActive !== false ? 'success' : 'neutral'}>
                         {pkg.isActive !== false ? 'Active' : 'Disabled'}
                       </Badge>
                     </TableCell>

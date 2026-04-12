@@ -98,13 +98,16 @@ export function TableCell({
   children,
   className,
   truncate,
+  title,
 }: {
   children: React.ReactNode;
   className?: string;
   truncate?: boolean;
+  title?: string;
 }) {
   return (
     <td
+      title={title}
       className={cn(
         'px-6 py-4 text-sm text-slate-700',
         truncate && 'max-w-[200px] truncate',
