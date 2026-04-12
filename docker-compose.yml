@@ -1,0 +1,91 @@
+# SIMS: MongoDB (local) + backend + frontend
+# Sao chép .env.docker.example -> .env.docker và chỉnh giá trị trước khi chạy: docker compose --env-file .env.docker up --build
+
+services:
+  mongo:
+    # Tag mongo:7 đôi khi không có trên mirror/registry; 7.0 ổn định hơn trên Docker Hub
+    image: mongo:7.0
+    container_name: sims-mongo
+    restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - sims_mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: sims
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mongo-init-replica:
+    image: mongo:7.0
+    container_name: sims-mongo-init-replica
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command:
+      [
+        "mongosh",
+        "--host",
+        "mongo:27017",
+        "--eval",
+        "try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }"
+      ]
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    image: sims-backend:local
+    container_name: sims-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017/sims?replicaSet=rs0
+      JWT_SECRET: ${JWT_SECRET:-change-me-use-env-docker}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      VNP_TMN_CODE: ${VNP_TMN_CODE:-}
+      VNP_HASH_SECRET: ${VNP_HASH_SECRET:-}
+      VNP_PAYMENT_URL: ${VNP_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      VNP_RETURN_URL: ${VNP_RETURN_URL:-http://localhost:3000/customer/contracts}
+      VNP_IPN_URL: ${VNP_IPN_URL:-}
+      VNP_LOCALE: ${VNP_LOCALE:-vn}
+      VNP_CURR_CODE: ${VNP_CURR_CODE:-VND}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      EMAIL_VERIFY_ON_STARTUP: "false"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-init-replica:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+        GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    image: sims-frontend:local
+    container_name: sims-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      - backend
+
+volumes:
+  sims_mongo_data:
