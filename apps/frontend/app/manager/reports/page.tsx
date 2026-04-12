@@ -93,6 +93,7 @@ const ZONE_PRICING_WAREHOUSE_NONE_KEY = '__no_warehouse__';
 const MANAGER_CONTRACT_STATUSES = [
   'draft',
   'pending_payment',
+  'scheduled',
   'active',
   'expired',
   'terminated',

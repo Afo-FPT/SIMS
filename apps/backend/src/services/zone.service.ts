@@ -32,7 +32,7 @@ export interface ZoneResponse {
   created_by: string;
   created_at: Date;
   updated_at: Date;
-  /** Occupied by an active / pending_payment contract for the current calendar day */
+  /** Occupied by an active / pending_payment / scheduled contract for the current calendar day */
   rental_status: ZoneRentalStatus;
   /** ISO date when current lease ends (latest end if multiple rows) */
   lease_end_date?: string;
@@ -57,14 +57,14 @@ function wholeDaysFromTodayToEnd(end: Date): number {
 }
 
 /**
- * Map zoneId -> latest lease end among overlapping active/pending_payment contracts.
+ * Map zoneId -> latest lease end among overlapping active/pending_payment/scheduled contracts.
  */
 async function getZoneLeaseEndsByWarehouse(
   warehouseId: string
 ): Promise<Map<string, Date>> {
   const contracts = await Contract.find({
     warehouseId: new Types.ObjectId(warehouseId),
-    status: { $in: ["active", "pending_payment"] }
+    status: { $in: ["active", "pending_payment", "scheduled"] }
   })
     .select("rentedZones")
     .lean();

@@ -1,4 +1,4 @@
-import Contract, { IRentedZone } from "../models/Contract";
+import Contract, { IRentedZone, IContract } from "../models/Contract";
 import Zone from "../models/Zone";
 import Shelf from "../models/Shelf";
 import Warehouse from "../models/Warehouse";
@@ -8,6 +8,7 @@ import { Types } from "mongoose";
 import { runContractExpirySideEffects } from "./contract-expiry-side-effects.service";
 import { runContractTerminationSideEffects } from "./contract-termination-side-effects.service";
 import { notifyContractDraftDeletedForCustomer } from "./notification.service";
+import { activateScheduledContracts } from "./contract-scheduler.service";
 
 /**
  * DTO for creating a contract (manager: assign zones)
@@ -45,7 +46,7 @@ export interface ContractResponse {
   requested_zone_id?: string;
   requested_start_date?: Date;
   requested_end_date?: Date;
-  status: "draft" | "pending_payment" | "active" | "expired" | "terminated";
+  status: "draft" | "pending_payment" | "scheduled" | "active" | "expired" | "terminated";
   created_by: string;
   created_at: Date;
   updated_at: Date;
@@ -155,7 +156,7 @@ async function validateZone(zoneId: string, warehouseId: string): Promise<void> 
 /**
  * Check if a zone is available for [startDate, endDate].
  * No overlap with other reserved/active contracts that rent the same zone (same start/end range).
- * We consider overlapping reservations from `draft`, `pending_payment`, and `active` contracts.
+ * We consider overlapping reservations from `pending_payment`, `scheduled`, and `active` contracts.
  * excludeContractId: when activating a draft, exclude that contract from the check.
  */
 async function checkZoneAvailability(
@@ -166,8 +167,8 @@ async function checkZoneAvailability(
 ): Promise<{ available: boolean; conflictingContract?: any }> {
   const zoneOid = new Types.ObjectId(zoneId);
   const query: any = {
-    // Draft should NOT reserve zone. Only pending_payment (payment window) and active reserve it.
-    status: { $in: ["pending_payment", "active"] },
+    // Draft should NOT reserve zone. pending_payment, scheduled (paid, before start), and active reserve it.
+    status: { $in: ["pending_payment", "scheduled", "active"] },
     rentedZones: {
       $elemMatch: {
         zoneId: zoneOid,
@@ -273,7 +274,7 @@ async function validateCustomerZoneDraftUniqueness(params: {
 
   const existing = await Contract.findOne({
     customerId: customerOid,
-    status: { $in: ["draft", "pending_payment", "active"] },
+    status: { $in: ["draft", "pending_payment", "scheduled", "active"] },
     rentedZones: {
       $elemMatch: {
         zoneId: { $in: zoneOids },
@@ -457,7 +458,7 @@ async function createDraftContractWithRequestOnly(
     // Block duplicates for the same customer + requested zone during overlapping periods.
     const existing = await Contract.findOne({
       customerId: new Types.ObjectId(customerId),
-      status: { $in: ["draft", "pending_payment", "active"] },
+      status: { $in: ["draft", "pending_payment", "scheduled", "active"] },
       requestedZoneId: new Types.ObjectId(data.requestedZoneId),
       requestedStartDate: { $lte: endDate },
       requestedEndDate: { $gte: startDate }
@@ -579,6 +580,11 @@ export async function getContracts(
   userId: string,
   userRole: string
 ): Promise<ContractResponse[]> {
+  try {
+    await activateScheduledContracts();
+  } catch (e: any) {
+    console.error("[getContracts] activateScheduledContracts:", e?.message || e);
+  }
   const query: any = {};
   if (userRole === "customer") {
     query.customerId = new Types.ObjectId(userId);
@@ -601,12 +607,18 @@ export async function getContractById(
   if (!Types.ObjectId.isValid(contractId)) {
     throw new Error("Invalid contract ID");
   }
+  try {
+    await activateScheduledContracts();
+  } catch (e: any) {
+    console.error("[getContractById] activateScheduledContracts:", e?.message || e);
+  }
   const contract = await Contract.findById(contractId)
     .populate("customerId", "name email")
     .populate("warehouseId", "name address")
     .populate("createdBy", "name email")
     .populate("rentedZones.zoneId", "zoneCode name")
-    .populate("requestedZoneId", "zoneCode name");
+    .populate("requestedZoneId", "zoneCode name")
+    .populate("pricingPackageId", "name");
   if (!contract) {
     throw new Error("Contract not found");
   }
@@ -627,12 +639,19 @@ export async function getContractByCode(
   const normalized = String(contractCode || "").trim().toUpperCase();
   if (!normalized) throw new Error("contractCode is required");
 
+  try {
+    await activateScheduledContracts();
+  } catch (e: any) {
+    console.error("[getContractByCode] activateScheduledContracts:", e?.message || e);
+  }
+
   const contract = await Contract.findOne({ contractCode: normalized })
     .populate("customerId", "name email")
     .populate("warehouseId", "name address")
     .populate("createdBy", "name email")
     .populate("rentedZones.zoneId", "zoneCode name")
-    .populate("requestedZoneId", "zoneCode name");
+    .populate("requestedZoneId", "zoneCode name")
+    .populate("pricingPackageId", "name");
 
   if (!contract) {
     throw new Error("Contract not found");
@@ -669,6 +688,7 @@ export async function updateContractStatus(
   const validTransitions: Record<string, string[]> = {
     draft: ["pending_payment", "active", "terminated"],
     pending_payment: ["active", "terminated"],
+    scheduled: ["active", "terminated"],
     active: ["expired", "terminated"],
     expired: ["terminated"],
     terminated: []
@@ -738,7 +758,7 @@ export async function updateContractStatus(
       }
 
       // Validate that every rentedZone is still available for pending payment.
-      // (drafts do not reserve, only pending_payment/active do)
+      // (drafts do not reserve; pending_payment, scheduled, and active reserve)
       for (const rz of contract.rentedZones || []) {
         const rzStart = new Date(rz.startDate);
         const rzEnd = new Date(rz.endDate);
@@ -805,11 +825,21 @@ export async function updateContractStatus(
       ];
     }
 
-    contract.status = newStatus;
+    let finalStatus: IContract["status"] = newStatus as IContract["status"];
+    if (newStatus === "active" && contract.rentedZones && contract.rentedZones.length > 0) {
+      const minStart = Math.min(
+        ...contract.rentedZones.map((rz) => new Date(rz.startDate).getTime())
+      );
+      if (minStart > Date.now()) {
+        finalStatus = "scheduled";
+      }
+    }
+
+    contract.status = finalStatus;
     await contract.save({ session });
 
-    if (newStatus === "active") {
-      for (const rz of contract.rentedZones) {
+    if (finalStatus === "active") {
+      for (const rz of contract.rentedZones || []) {
         await Shelf.updateMany(
           { zoneId: rz.zoneId },
           { status: "RENTED" },

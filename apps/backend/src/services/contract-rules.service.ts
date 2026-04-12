@@ -1,4 +1,10 @@
-export type ContractStatus = "draft" | "pending_payment" | "active" | "expired" | "terminated";
+export type ContractStatus =
+  | "draft"
+  | "pending_payment"
+  | "scheduled"
+  | "active"
+  | "expired"
+  | "terminated";
 
 type ContractLike = {
   status: ContractStatus | string;
@@ -12,6 +18,11 @@ export function assertCustomerMayCreateStorageRequest(
   requestType: "IN" | "OUT"
 ): void {
   const s = contract.status as ContractStatus;
+  if (s === "scheduled") {
+    throw new Error(
+      "Payment is complete, but the rental period has not started yet. You can create storage requests from the contract start date."
+    );
+  }
   if (s === "active") return;
   if (s === "expired" && requestType === "OUT") return;
   if (s === "expired" && requestType === "IN") {
@@ -33,6 +44,11 @@ export function assertStaffMayCompleteStorageRequest(
   requestType: "IN" | "OUT"
 ): void {
   const s = contract.status as ContractStatus;
+  if (s === "scheduled") {
+    throw new Error(
+      "This contract is paid but not yet in its rental period. Storage requests cannot be completed until the contract is active."
+    );
+  }
   if (s === "active") return;
   if (s === "expired" && requestType === "OUT") return;
   if (s === "expired" && requestType === "IN") {
@@ -54,6 +70,11 @@ export function assertManagerMayAssignStorageRequest(
   requestType: "IN" | "OUT"
 ): void {
   const s = contract.status as ContractStatus;
+  if (s === "scheduled") {
+    throw new Error(
+      "Cannot assign staff: the contract is paid but the rental period has not started yet."
+    );
+  }
   if (s === "active") return;
   if (s === "expired" && requestType === "OUT") return;
   if (s === "expired" && requestType === "IN") {
@@ -71,6 +92,11 @@ export function assertManagerMayAssignStorageRequest(
  * Manager approves inbound: only while contract is still active.
  */
 export function assertManagerMayApproveInbound(contract: ContractLike): void {
+  if (contract.status === "scheduled") {
+    throw new Error(
+      "Cannot approve inbound: the rental period has not started yet. Reject the request or wait until the contract becomes active."
+    );
+  }
   if (contract.status !== "active") {
     throw new Error(
       "Cannot approve inbound: contract is not active. Reject the request or renew the contract first."
@@ -83,6 +109,11 @@ export function assertManagerMayApproveInbound(contract: ContractLike): void {
  */
 export function assertManagerMayApproveOutbound(contract: ContractLike): void {
   const s = contract.status as ContractStatus;
+  if (s === "scheduled") {
+    throw new Error(
+      "Cannot approve outbound: the rental period has not started yet."
+    );
+  }
   if (s === "active" || s === "expired") return;
   if (s === "terminated") {
     throw new Error("Cannot approve outbound: contract is terminated.");
@@ -92,6 +123,11 @@ export function assertManagerMayApproveOutbound(contract: ContractLike): void {
 
 export function assertContractEligibleForRequestCredits(contract: ContractLike): void {
   const s = contract.status as ContractStatus;
+  if (s === "scheduled") {
+    throw new Error(
+      "Request credits can be purchased after the rental period has started (contract is active)."
+    );
+  }
   if (s === "active" || s === "expired") return;
   if (s === "terminated") {
     throw new Error("Request credits cannot be purchased for a terminated contract.");

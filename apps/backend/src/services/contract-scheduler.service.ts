@@ -4,6 +4,60 @@ import Payment from "../models/Payment";
 import { runContractExpirySideEffects } from "./contract-expiry-side-effects.service";
 
 /**
+ * Paid contracts in `scheduled` (start date in the future at payment time) become `active`
+ * when all rented zone start dates are <= now; shelves in those zones are marked RENTED.
+ */
+export async function activateScheduledContracts(): Promise<{
+  activated: number;
+  errors: string[];
+}> {
+  const now = new Date();
+  const errors: string[] = [];
+  let activated = 0;
+
+  try {
+    const candidates = await Contract.find({ status: "scheduled" });
+
+    for (const contract of candidates) {
+      const zones = contract.rentedZones || [];
+      if (!zones.length) {
+        errors.push(`Scheduled contract ${contract.contractCode} has no rentedZones; skipped`);
+        continue;
+      }
+      const allZonesStarted = zones.every((rz) => new Date(rz.startDate) <= now);
+      if (!allZonesStarted) continue;
+
+      const session = await Contract.startSession();
+      session.startTransaction();
+      try {
+        const fresh = await Contract.findById(contract._id).session(session);
+        if (!fresh || fresh.status !== "scheduled") {
+          await session.abortTransaction();
+          continue;
+        }
+        fresh.status = "active";
+        await fresh.save({ session });
+
+        for (const rz of fresh.rentedZones || []) {
+          await Shelf.updateMany({ zoneId: rz.zoneId }, { status: "RENTED" }, { session });
+        }
+        await session.commitTransaction();
+        activated++;
+      } catch (error: any) {
+        await session.abortTransaction();
+        errors.push(`Failed to activate scheduled ${contract.contractCode}: ${error.message}`);
+      } finally {
+        session.endSession();
+      }
+    }
+  } catch (error: any) {
+    errors.push(`Error in activateScheduledContracts: ${error.message}`);
+  }
+
+  return { activated, errors };
+}
+
+/**
  * Automatically activate contracts where rented zones' start date has passed
  * and mark all shelves in those zones as RENTED
  */
@@ -70,7 +124,7 @@ export async function expireContractsByDate(): Promise<{
   let expired = 0;
 
   try {
-    const contractsToExpire = await Contract.find({ status: "active" });
+    const contractsToExpire = await Contract.find({ status: { $in: ["active", "scheduled"] } });
 
     for (const contract of contractsToExpire) {
       const allZonesExpired = (contract.rentedZones || []).every(
@@ -78,6 +132,7 @@ export async function expireContractsByDate(): Promise<{
       );
 
       if (allZonesExpired && contract.rentedZones?.length) {
+        const priorStatus = contract.status;
         const session = await Contract.startSession();
         session.startTransaction();
         try {
@@ -101,16 +156,18 @@ export async function expireContractsByDate(): Promise<{
           await session.commitTransaction();
           expired++;
 
-          try {
-            await runContractExpirySideEffects({
-              _id: contract._id,
-              customerId: contract.customerId,
-              contractCode: contract.contractCode
-            });
-          } catch (sideErr: any) {
-            errors.push(
-              `Post-expiry side effects failed for ${contract.contractCode}: ${sideErr?.message || sideErr}`
-            );
+          if (priorStatus === "active") {
+            try {
+              await runContractExpirySideEffects({
+                _id: contract._id,
+                customerId: contract.customerId,
+                contractCode: contract.contractCode
+              });
+            } catch (sideErr: any) {
+              errors.push(
+                `Post-expiry side effects failed for ${contract.contractCode}: ${sideErr?.message || sideErr}`
+              );
+            }
           }
         } catch (error: any) {
           await session.abortTransaction();
@@ -132,16 +189,22 @@ export async function runContractScheduler(): Promise<{
   expired: number;
   errors: string[];
 }> {
-  const [activationResult, expirationResult, pendingPaymentResult] = await Promise.all([
+  const [scheduledResult, activationResult, expirationResult, pendingPaymentResult] = await Promise.all([
+    activateScheduledContracts(),
     activateContractsByDate(),
     expireContractsByDate(),
     expirePendingPaymentsByTime()
   ]);
 
   return {
-    activated: activationResult.activated,
+    activated: scheduledResult.activated + activationResult.activated,
     expired: expirationResult.expired + pendingPaymentResult.expired,
-    errors: [...activationResult.errors, ...expirationResult.errors, ...pendingPaymentResult.errors]
+    errors: [
+      ...scheduledResult.errors,
+      ...activationResult.errors,
+      ...expirationResult.errors,
+      ...pendingPaymentResult.errors
+    ]
   };
 }
 

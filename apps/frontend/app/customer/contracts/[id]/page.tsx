@@ -32,6 +32,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Pending confirmation';
     case 'pending_payment':
       return 'Pending payment';
+    case 'scheduled':
+      return 'Paid — rental not started yet';
     case 'expired':
       return 'Expired';
     case 'terminated':
@@ -49,6 +51,8 @@ function getStatusBadgeClass(status: Contract['status']): string {
       return 'bg-amber-100 text-amber-700';
     case 'pending_payment':
       return 'bg-amber-100 text-amber-700';
+    case 'scheduled':
+      return 'bg-sky-100 text-sky-800';
     case 'expired':
     case 'terminated':
       return 'bg-slate-100 text-slate-600';
@@ -126,6 +130,7 @@ export default function ContractDetailPage() {
   const isDraft = contract.status === 'draft';
   const isActive = contract.status === 'active';
   const isPendingPayment = contract.status === 'pending_payment';
+  const isScheduled = contract.status === 'scheduled';
   const total = getTotalAmount(contract);
 
   return (
@@ -288,6 +293,15 @@ export default function ContractDetailPage() {
               <span className="material-symbols-outlined text-lg">payments</span>
               Go to payment
             </Link>
+          </div>
+        )}
+
+        {isScheduled && (
+          <div className="pt-6 border-t border-slate-100 rounded-2xl bg-sky-50 border border-sky-100 p-6">
+            <p className="text-sm text-sky-900 font-bold">
+              Payment is complete. You can use the warehouse and create service requests from the first day of your rental period (
+              {getDateRangeDisplay(contract)}).
+            </p>
           </div>
         )}
 

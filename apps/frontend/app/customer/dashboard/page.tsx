@@ -114,7 +114,7 @@ export default function CustomerDashboard() {
 
   const contractStatusVariant = (status: string) => {
     if (status === 'active') return 'success' as const;
-    if (status === 'draft' || status === 'pending_payment') return 'warning' as const;
+    if (status === 'draft' || status === 'pending_payment' || status === 'scheduled') return 'warning' as const;
     if (status === 'terminated') return 'error' as const;
     return 'neutral' as const;
   };

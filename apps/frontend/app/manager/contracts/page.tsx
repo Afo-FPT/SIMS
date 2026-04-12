@@ -49,6 +49,7 @@ function getStatusVariant(status: Contract['status']): 'success' | 'warning' | '
       return 'error';
     case 'draft':
     case 'pending_payment':
+    case 'scheduled':
       return 'info';
     default:
       return 'info';
@@ -70,6 +71,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Draft';
     case 'pending_payment':
       return 'Pending payment';
+    case 'scheduled':
+      return 'Scheduled (paid, before start)';
     default:
       return status;
   }
@@ -385,6 +388,7 @@ export default function ManagerContractsPage() {
                   { value: 'all', label: 'All statuses' },
                   { value: 'draft', label: 'Draft' },
                   { value: 'pending_payment', label: 'Pending payment' },
+                  { value: 'scheduled', label: 'Scheduled (paid)' },
                   { value: 'active', label: 'Active' },
                   { value: 'expired', label: 'Expired' },
                   { value: 'terminated', label: 'Terminated' },
@@ -550,6 +554,19 @@ export default function ManagerContractsPage() {
                     </p>
                     <Button onClick={() => handleStatusChange(detail.id, 'pending_payment')} disabled={updating}>
                       Approve &amp; set pending payment
+                    </Button>
+                  </>
+                )}
+                {detail.status === 'scheduled' && (
+                  <>
+                    <p className="text-sm text-slate-600 mb-2 w-full">
+                      Customer has paid. The contract becomes active automatically on the rental start date, or you can activate it early.
+                    </p>
+                    <Button onClick={() => handleStatusChange(detail.id, 'active')} disabled={updating}>
+                      Activate now
+                    </Button>
+                    <Button variant="secondary" onClick={() => handleStatusChange(detail.id, 'terminated')} disabled={updating}>
+                      Terminate
                     </Button>
                   </>
                 )}
