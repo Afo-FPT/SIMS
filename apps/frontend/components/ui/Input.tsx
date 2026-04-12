@@ -20,6 +20,7 @@ interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement
 
 type Props = InputProps | TextareaProps;
 
+/** Overloads so `onChange` infers input vs textarea (union props otherwise widen `e` to implicit any). */
 export function Input(props: TextareaProps): React.JSX.Element;
 export function Input(props: InputProps): React.JSX.Element;
 export function Input(props: Props): React.JSX.Element {

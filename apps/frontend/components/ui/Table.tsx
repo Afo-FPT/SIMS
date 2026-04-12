@@ -94,20 +94,14 @@ export function TableRow({
   );
 }
 
-export function TableCell({
-  children,
-  className,
-  truncate,
-  title,
-}: {
-  children: React.ReactNode;
-  className?: string;
+type TableCellProps = React.TdHTMLAttributes<HTMLTableCellElement> & {
   truncate?: boolean;
-  title?: string;
-}) {
+};
+
+export function TableCell({ children, className, truncate, ...rest }: TableCellProps) {
   return (
     <td
-      title={title}
+      {...rest}
       className={cn(
         'px-6 py-4 text-sm text-slate-700',
         truncate && 'max-w-[200px] truncate',
