@@ -189,19 +189,17 @@ export async function runContractScheduler(): Promise<{
   expired: number;
   errors: string[];
 }> {
-  const [scheduledResult, activationResult, expirationResult, pendingPaymentResult] = await Promise.all([
+  const [scheduledResult, expirationResult, pendingPaymentResult] = await Promise.all([
     activateScheduledContracts(),
-    activateContractsByDate(),
     expireContractsByDate(),
     expirePendingPaymentsByTime()
   ]);
 
   return {
-    activated: scheduledResult.activated + activationResult.activated,
+    activated: scheduledResult.activated,
     expired: expirationResult.expired + pendingPaymentResult.expired,
     errors: [
       ...scheduledResult.errors,
-      ...activationResult.errors,
       ...expirationResult.errors,
       ...pendingPaymentResult.errors
     ]

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listStorageRequests, type StorageRequestView } from '../../../lib/storage-requests.api';
 import { Badge } from '../../../components/ui/Badge';
+import { Button } from '../../../components/ui/Button';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { Modal } from '../../../components/ui/Modal';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
