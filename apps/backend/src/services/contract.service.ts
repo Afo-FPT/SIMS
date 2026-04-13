@@ -391,7 +391,14 @@ async function computeZoneRentalPrice(params: {
       throw new Error("Selected package does not belong to selected warehouse");
     }
     // Formula: total = (zoneArea * pricePerM2) + (rentalDays * pricePerDay)
-    return Math.round((zone.area * (pkg as any).pricePerM2 + rentalDays * (pkg as any).pricePerDay) * 100) / 100;
+    const packageTotal = Math.round(
+      (zone.area * (pkg as any).pricePerM2 + rentalDays * (pkg as any).pricePerDay) * 100
+    ) / 100;
+    if (packageTotal > 0) {
+      return packageTotal;
+    }
+    // Safety fallback for legacy packages with zero pricing.
+    // Keep request flow working by falling back to explicit price or default base price.
   }
 
   if (fallbackPricePerZone && fallbackPricePerZone > 0) {
