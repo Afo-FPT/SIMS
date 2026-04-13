@@ -36,7 +36,18 @@ async function validateWarehouseAndPrices(warehouseId: string, pricePerM2: numbe
   if (!Number.isFinite(pricePerDay) || pricePerDay < 0) throw new Error("pricePerDay must be >= 0");
 }
 
-export interface ContractPackageWithWarehouse extends Omit<IContractPackage, never> {
+export interface ContractPackageWithWarehouse {
+  _id: Types.ObjectId;
+  name: string;
+  warehouseId: Types.ObjectId;
+  duration: number;
+  unit: ContractPackageUnit;
+  pricePerM2: number;
+  pricePerDay: number;
+  isActive: boolean;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
   warehouseName?: string;
   warehouseAddress?: string;
 }
@@ -56,13 +67,13 @@ export async function listContractPackages(warehouseId?: string, includeInactive
   const warehouses = await Warehouse.find({ _id: { $in: warehouseIds } }).select("name address").lean().exec();
   const warehouseMap = new Map(warehouses.map((w) => [w._id.toString(), w]));
 
-  return packages.map((p) => {
+  return packages.map((p): ContractPackageWithWarehouse => {
     const wh = warehouseMap.get(p.warehouseId?.toString() ?? "");
     return {
       ...p,
       warehouseName: wh?.name,
       warehouseAddress: wh?.address,
-    } as ContractPackageWithWarehouse;
+    };
   });
 }
 
