@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import {
   listStorageRequests,
@@ -62,11 +63,7 @@ function safeToDate(v: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDateTime(v: string): string {
-  const d = safeToDate(v);
-  if (!d) return '—';
-  return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+
 
 function getStatusGroupForRow(row: StaffTaskRow): Exclude<StatusGroup, 'ALL'> {
   if (row.type === 'INVENTORY_CHECKING') {

@@ -8,6 +8,7 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { getCustomerContracts } from '../../../lib/customer.api';
 import { Pagination } from '../../../components/ui/Pagination';
+import { formatDateTime } from '../../../lib/date-format';
 
 type ProductRow = StoredProductOverview & {
   warehouseName?: string;
@@ -276,7 +277,7 @@ export default function CustomerInventoryPage() {
                       <span className="text-slate-400">{i.unit}</span>
                     </td>
                     <td className="px-6 py-4 text-slate-500 text-sm">
-                      {new Date(i.last_updated).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
+                      {formatDateTime(i.last_updated)}
                     </td>
                     <td className="px-6 py-4">
                       <Link

@@ -5,6 +5,7 @@ import {
   listStorageRequests,
   type StorageRequestView,
 } from '../../../lib/storage-requests.api';
+import { formatDateTime } from '../../../lib/date-format';
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import {
@@ -119,10 +120,7 @@ export default function ManagerInboundRequestsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(r.created_at).toLocaleString('vi-VN', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {formatDateTime(r.created_at)}
                   </TableCell>
                 </TableRow>
               ))}

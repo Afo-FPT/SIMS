@@ -14,6 +14,7 @@ import { Input } from '../../../../components/ui/Input';
 import { Select } from '../../../../components/ui/Select';
 import { LoadingSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
+import { formatDateTime } from '../../../../lib/date-format';
 
 export default function StaffOutboundDetailPage() {
   const params = useParams();
@@ -73,11 +74,7 @@ export default function StaffOutboundDetailPage() {
   };
 
   const formatDate = (s: string) => {
-    try {
-    return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-    } catch {
-      return s;
-    }
+    return formatDateTime(s);
   };
 
   const handleComplete = async () => {

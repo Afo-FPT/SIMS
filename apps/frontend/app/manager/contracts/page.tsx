@@ -28,14 +28,7 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 import { PageHeader } from '../../../components/ui/PageHeader';
-
-/**
- * Format date for display
- */
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('vi-VN');
-}
+import { formatDate, formatDateTime } from '../../../lib/date-format';
 
 /**
  * Get status badge variant
@@ -564,7 +557,7 @@ export default function ManagerContractsPage() {
                       {detailPayments.slice(0, 5).map((p) => (
                         <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition-colors">
                           <td className="px-3 py-2.5 text-xs text-slate-500">
-                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                            {formatDateTime(p.createdAt)}
                           </td>
                           <td className="px-3 py-2.5 font-bold text-slate-900">{p.amount.toLocaleString('vi-VN')} đ</td>
                           <td className="px-3 py-2.5">
@@ -740,7 +733,7 @@ export default function ManagerContractsPage() {
                       {(paymentTab === 'contract' ? contractPayments : servicePayments).map((p) => (
                         <tr key={p.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60 transition-colors">
                           <td className="px-4 py-2.5 text-xs text-slate-500 whitespace-nowrap">
-                            {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                            {formatDateTime(p.createdAt)}
                           </td>
                           <td className="px-4 py-2.5">
                             <p className="font-semibold text-slate-900">{p.contractCode || p.contractId}</p>
@@ -761,7 +754,7 @@ export default function ManagerContractsPage() {
                             </Badge>
                             {p.paidAt && (
                               <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
-                                {new Date(p.paidAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                                {formatDateTime(p.paidAt)}
                               </p>
                             )}
                           </td>

@@ -4,6 +4,7 @@ import { deleteReadNotifications, listMyNotifications, markNotificationRead, typ
 import { getNotificationSocket } from '../lib/notifications.socket';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
+import { formatDateTime } from '../lib/date-format';
 
 interface HeaderProps {
   activeView: string;
@@ -222,7 +223,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
                           <p className="font-bold text-slate-900 truncate">{n.title}</p>
                           <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{n.message}</p>
                           <p className="text-xs text-slate-400 mt-1">
-                            {new Date(n.createdAt).toLocaleString('en-GB')}
+                            {formatDateTime(n.createdAt)}
                           </p>
                         </div>
                       </div>
@@ -262,7 +263,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
                 {selectedNotification.message || 'No details.'}
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                {new Date(selectedNotification.createdAt).toLocaleString('en-GB')}
+                {formatDateTime(selectedNotification.createdAt)}
               </p>
             </div>
             {(selectedNotification.meta as any)?.reason && (

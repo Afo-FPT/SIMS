@@ -13,6 +13,7 @@ import {
 } from '../../../lib/admin.api';
 import { useToast } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
+import { formatDateTime } from '../../../lib/date-format';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
@@ -233,9 +234,7 @@ export default function AdminUsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-500 text-sm">
-                    {user.lastLoginAt
-                      ? new Date(user.lastLoginAt).toLocaleString()
-                      : 'Never'}
+                    {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu.Root>

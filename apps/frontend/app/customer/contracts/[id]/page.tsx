@@ -5,24 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getCustomerContractById } from '../../../../lib/customer.api';
 import type { Contract } from '../../../../lib/customer-types';
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
-
-function formatDateTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+import { formatDate, formatDateTime } from '../../../../lib/date-format';
 
 function getStatusDisplay(status: Contract['status']): string {
   switch (status) {

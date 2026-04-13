@@ -9,6 +9,7 @@ import { EmptyState } from '../../../components/ui/EmptyState';
 import { Badge } from '../../../components/ui/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/Table';
 import { Pagination } from '../../../components/ui/Pagination';
+import { formatDateTime, formatMonthYear } from '../../../lib/date-format';
 
 type HistoryType = 'ALL' | 'INBOUND' | 'OUTBOUND' | 'CYCLE_COUNT';
 
@@ -107,7 +108,7 @@ function DatePickerField({
               <span className="material-symbols-outlined text-base">chevron_left</span>
             </button>
             <p className="text-sm font-bold text-slate-900">
-              {viewDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+              {formatMonthYear(viewDate)}
             </p>
             <button
               type="button"
@@ -344,7 +345,7 @@ export default function CustomerHistoryPage() {
                   <TableCell className="font-bold text-slate-900">{r.reference}</TableCell>
                   <TableCell>{r.status}</TableCell>
                   <TableCell>{r.quantity}</TableCell>
-                  <TableCell className="text-sm text-slate-500">{new Date(r.updatedAt).toLocaleString('en-GB')}</TableCell>
+                  <TableCell className="text-sm text-slate-500">{formatDateTime(r.updatedAt)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

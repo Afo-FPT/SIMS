@@ -25,6 +25,7 @@ import {
   updateContractPackage,
 } from '../../../lib/contract-packages.api';
 import { listWarehouses, type ManagerWarehouse } from '../../../lib/manager.api';
+import { formatDate } from '../../../lib/date-format';
 
 type FormState = {
   name: string;
@@ -203,11 +204,7 @@ export default function ManagerContractPackagesPage() {
                       <div className="font-semibold text-slate-900">{pkg.name}</div>
                       <div className="text-xs text-slate-400 mt-0.5">
                         Updated{' '}
-                        {new Date(pkg.updatedAt).toLocaleDateString('vi-VN', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                        })}
+                        {formatDate(pkg.updatedAt)}
                       </div>
                     </TableCell>
                     <TableCell className="text-slate-700">

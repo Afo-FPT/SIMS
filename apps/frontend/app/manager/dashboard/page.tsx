@@ -12,6 +12,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { formatDateTime } from '../../../lib/date-format';
 
 export default function ManagerDashboard() {
   const ITEMS_PER_PAGE = 4;
@@ -459,7 +460,7 @@ export default function ManagerDashboard() {
                         <TableCell>
                           <Badge variant="warning">DRAFT</Badge>
                         </TableCell>
-                        <TableCell className="text-slate-600 text-sm">{new Date(c.createdAt).toLocaleString('en-GB')}</TableCell>
+                        <TableCell className="text-slate-600 text-sm">{formatDateTime(c.createdAt)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -499,7 +500,7 @@ export default function ManagerDashboard() {
                     </p>
                     <div className="flex items-center justify-between gap-3">
                       <Badge variant="neutral">{c.warehouseName || c.warehouseId || '—'}</Badge>
-                      <p className="text-xs text-slate-500">{new Date(c.createdAt).toLocaleString('en-GB')}</p>
+                      <p className="text-xs text-slate-500">{formatDateTime(c.createdAt)}</p>
                     </div>
                   </div>
                 ))}
@@ -559,7 +560,7 @@ export default function ManagerDashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-slate-600 text-sm">
-                      {new Date(t.updated_at || t.created_at).toLocaleString('en-GB')}
+                      {formatDateTime(t.updated_at || t.created_at)}
                     </TableCell>
                   </TableRow>
                 ))}

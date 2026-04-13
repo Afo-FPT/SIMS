@@ -5,14 +5,10 @@ import { getMyProfile, updateMyProfile, type MyProfile } from '../lib/users.api'
 import { useToastHelpers } from '../lib/toast';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
+import { formatDateTime } from '../lib/date-format';
 
 function formatDate(s?: string | null) {
-  if (!s) return '—';
-  try {
-    return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return s;
-  }
+  return formatDateTime(s);
 }
 
 function roleLabel(role: string) {

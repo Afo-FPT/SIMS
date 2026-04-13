@@ -10,6 +10,7 @@ import {
   type CycleCountResponse,
 } from '../../../../lib/cycle-count.api';
 import { useToastHelpers } from '../../../../lib/toast';
+import { formatDateTime } from '../../../../lib/date-format';
 import { Button } from '../../../../components/ui/Button';
 import { Badge } from '../../../../components/ui/Badge';
 import {
@@ -167,31 +168,20 @@ export default function CustomerCycleCountDetailPage() {
           <div>
             <p className="text-slate-500 mb-1">Requested at</p>
             <p className="font-bold text-slate-900">
-              {new Date(data.requested_at).toLocaleString('vi-VN', {
-                dateStyle: 'short',
-                timeStyle: 'short',
-              })}
+              {formatDateTime(data.requested_at)}
             </p>
           </div>
           <div>
             <p className="text-slate-500 mb-1">Counting deadline</p>
             <p className="font-bold text-slate-900">
-              {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('vi-VN', {
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  })
-                : '—'}
+              {formatDateTime(data.counting_deadline)}
             </p>
           </div>
           {data.preferred_date && (
             <div>
             <p className="text-slate-500 mb-1">Preferred time</p>
             <p className="font-bold text-slate-900">
-                {new Date(data.preferred_date).toLocaleString('vi-VN', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
+                {formatDateTime(data.preferred_date)}
               </p>
             </div>
           )}
@@ -199,10 +189,7 @@ export default function CustomerCycleCountDetailPage() {
             <div>
             <p className="text-slate-500 mb-1">Confirmed at</p>
             <p className="font-bold text-slate-900">
-                {new Date(data.confirmed_at).toLocaleString('vi-VN', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
+                {formatDateTime(data.confirmed_at)}
               </p>
             </div>
           )}

@@ -17,6 +17,7 @@ import { Select } from '../../../../components/ui/Select';
 import { Input } from '../../../../components/ui/Input';
 import { LoadingSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
+import { formatDateTime } from '../../../../lib/date-format';
 
 function formatM3(n: number): string {
   if (!Number.isFinite(n)) return '—';
@@ -160,11 +161,7 @@ export default function StaffInboundPutawayDetailPage() {
   };
 
   const formatDate = (s: string) => {
-    try {
-    return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-    } catch {
-      return s;
-    }
+    return formatDateTime(s);
   };
 
   const handleComplete = async () => {

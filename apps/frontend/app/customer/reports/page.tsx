@@ -21,6 +21,7 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { formatTime } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -89,7 +90,7 @@ export default function CustomerReportsPage() {
         setStoredItems(items);
         setRequests(req);
         setCycleCounts(cc);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (e) {
         if (!cancelled && isInitial) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {

@@ -36,6 +36,7 @@ import {
   type QuickPreset,
 } from '../../../lib/report-date-range';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
+import { formatTime, formatDate } from '../../../lib/date-format';
 import { Button } from '../../../components/ui/Button';
 import { Select } from '../../../components/ui/Select';
 import { Pagination } from '../../../components/ui/Pagination';
@@ -631,7 +632,7 @@ export default function ManagerReportsPage() {
         }
         setProcessingTimeTrend(processingTimeData?.trendData ?? []);
         setProcessingTimeBoxPlot(processingTimeData?.boxPlotData ?? []);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load reports');
@@ -2424,18 +2425,10 @@ function GanttChart({ contracts }: { contracts: ManagerReportExpiringContractIte
       </div>
       <div className="mt-2 flex justify-between text-[10px] text-slate-400 font-medium">
         <span>
-          {new Date(start).toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          })}
+          {formatDate(new Date(start))}
         </span>
         <span>
-          {new Date(end).toLocaleDateString('en-GB', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-          })}
+          {formatDate(new Date(end))}
         </span>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { getStockInHistory, getStockOutHistory, type StockHistoryItem } from '..
 import { LoadingSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
 import { Badge } from '../../../../components/ui/Badge';
+import { formatDateTime } from '../../../../lib/date-format';
 
 type HistoryRow = {
   time: string;
@@ -217,7 +218,7 @@ export default function CustomerInventoryProductPage() {
                         <span className="text-slate-400">{s.unit}</span>
                       </td>
                       <td className="px-6 py-4 text-slate-500 text-sm">
-                        {new Date(s.last_updated).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
+                        {formatDateTime(s.last_updated)}
                       </td>
                     </tr>
                   ))
@@ -264,7 +265,7 @@ export default function CustomerInventoryProductPage() {
                   history.map((h, idx) => (
                     <tr key={`${h.contractId}-${h.time}-${idx}`} className="border-b border-slate-100">
                       <td className="px-6 py-4 text-slate-500 text-sm">
-                        {new Date(h.time).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
+                        {formatDateTime(h.time)}
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant={h.type === 'Import' ? 'success' : 'error'} size="sm">

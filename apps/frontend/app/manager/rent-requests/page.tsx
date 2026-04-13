@@ -13,15 +13,7 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import type { Shelf } from '../../../types/manager';
-
-function formatDate(dateStr?: string) {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleDateString('vi-VN');
-  } catch {
-    return dateStr;
-  }
-}
+import { formatDate } from '../../../lib/date-format';
 
 function getContractPrice(c: Contract): number {
   return (c.rentedZones || []).reduce((sum, z) => sum + (Number(z.price) || 0), 0);

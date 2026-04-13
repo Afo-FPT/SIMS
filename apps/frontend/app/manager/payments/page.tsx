@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { listManagerPayments, type ManagerContractPayment, type ManagerServicePayment } from '../../../lib/payment.api';
+import { formatDateTime } from '../../../lib/date-format';
 import { Button } from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
@@ -129,7 +130,7 @@ export default function ManagerPaymentsPage() {
               {activeRows.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="text-slate-500 text-xs">
-                    {new Date(p.createdAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                    {formatDateTime(p.createdAt)}
                   </TableCell>
                   <TableCell>
                     <div className="font-semibold text-slate-800">{p.contractCode || p.contractId}</div>
@@ -148,7 +149,7 @@ export default function ManagerPaymentsPage() {
                     <Badge variant={statusVariant(p.status)}>{formatStatus(p.status)}</Badge>
                     {p.paidAt && (
                       <div className="text-[11px] text-slate-500 mt-0.5">
-                        at {new Date(p.paidAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                        at {formatDateTime(p.paidAt)}
                       </div>
                     )}
                   </TableCell>

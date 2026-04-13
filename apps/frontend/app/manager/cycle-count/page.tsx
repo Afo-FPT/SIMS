@@ -8,6 +8,7 @@ import {
   type CycleCountResponse,
 } from '../../../lib/cycle-count.api';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 import { Badge } from '../../../components/ui/Badge';
 import {
   Table,
@@ -200,18 +201,10 @@ export default function ManagerCycleCountPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(cc.requested_at).toLocaleString('vi-VN', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {formatDateTime(cc.requested_at)}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {cc.counting_deadline
-                      ? new Date(cc.counting_deadline).toLocaleString('vi-VN', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : '—'}
+                    {formatDateTime(cc.counting_deadline)}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm max-w-[200px] truncate" title={cc.note || undefined}>
                     {cc.note || '—'}

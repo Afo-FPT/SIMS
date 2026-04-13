@@ -21,6 +21,7 @@ import { Button } from '../../../components/ui/Button';
 import { Pagination } from '../../../components/ui/Pagination';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { rollingPresetRange, type QuickPreset } from '../../../lib/report-date-range';
+import { formatTime, formatDayMonth } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 const CYCLE_LIST_PAGE_SIZE = 8;
@@ -97,7 +98,7 @@ export default function StaffReportsPage() {
         if (cancelled) return;
         setRequests(req || []);
         setCycleCounts(cc || []);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (e) {
         if (!cancelled && isInitial) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
@@ -145,7 +146,7 @@ export default function StaffReportsPage() {
     for (let t = fromDate.getTime(); t <= toDate.getTime(); t += dayMs) {
       const dt = new Date(t);
       const iso = dt.toISOString().slice(0, 10);
-      const day = dt.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+      const day = formatDayMonth(dt);
       base.push({ iso, day, inbound: 0, outbound: 0, cycle: 0 });
     }
     const byDay = new Map(base.map((d) => [d.iso, d]));

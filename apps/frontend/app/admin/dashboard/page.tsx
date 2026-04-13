@@ -23,6 +23,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { formatDayMonth, formatTime, formatDateTime } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -76,7 +77,7 @@ function toIsoLocalDate(d: Date): string {
 }
 
 function dayKey(ts: string): string {
-  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+  return formatDayMonth(ts);
 }
 
 function dayBucket(ts: string): { key: string; label: string; sortTs: number } {
@@ -173,7 +174,7 @@ export default function AdminDashboard() {
         setStorageRequests(reqs || []);
         setCycleCounts(cycles || []);
         setSnapshot(snap);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (e) {
         if (!cancelled && isInitialLoad) {
           setError(e instanceof Error ? e.message : 'Failed to load admin overview');
@@ -257,7 +258,7 @@ export default function AdminDashboard() {
       const outbound = storage.outbound;
       const total = inbound + outbound + cycleCount;
       timeline.push({
-        period: cursor.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }),
+        period: formatDayMonth(cursor),
         inbound,
         outbound,
         cycleCount,
@@ -324,7 +325,7 @@ export default function AdminDashboard() {
         level: r.status === 'REJECTED' ? 'ERROR' : r.status === 'PENDING' ? 'WARN' : 'INFO',
         action: `Storage ${r.reference || r.request_id.slice(-8)} (${r.request_type}) — ${r.status}`,
         actor: String(r.contract_code || r.contract_id || '—'),
-        time: new Date(r.updated_at || r.created_at).toLocaleString('en-GB'),
+        time: formatDateTime(r.updated_at || r.created_at),
         ts,
       });
     }
@@ -336,7 +337,7 @@ export default function AdminDashboard() {
         level: st === 'REJECTED' || st === 'ADJUSTMENT_REQUESTED' ? 'WARN' : 'INFO',
         action: `Cycle count ${c.cycle_count_id.slice(-8).toUpperCase()} — ${st}`,
         actor: String(c.contract_code || '—'),
-        time: new Date(c.updated_at || c.created_at).toLocaleString('en-GB'),
+        time: formatDateTime(c.updated_at || c.created_at),
         ts,
       });
     }

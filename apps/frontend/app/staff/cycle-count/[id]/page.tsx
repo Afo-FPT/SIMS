@@ -9,6 +9,7 @@ import {
   type CycleCountResponse,
 } from '../../../../lib/cycle-count.api';
 import { useToastHelpers } from '../../../../lib/toast';
+import { formatDateTime } from '../../../../lib/date-format';
 import { Button } from '../../../../components/ui/Button';
 import { Input } from '../../../../components/ui/Input';
 import { Badge } from '../../../../components/ui/Badge';
@@ -178,12 +179,7 @@ export default function StaffCycleCountDetailPage() {
           <div>
             <p className="text-slate-500 mb-1">Deadline</p>
             <p className="font-bold text-slate-900">
-              {data.counting_deadline
-                ? new Date(data.counting_deadline).toLocaleString('vi-VN', {
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  })
-                : '—'}
+              {formatDateTime(data.counting_deadline)}
             </p>
           </div>
           {data.note && (

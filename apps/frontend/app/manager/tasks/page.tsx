@@ -13,6 +13,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { Select } from '../../../components/ui/Select';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 
 const PAGE_SIZE = 10;
 
@@ -149,10 +150,7 @@ export default function ManagerTasksPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-700 text-sm">
-                    {new Date(t.updated_at || t.created_at).toLocaleString('en-GB', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {formatDateTime(t.updated_at || t.created_at)}
                   </TableCell>
                   <TableCell>
                     <button type="button" onClick={() => setDetail(t)} className="text-sm font-bold text-primary hover:underline">
@@ -219,7 +217,7 @@ export default function ManagerTasksPage() {
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Last updated</p>
                 <p className="font-semibold text-slate-900">
-                  {new Date(detail.updated_at || detail.created_at).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}
+                  {formatDateTime(detail.updated_at || detail.created_at)}
                 </p>
               </div>
             </div>
