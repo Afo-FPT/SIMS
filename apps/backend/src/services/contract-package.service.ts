@@ -36,7 +36,12 @@ async function validateWarehouseAndPrices(warehouseId: string, pricePerM2: numbe
   if (!Number.isFinite(pricePerDay) || pricePerDay < 0) throw new Error("pricePerDay must be >= 0");
 }
 
-export async function listContractPackages(warehouseId?: string, includeInactive = true): Promise<IContractPackage[]> {
+export interface ContractPackageWithWarehouse extends Omit<IContractPackage, never> {
+  warehouseName?: string;
+  warehouseAddress?: string;
+}
+
+export async function listContractPackages(warehouseId?: string, includeInactive = true): Promise<ContractPackageWithWarehouse[]> {
   const query: any = {};
   if (warehouseId) {
     if (!Types.ObjectId.isValid(warehouseId)) throw new Error("Invalid warehouseId");
@@ -45,7 +50,20 @@ export async function listContractPackages(warehouseId?: string, includeInactive
   if (!includeInactive) {
     query.isActive = true;
   }
-  return ContractPackage.find(query).sort({ createdAt: -1 }).exec();
+  const packages = await ContractPackage.find(query).sort({ createdAt: -1 }).lean().exec();
+
+  const warehouseIds = [...new Set(packages.map((p) => p.warehouseId?.toString()).filter(Boolean))];
+  const warehouses = await Warehouse.find({ _id: { $in: warehouseIds } }).select("name address").lean().exec();
+  const warehouseMap = new Map(warehouses.map((w) => [w._id.toString(), w]));
+
+  return packages.map((p) => {
+    const wh = warehouseMap.get(p.warehouseId?.toString() ?? "");
+    return {
+      ...p,
+      warehouseName: wh?.name,
+      warehouseAddress: wh?.address,
+    } as ContractPackageWithWarehouse;
+  });
 }
 
 export async function createContractPackage(
