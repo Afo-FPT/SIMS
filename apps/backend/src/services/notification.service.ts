@@ -129,13 +129,14 @@ export async function notifyStorageRequestEvent(params: {
 
       // Only emit + email when inserted (not duplicate)
       const inserted = !(raw as any)?.lastErrorObject?.updatedExisting;
-      if (inserted) {
-        createdNotifs.push((raw as any).value);
+      const insertedDoc = (raw as any)?.value;
+      if (inserted && insertedDoc?._id && insertedDoc?.userId) {
+        createdNotifs.push(insertedDoc);
       }
     }
 
     // Realtime emit
-    for (const n of createdNotifs) {
+    for (const n of createdNotifs.filter((x) => x?._id && x?.userId)) {
       emitToUser(n.userId.toString(), "notification:new", {
         id: n._id.toString(),
         type: n.type,
@@ -150,7 +151,7 @@ export async function notifyStorageRequestEvent(params: {
     }
 
     // Email (async)
-    const users = await User.find({ _id: { $in: createdNotifs.map((n) => n.userId) } })
+    const users = await User.find({ _id: { $in: createdNotifs.filter((n) => n?.userId).map((n) => n.userId) } })
       .select("_id email name role isActive")
       .lean();
 

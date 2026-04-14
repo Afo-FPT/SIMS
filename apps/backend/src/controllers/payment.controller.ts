@@ -118,6 +118,8 @@ export async function getRequestCreditSummaryController(req: Request, res: Respo
         unfinished_count: summary.unfinishedCount,
         total_used: summary.totalUsed,
         remaining_free_requests: summary.remainingFreeRequests,
+        purchased_available_credits: summary.purchasedAvailableCredits,
+        total_remaining_requests: summary.totalRemainingRequests,
         requires_extra_credit: summary.requiresExtraCredit,
       },
     });

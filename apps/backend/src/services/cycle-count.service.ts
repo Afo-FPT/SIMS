@@ -7,6 +7,8 @@ import Contract from "../models/Contract";
 import StoredItem from "../models/StoredItem";
 import User from "../models/User";
 import Shelf from "../models/Shelf";
+import StorageRequest from "../models/StorageRequest";
+import StorageRequestDetail from "../models/StorageRequestDetail";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
 import StaffWarehouse from "../models/StaffWarehouse";
 
@@ -137,12 +139,80 @@ export interface CycleCountResponse {
 
 async function applyInventoryFromCycleCountItems(
   cycleCountId: Types.ObjectId,
-  session: mongoose.ClientSession
+  session: mongoose.ClientSession,
+  actorUserId?: string,
+  generateLossOutbound = false
 ): Promise<void> {
+  const cycleCount = await CycleCount.findById(cycleCountId).session(session);
+  if (!cycleCount) {
+    throw new Error("Cycle count not found");
+  }
   const items = await CycleCountItem.find({ cycleCountId }).session(session);
   if (items.length === 0) {
     throw new Error("Cycle count has no items to adjust");
   }
+
+  if (generateLossOutbound) {
+    // Auto-generate one outbound request for detected losses/damage (system > counted)
+    // so customers can track it like a normal outbound operation.
+    const shortageRows = items.filter((it) => it.systemQuantity > it.countedQuantity);
+    if (shortageRows.length > 0) {
+      const reference = `CC-DMG-${cycleCount._id.toString()}`;
+      const existed = await StorageRequest.findOne({
+        contractId: cycleCount.contractId,
+        requestType: "OUT",
+        reference
+      }).session(session);
+
+      if (!existed) {
+        const storedItemIds = shortageRows.map((it) => it.storedItemId);
+        const storedItems = await StoredItem.find({ _id: { $in: storedItemIds } })
+          .select("_id itemName unit")
+          .session(session);
+        const storedById = new Map(storedItems.map((si) => [si._id.toString(), si]));
+
+        const [outbound] = await StorageRequest.create(
+          [
+            {
+              contractId: cycleCount.contractId,
+              customerId: cycleCount.createdByCustomerId,
+              requestType: "OUT",
+              reference,
+              status: "DONE_BY_STAFF",
+              approvedBy: actorUserId && Types.ObjectId.isValid(actorUserId)
+                ? new Types.ObjectId(actorUserId)
+                : undefined,
+              approvedAt: new Date()
+            }
+          ],
+          { session }
+        );
+
+        const detailsPayload = shortageRows.map((it) => {
+          const si = storedById.get(it.storedItemId.toString());
+          const lossQty = Math.max(0, it.systemQuantity - it.countedQuantity);
+          return {
+            requestId: outbound._id,
+            shelfId: it.shelfId,
+            itemName: si?.itemName || "Unknown item",
+            unit: si?.unit || "pcs",
+            quantityRequested: lossQty,
+            quantityActual: lossQty,
+            quantityOnHandBefore: it.systemQuantity,
+            quantityOnHandAfter: it.countedQuantity,
+            damageQuantity: lossQty,
+            lossReason: "cycle_count_damage",
+            lossNotes: `Auto-generated from cycle count ${cycleCount._id.toString()}`
+          };
+        });
+
+        if (detailsPayload.length > 0) {
+          await StorageRequestDetail.insertMany(detailsPayload, { session });
+        }
+      }
+    }
+  }
+
   for (const item of items) {
     const storedItem = await StoredItem.findById(item.storedItemId).session(session);
     if (!storedItem) {
@@ -577,7 +647,7 @@ export async function submitCycleCountResult(
     // - Recount round: auto apply inventory and close.
     const isRecountRound = (cycleCount.recountRound || 0) > 0;
     if (isRecountRound) {
-      await applyInventoryFromCycleCountItems(cycleCount._id, session);
+      await applyInventoryFromCycleCountItems(cycleCount._id, session, staffId, true);
       cycleCount.status = "CONFIRMED";
       cycleCount.inventoryAdjusted = true;
       cycleCount.confirmedAt = new Date();
@@ -652,7 +722,7 @@ export async function confirmCycleCount(
     }
 
     // Apply inventory update from submitted items
-    await applyInventoryFromCycleCountItems(cycleCount._id, session);
+    await applyInventoryFromCycleCountItems(cycleCount._id, session, userId, true);
 
     // Update status
     cycleCount.status = "CONFIRMED";
@@ -758,7 +828,7 @@ export async function applyCycleCountAdjustment(
       throw new Error("Cycle count must be in ADJUSTMENT_REQUESTED or STAFF_SUBMITTED status to apply adjustment");
     }
 
-    await applyInventoryFromCycleCountItems(cycleCount._id, session);
+    await applyInventoryFromCycleCountItems(cycleCount._id, session, managerId);
 
     // Đánh dấu cycle count đã điều chỉnh và kết thúc
     const now = new Date();

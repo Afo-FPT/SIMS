@@ -103,6 +103,10 @@ export default function StaffOutboundDetailPage() {
         );
         return;
       }
+      if (damage > 0 && !String(r.lossReason || '').trim()) {
+        toast.warning(`"${item.item_name}": Please select a loss reason before submitting.`);
+        return;
+      }
     }
     try {
       setSaving(true);

@@ -177,24 +177,47 @@ export async function getCustomerWeeklyQuotaSummary(params: {
   unfinishedCount: number;
   totalUsed: number;
   remainingFreeRequests: number;
+  purchasedAvailableCredits: number;
+  totalRemainingRequests: number;
   requiresExtraCredit: boolean;
 }> {
   const now = params.now || new Date();
   const pricing = await getOrCreateRequestCreditPricing();
   const weeklyFreeLimit = pricing.weekly_free_request_limit ?? WEEKLY_FREE_REQUEST_LIMIT;
-  const [completedCount, unfinishedCount] = await Promise.all([
+  const weekStart = getWeekStartInGMT7(now);
+  const [completedCount, unfinishedCount, purchasedCreditsAgg] = await Promise.all([
     countCustomerCompletedRequestsInWeek(params.customerId, params.contractId, now, params.session),
     countCustomerUnfinishedRequestsInWeek(params.customerId, params.contractId, now, params.session),
+    RequestCredit.aggregate<{ _id: null; total: number }>([
+      {
+        $match: {
+          customerId: new Types.ObjectId(params.customerId),
+          contractId: new Types.ObjectId(params.contractId),
+          weekStart,
+          status: "available"
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$credits" }
+        }
+      }
+    ], params.session ? { session: params.session } : undefined)
   ]);
   const totalUsed = completedCount + unfinishedCount;
   const remainingFreeRequests = Math.max(0, weeklyFreeLimit - totalUsed);
+  const purchasedAvailableCredits = purchasedCreditsAgg?.[0]?.total || 0;
+  const totalRemainingRequests = remainingFreeRequests + purchasedAvailableCredits;
   return {
     weeklyFreeLimit,
     completedCount,
     unfinishedCount,
     totalUsed,
     remainingFreeRequests,
-    requiresExtraCredit: totalUsed >= weeklyFreeLimit,
+    purchasedAvailableCredits,
+    totalRemainingRequests,
+    requiresExtraCredit: totalUsed >= weeklyFreeLimit && purchasedAvailableCredits <= 0,
   };
 }
 

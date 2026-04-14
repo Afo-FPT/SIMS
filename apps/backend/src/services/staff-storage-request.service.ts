@@ -238,6 +238,13 @@ export async function staffCompleteStorageRequest(
       if (it.quantityActual > detail.quantityRequested) {
         throw new Error("quantityActual must be <= quantityRequested");
       }
+      const damage = Number(it.damageQuantity ?? 0);
+      if (damage > 0) {
+        const reason = typeof it.lossReason === "string" ? it.lossReason.trim() : "";
+        if (!reason) {
+          throw new Error("lossReason is required when damageQuantity is greater than 0");
+        }
+      }
     }
 
     // For inbound: ensure shelf still has remaining volume capacity before mutating.

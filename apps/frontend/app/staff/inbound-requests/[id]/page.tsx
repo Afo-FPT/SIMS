@@ -195,6 +195,10 @@ export default function StaffInboundPutawayDetailPage() {
         );
         return;
       }
+      if (damage > 0 && !String(r.lossReason || '').trim()) {
+        toast.warning(`"${item.item_name}": Please select a loss reason before submitting.`);
+        return;
+      }
     }
     if (shelfVolumeWarnings.length > 0) {
       toast.warning(shelfVolumeWarnings[0]);

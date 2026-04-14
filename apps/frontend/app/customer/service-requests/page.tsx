@@ -230,6 +230,7 @@ export default function ServiceRequestsPage() {
   // - After that, require paying 100,000 VND for 1 more request
   const [weeklyRequestLimit, setWeeklyRequestLimit] = useState(3);
   const [requestExtraPriceVnd, setRequestExtraPriceVnd] = useState(100000);
+  const [expiredPenaltyPerDayVnd, setExpiredPenaltyPerDayVnd] = useState(0);
 
   function getWeekStartMonday(d: Date): Date {
     const shifted = new Date(d.getTime() + 7 * 60 * 60 * 1000); // approximate GMT+7 boundary in UI
@@ -293,10 +294,17 @@ export default function ServiceRequestsPage() {
   const [serverQuotaSnapshot, setServerQuotaSnapshot] = useState<{
     weeklyLimit: number;
     totalUsed: number;
+    remainingFreeRequests: number;
+    purchasedAvailableCredits: number;
+    totalRemainingRequests: number;
     requiresExtraCredit: boolean;
   } | null>(null);
   const effectiveWeeklyLimit = serverQuotaSnapshot?.weeklyLimit ?? weeklyRequestLimit;
   const effectiveTotalUsed = serverQuotaSnapshot?.totalUsed ?? weeklyTotalUsedPlusUnfinished;
+  const effectiveRemainingFreeRequests =
+    serverQuotaSnapshot?.remainingFreeRequests ?? Math.max(0, weeklyRequestLimit - weeklyTotalUsedPlusUnfinished);
+  const effectivePurchasedCredits = serverQuotaSnapshot?.purchasedAvailableCredits ?? 0;
+  const effectiveTotalRemaining = serverQuotaSnapshot?.totalRemainingRequests ?? effectiveRemainingFreeRequests;
   const showCreditWarning =
     creditPurchaseNeeded || quotaReachedByServer || !!serverQuotaSnapshot?.requiresExtraCredit;
 
@@ -312,12 +320,14 @@ export default function ServiceRequestsPage() {
         if (!cancelled) {
           setWeeklyRequestLimit(cfg.weekly_free_request_limit || 3);
           setRequestExtraPriceVnd(cfg.base_request_credit_price_vnd || 100000);
+          setExpiredPenaltyPerDayVnd(cfg.expired_contract_penalty_per_day_vnd || 0);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setWeeklyRequestLimit(3);
           setRequestExtraPriceVnd(100000);
+          setExpiredPenaltyPerDayVnd(0);
         }
       });
     return () => {
@@ -431,6 +441,9 @@ export default function ServiceRequestsPage() {
         setServerQuotaSnapshot({
           weeklyLimit: summary.weekly_free_limit,
           totalUsed: summary.total_used,
+          remainingFreeRequests: summary.remaining_free_requests,
+          purchasedAvailableCredits: summary.purchased_available_credits || 0,
+          totalRemainingRequests: summary.total_remaining_requests || 0,
           requiresExtraCredit: summary.requires_extra_credit,
         });
       })
@@ -1647,6 +1660,37 @@ export default function ServiceRequestsPage() {
             >
               Buy 1 extra request
             </button>
+          </div>
+        )}
+
+        {contractId && (
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-700">
+            <p className="font-bold text-slate-900">Weekly request quota</p>
+            <p className="mt-1">
+              Free requests remaining:{" "}
+              <span className="font-bold">{effectiveRemainingFreeRequests}</span>
+              {" • "}
+              Purchased credits remaining:{" "}
+              <span className="font-bold">{effectivePurchasedCredits}</span>
+              {" • "}
+              Total requests you can still submit:{" "}
+              <span className="font-bold">{effectiveTotalRemaining}</span>
+            </p>
+          </div>
+        )}
+
+        {isContractExpired && type === 'Outbound' && (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-sm text-rose-900">
+            <p className="font-bold">Expired contract penalty notice</p>
+            <p className="mt-1 text-rose-800">
+              This contract is expired. Outbound clearance is still allowed, but overdue penalty is applied
+              {expiredPenaltyPerDayVnd > 0
+                ? (
+                  <> at <span className="font-bold">{expiredPenaltyPerDayVnd.toLocaleString('en-US')} VND/day</span></>
+                )
+                : ' based on current policy'}
+              . Please complete penalty payment as required by the system.
+            </p>
           </div>
         )}
 
