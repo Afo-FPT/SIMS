@@ -1,19 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Chart as ChartJSComponent } from 'react-chartjs-2';
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJSCore,
-  Legend as ChartLegend,
-  LineElement,
-  LinearScale,
-  PointElement,
-  Tooltip as ChartTooltip,
-} from 'chart.js';
-import { Pie, Line, Bar } from 'react-chartjs-2';
+import { LazyChart } from '../../../components/charts/LazyChart';
+import { LazyPie } from '../../../components/charts/LazyPie';
+import { LazyLine } from '../../../components/charts/LazyLine';
+import { LazyBar } from '../../../components/charts/LazyBar';
+import { ensureChartSetup } from '../../../components/charts/chart-setup';
 
 import {
   getManagerReport,
@@ -127,32 +119,7 @@ type ExpiryDetailTableRow =
   | ({ kind: 'contract' } & ExpiryContractAlertRow)
   | ({ kind: 'zone' } & ExpiryZoneLeaseAlertRow);
 
-ChartJSCore.register(
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  ChartLegend,
-  LineElement,
-  LinearScale,
-  PointElement,
-  ChartTooltip,
-);
-
-ChartJSCore.defaults.animation = {
-  duration: 1200,
-  easing: 'easeOutCubic',
-};
-ChartJSCore.defaults.animations = {
-  x: { duration: 900, from: 0 },
-  y: { duration: 900, from: 0 },
-  radius: { duration: 900, from: 0 },
-} as any;
-ChartJSCore.defaults.transitions.show = {
-  animations: {
-    x: { from: 0 },
-    y: { from: 0 },
-  },
-} as any;
+ensureChartSetup();
 
 export default function ManagerReportsPage() {
   const toast = useToastHelpers();
@@ -923,7 +890,7 @@ export default function ManagerReportsPage() {
                 >
                   Insight
                 </Button>
-                <Pie
+                <LazyPie
                   data={{
                     labels: capacityData.map((d) => d.name),
                     datasets: [
@@ -988,7 +955,7 @@ export default function ManagerReportsPage() {
                   >
                     Insight
                   </Button>
-                  <Bar
+                  <LazyBar
                     data={stockByCategoryData}
                     options={stockByCategoryOptions}
                   />
@@ -1071,7 +1038,7 @@ export default function ManagerReportsPage() {
                 Insight
               </Button>
               {trendData.length > 0 ? (
-                <Line
+                <LazyLine
                   data={{
                     labels: trendData.map((d) => d.date),
                     datasets: [
@@ -1162,7 +1129,7 @@ export default function ManagerReportsPage() {
                 Insight
               </Button>
               <div style={{ height: `${outboundChartHeight}px` }}>
-                <Bar
+                <LazyBar
                   data={topOutboundProductsBarData}
                   options={topOutboundProductsBarOptions}
                 />
@@ -1284,7 +1251,7 @@ export default function ManagerReportsPage() {
                     Insight
                   </Button>
                   {processingTimeTrend.length > 0 ? (
-                    <Line
+                    <LazyLine
                       data={{
                         labels: processingTimeTrend.map((d) => d.period),
                         datasets: [
@@ -1564,7 +1531,7 @@ export default function ManagerReportsPage() {
               {deepExpiryLoading ? (
                 <LoadingSkeleton className="h-full rounded-2xl" />
               ) : deepExpiryData && deepExpiryData.buckets.length > 0 ? (
-                <Bar
+                <LazyBar
                   data={{
                     labels: deepExpiryData.buckets.map((b) => b.label),
                     datasets: [
@@ -1787,7 +1754,7 @@ export default function ManagerReportsPage() {
               {deepPricingLoading ? (
                 <LoadingSkeleton className="h-full rounded-2xl" />
               ) : deepPricingData && deepPricingData.length > 0 ? (
-                <ChartJSComponent
+                <LazyChart
                   type="bar"
                   data={{
                     labels: deepPricingData.map((r) => r.zoneCode),
@@ -1998,7 +1965,7 @@ export default function ManagerReportsPage() {
             </div>
             <div className="relative h-80 w-full">
               {deepTopStockData.length > 0 ? (
-                <Bar
+                <LazyBar
                   data={{
                     labels: deepTopStockData.map((r) => (r.name.length > 20 ? `${r.name.slice(0, 20)}...` : r.name)),
                     datasets: [
@@ -2132,7 +2099,7 @@ export default function ManagerReportsPage() {
               {deepPenaltyLoading ? (
                 <LoadingSkeleton className="h-full min-h-[280px] rounded-2xl" />
               ) : deepPenaltyData && deepPenaltyData.length > 0 ? (
-                <Bar
+                <LazyBar
                   data={{
                     labels: deepPenaltyData.map((r) =>
                       r.customerName.length > 28 ? `${r.customerName.slice(0, 28)}…` : r.customerName,

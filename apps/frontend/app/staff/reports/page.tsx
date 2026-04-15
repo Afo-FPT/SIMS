@@ -1,16 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pie, Bar } from 'react-chartjs-2';
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJSCore,
-  Legend as ChartLegend,
-  LinearScale,
-  Tooltip as ChartTooltip,
-} from 'chart.js';
+import { LazyPie } from '../../../components/charts/LazyPie';
+import { LazyBar } from '../../../components/charts/LazyBar';
+import { ensureChartSetup } from '../../../components/charts/chart-setup';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
@@ -26,7 +19,7 @@ import { formatTime, formatDayMonth } from '../../../lib/date-format';
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 const CYCLE_LIST_PAGE_SIZE = 8;
 
-ChartJSCore.register(ArcElement, BarElement, CategoryScale, ChartLegend, LinearScale, ChartTooltip);
+ensureChartSetup();
 
 function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -384,7 +377,7 @@ export default function StaffReportsPage() {
           <KpiCard title="Total IN/OUT tasks" value={historyKpis.movedUnits} />
         </div>
         <div className="h-72">
-          <Bar
+          <LazyBar
             data={{
               labels: inOutPerDay.map((d) => d.day),
               datasets: [
@@ -420,7 +413,7 @@ export default function StaffReportsPage() {
             <KpiCard title="Issue categories" value={discrepancySummary.length} />
           </div>
           <div className="h-72">
-            <Pie
+            <LazyPie
               data={{
                 labels: discrepancySummary.map((d) => d.name),
                 datasets: [{ data: discrepancySummary.map((d) => d.value), backgroundColor: discrepancySummary.map((_, i) => COLORS[i % COLORS.length]) }],
@@ -451,7 +444,7 @@ export default function StaffReportsPage() {
             <KpiCard title="Task types" value={realtimeTaskTypeDistribution.length} />
           </div>
           <div className="h-72">
-            <Pie
+            <LazyPie
               data={{
                 labels: realtimeWorkloadByStatus.map((d) => d.status),
                 datasets: [{

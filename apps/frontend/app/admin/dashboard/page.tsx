@@ -1,16 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Chart as ChartJSCore } from 'chart.js';
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Legend as ChartLegend,
-  LinearScale,
-  Tooltip as ChartTooltip,
-} from 'chart.js';
-import { Pie, Bar } from 'react-chartjs-2';
+import { LazyPie } from '../../../components/charts/LazyPie';
+import { LazyBar } from '../../../components/charts/LazyBar';
+import { ensureChartSetup } from '../../../components/charts/chart-setup';
 import { listUsers, getAdminDashboardSnapshot } from '../../../lib/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
@@ -51,23 +44,7 @@ const chartSubtitle = (text: string) => ({
   padding: { bottom: 10 },
 });
 
-ChartJSCore.register(ArcElement, BarElement, CategoryScale, ChartLegend, LinearScale, ChartTooltip);
-
-ChartJSCore.defaults.animation = {
-  duration: 1200,
-  easing: 'easeOutCubic',
-};
-ChartJSCore.defaults.animations = {
-  x: { duration: 900, from: 0 },
-  y: { duration: 900, from: 0 },
-  radius: { duration: 900, from: 0 },
-} as any;
-ChartJSCore.defaults.transitions.show = {
-  animations: {
-    x: { from: 0 },
-    y: { from: 0 },
-  },
-} as any;
+ensureChartSetup();
 
 function toIsoLocalDate(d: Date): string {
   const year = d.getFullYear();
@@ -474,7 +451,7 @@ export default function AdminDashboard() {
             >
               Insight
             </Button>
-            <Pie
+            <LazyPie
               data={{
                 labels: roleDistributionBusiness.map((d) => d.role),
                 datasets: [
@@ -537,7 +514,7 @@ export default function AdminDashboard() {
             >
               Insight
             </Button>
-            <Pie
+            <LazyPie
               data={{
                 labels: completionOverviewThree.map((d) => d.name),
                 datasets: [
@@ -624,7 +601,7 @@ export default function AdminDashboard() {
           >
             Insight
           </Button>
-          <Bar
+          <LazyBar
             data={{
               labels: operationsTimeline.map((d) => d.period),
               datasets: [

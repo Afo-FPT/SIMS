@@ -77,6 +77,7 @@ const PaymentSchema = new Schema<IPayment>(
 
 PaymentSchema.index({ contractId: 1 });
 PaymentSchema.index({ status: 1 });
+PaymentSchema.index({ status: 1, paidAt: -1 });
 
 const Payment = mongoose.model<IPayment>("Payment", PaymentSchema);
 

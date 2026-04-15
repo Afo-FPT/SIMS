@@ -63,7 +63,7 @@ export default function ManagerCycleCountPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getCycleCounts();
+      const data = await getCycleCounts({ includeItems: false });
       setList(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cycle counts');

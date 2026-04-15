@@ -79,6 +79,8 @@ const StorageRequestDetailSchema = new Schema<IStorageRequestDetail>(
 
 StorageRequestDetailSchema.index({ requestId: 1 });
 StorageRequestDetailSchema.index({ shelfId: 1 });
+StorageRequestDetailSchema.index({ requestId: 1, shelfId: 1 });
+StorageRequestDetailSchema.index({ requestId: 1, createdAt: -1 });
 
 const StorageRequestDetail = mongoose.model<IStorageRequestDetail>("StorageRequestDetail", StorageRequestDetailSchema);
 
