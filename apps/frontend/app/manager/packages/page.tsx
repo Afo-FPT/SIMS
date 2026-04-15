@@ -49,6 +49,20 @@ const EMPTY_FORM: FormState = {
   isActive: true,
 };
 
+type FilterState = {
+  search: string;
+  warehouseId: string;
+  status: 'all' | 'active' | 'disabled';
+  unit: ContractPackageUnit | 'all';
+};
+
+const EMPTY_FILTER: FilterState = {
+  search: '',
+  warehouseId: '',
+  status: 'all',
+  unit: 'all',
+};
+
 export default function ManagerContractPackagesPage() {
   const toast = useToastHelpers();
   const [packages, setPackages] = useState<ContractPackage[]>([]);
@@ -57,8 +71,36 @@ export default function ManagerContractPackagesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [warehouses, setWarehouses] = useState<ManagerWarehouse[]>([]);
+  const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
 
   const isEditing = useMemo(() => !!selectedId, [selectedId]);
+
+  const filteredPackages = useMemo(() => {
+    return packages.filter((pkg) => {
+      if (filter.search.trim()) {
+        const q = filter.search.trim().toLowerCase();
+        if (!pkg.name.toLowerCase().includes(q)) return false;
+      }
+      if (filter.warehouseId && pkg.warehouseId !== filter.warehouseId) return false;
+      if (filter.status === 'active' && pkg.isActive === false) return false;
+      if (filter.status === 'disabled' && pkg.isActive !== false) return false;
+      if (filter.unit !== 'all' && pkg.unit !== filter.unit) return false;
+      return true;
+    });
+  }, [packages, filter]);
+
+  const hasActiveFilter = useMemo(
+    () =>
+      filter.search.trim() !== '' ||
+      filter.warehouseId !== '' ||
+      filter.status !== 'all' ||
+      filter.unit !== 'all',
+    [filter],
+  );
+
+  const handleFilterChange = (field: keyof FilterState, value: string) => {
+    setFilter((prev) => ({ ...prev, [field]: value }));
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -171,8 +213,58 @@ export default function ManagerContractPackagesPage() {
         <section className="bg-white rounded-2xl shadow-card border border-slate-200 overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
             <h2 className="text-base font-bold text-slate-900">Package list</h2>
-            <span className="text-xs text-slate-500">{packages.length} package{packages.length !== 1 ? 's' : ''}</span>
+            <span className="text-xs text-slate-500">
+              {filteredPackages.length}{hasActiveFilter ? `/${packages.length}` : ''} package{packages.length !== 1 ? 's' : ''}
+            </span>
           </div>
+
+          {/* Filters */}
+          <div className="px-6 py-3 border-b border-slate-100 grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <Input
+              placeholder="Search by name..."
+              value={filter.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+            />
+            <Select
+              value={filter.warehouseId}
+              onChange={(e) => handleFilterChange('warehouseId', e.target.value)}
+              options={[
+                { value: '', label: 'All warehouses' },
+                ...warehouses.map((w) => ({ value: w.id, label: w.name })),
+              ]}
+            />
+            <Select
+              value={filter.status}
+              onChange={(e) => handleFilterChange('status', e.target.value)}
+              options={[
+                { value: 'all', label: 'All statuses' },
+                { value: 'active', label: 'Active' },
+                { value: 'disabled', label: 'Disabled' },
+              ]}
+            />
+            <Select
+              value={filter.unit}
+              onChange={(e) => handleFilterChange('unit', e.target.value)}
+              options={[
+                { value: 'all', label: 'All units' },
+                { value: 'day', label: 'Day' },
+                { value: 'month', label: 'Month' },
+                { value: 'year', label: 'Year' },
+              ]}
+            />
+          </div>
+          {hasActiveFilter && (
+            <div className="px-6 py-2 border-b border-slate-100 flex items-center gap-2">
+              <span className="text-xs text-slate-500">Filters applied</span>
+              <button
+                type="button"
+                onClick={() => setFilter(EMPTY_FILTER)}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="p-6">
@@ -184,6 +276,12 @@ export default function ManagerContractPackagesPage() {
               title="No packages yet"
               message="Create the first package using the form."
             />
+          ) : filteredPackages.length === 0 ? (
+            <EmptyState
+              icon="search_off"
+              title="No packages found"
+              message="Try adjusting your filters."
+            />
           ) : (
             <Table>
               <TableHead>
@@ -194,7 +292,7 @@ export default function ManagerContractPackagesPage() {
                 <TableHeader className="text-right">Action</TableHeader>
               </TableHead>
               <TableBody>
-                {packages.map((pkg) => (
+                {filteredPackages.map((pkg) => (
                   <TableRow
                     key={pkg._id}
                     onClick={() => handleEditClick(pkg)}

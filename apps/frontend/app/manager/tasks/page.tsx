@@ -123,8 +123,10 @@ export default function ManagerTasksPage() {
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
         <ErrorState title="Failed to load" message={error} onRetry={load} />
+      ) : tasks.length === 0 ? (
+        <EmptyState icon="assignment" title="No tasks" message="No approved or completed tasks found." />
       ) : filteredTasks.length === 0 ? (
-        <EmptyState icon="assignment" title="No tasks" message="No tasks found for this filter" />
+        <EmptyState icon="search_off" title="No results found" message="No tasks match the current filters. Try changing the type or status." />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>

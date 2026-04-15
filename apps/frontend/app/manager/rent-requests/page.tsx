@@ -6,6 +6,7 @@ import { deleteDraftContract, listContracts, listShelvesByWarehouse, updateContr
 import { useToastHelpers } from '../../../lib/toast';
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
+import { Input } from '../../../components/ui/Input';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { Modal } from '../../../components/ui/Modal';
 import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSkeleton';
@@ -32,6 +33,7 @@ export default function ManagerRentRequestsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contract | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     load();
@@ -117,6 +119,17 @@ export default function ManagerRentRequestsPage() {
     };
   }, [detail]);
 
+  const filteredDrafts = useMemo(() => {
+    if (!search.trim()) return draftContracts;
+    const q = search.trim().toLowerCase();
+    return draftContracts.filter((c) => {
+      const customer = (c.customerName ?? '').toLowerCase();
+      const warehouse = (c.warehouseName ?? c.warehouseId ?? '').toLowerCase();
+      const code = (c.code ?? '').toLowerCase();
+      return customer.includes(q) || warehouse.includes(q) || code.includes(q);
+    });
+  }, [draftContracts, search]);
+
   const zonesForDisplay = detail?.rentedZones?.length
     ? detail.rentedZones
     : detail?.requestedZoneId
@@ -175,6 +188,35 @@ export default function ManagerRentRequestsPage() {
         description="Review draft contracts from customer rental requests. Processing moves them to Contracts with status pending payment."
       />
 
+      {/* Search filter */}
+      {!loading && !error && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <Input
+                placeholder="Search by contract code, customer, or warehouse..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {search.trim() && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-slate-500">
+                  {filteredDrafts.length}/{draftContracts.length} result{filteredDrafts.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
@@ -184,6 +226,12 @@ export default function ManagerRentRequestsPage() {
           icon="request_quote"
           title="No rent requests"
           message="No draft contracts from rental requests to review."
+        />
+      ) : filteredDrafts.length === 0 ? (
+        <EmptyState
+          icon="search_off"
+          title="No results found"
+          message="No rent requests match your search. Try a different keyword."
         />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
@@ -198,7 +246,7 @@ export default function ManagerRentRequestsPage() {
               <TableHeader>Actions</TableHeader>
             </TableHead>
             <TableBody>
-              {draftContracts.map((c) => (
+              {filteredDrafts.map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="font-bold text-slate-900">{c.code}</TableCell>
                   <TableCell className="text-slate-700">{c.customerName || '—'}</TableCell>

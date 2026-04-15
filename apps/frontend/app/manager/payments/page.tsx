@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { listManagerPayments, type ManagerContractPayment, type ManagerServicePayment } from '../../../lib/payment.api';
 import { formatDateTime } from '../../../lib/date-format';
 import { Button } from '../../../components/ui/Button';
+import { Input } from '../../../components/ui/Input';
+import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
@@ -12,6 +14,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { PageHeader } from '../../../components/ui/PageHeader';
 
 type PaymentTab = 'contract' | 'service';
+type StatusFilter = '' | 'paid' | 'pending' | 'expired' | 'failed';
 
 function formatStatus(status: string): string {
   if (status === 'paid') return 'Paid';
@@ -33,6 +36,8 @@ export default function ManagerPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
 
   const load = useCallback(async (silent = false) => {
     try {
@@ -58,6 +63,28 @@ export default function ManagerPaymentsPage() {
     () => (tab === 'contract' ? contractPayments : servicePayments),
     [tab, contractPayments, servicePayments],
   );
+
+  const filteredRows = useMemo(() => {
+    return activeRows.filter((p) => {
+      if (statusFilter && p.status !== statusFilter) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        const contract = (p.contractCode || p.contractId || '').toLowerCase();
+        const customer = (p.customerName || '').toLowerCase();
+        if (!contract.includes(q) && !customer.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [activeRows, search, statusFilter]);
+
+  const hasActiveFilter = search.trim() !== '' || statusFilter !== '';
+
+  // Reset filters when switching tabs
+  const handleTabChange = (newTab: PaymentTab) => {
+    setTab(newTab);
+    setSearch('');
+    setStatusFilter('');
+  };
 
   return (
     <div className="space-y-6">
@@ -86,7 +113,7 @@ export default function ManagerPaymentsPage() {
           className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
             tab === 'contract' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
           }`}
-          onClick={() => setTab('contract')}
+          onClick={() => handleTabChange('contract')}
         >
           Contract ({contractPayments.length})
         </button>
@@ -95,7 +122,7 @@ export default function ManagerPaymentsPage() {
           className={`rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
             tab === 'service' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
           }`}
-          onClick={() => setTab('service')}
+          onClick={() => handleTabChange('service')}
         >
           Service ({servicePayments.length})
         </button>
@@ -108,62 +135,108 @@ export default function ManagerPaymentsPage() {
         <ErrorState title="Failed to load payments" message={error} onRetry={() => load(false)} />
       ) : contractPayments.length === 0 && servicePayments.length === 0 ? (
         <EmptyState icon="payments" title="No payments" message="No payments found yet." />
-      ) : activeRows.length === 0 ? (
-        <EmptyState
-          icon="payments"
-          title={tab === 'contract' ? 'No contract payments' : 'No service payments'}
-          message={tab === 'contract' ? 'No contract payments found yet.' : 'No service-credit payments found yet.'}
-        />
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
-          <Table>
-            <TableHead>
-              <TableHeader>Time</TableHeader>
-              <TableHeader>Contract</TableHeader>
-              <TableHeader>Customer</TableHeader>
-              {tab === 'service' && <TableHeader>Credits</TableHeader>}
-              <TableHeader>Amount</TableHeader>
-              <TableHeader>Status</TableHeader>
-              <TableHeader>VNPay Code</TableHeader>
-            </TableHead>
-            <TableBody>
-              {activeRows.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="text-slate-500 text-xs">
-                    {formatDateTime(p.createdAt)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-semibold text-slate-800">{p.contractCode || p.contractId}</div>
-                    {p.warehouseName && <div className="text-xs text-slate-500 mt-0.5">{p.warehouseName}</div>}
-                  </TableCell>
-                  <TableCell className="text-slate-700">{p.customerName || '—'}</TableCell>
-                  {tab === 'service' && (
-                    <TableCell className="font-semibold text-slate-700">
-                      {(p as ManagerServicePayment).creditsGranted} credit
-                    </TableCell>
-                  )}
-                  <TableCell className="font-bold text-slate-900">
-                    {p.amount.toLocaleString('vi-VN')} đ
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant(p.status)}>{formatStatus(p.status)}</Badge>
-                    {p.paidAt && (
-                      <div className="text-[11px] text-slate-500 mt-0.5">
-                        at {formatDateTime(p.paidAt)}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-mono text-xs text-slate-600 break-all">{p.vnpTxnRef}</div>
-                    {p.vnpResponseCode && (
-                      <div className="text-[11px] text-slate-500 mt-0.5">Resp: {p.vnpResponseCode}</div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {/* Filters */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                placeholder="Search by contract code or customer..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <Select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                options={[
+                  { value: '', label: 'All statuses' },
+                  { value: 'paid', label: 'Paid' },
+                  { value: 'pending', label: 'Pending' },
+                  { value: 'expired', label: 'Expired' },
+                  { value: 'failed', label: 'Failed' },
+                ]}
+              />
+            </div>
+            {hasActiveFilter && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-slate-500">
+                  {filteredRows.length}/{activeRows.length} result{filteredRows.length !== 1 ? 's' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { setSearch(''); setStatusFilter(''); }}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
+          </div>
+
+          {activeRows.length === 0 ? (
+            <EmptyState
+              icon="payments"
+              title={tab === 'contract' ? 'No contract payments' : 'No service payments'}
+              message={tab === 'contract' ? 'No contract payments found yet.' : 'No service-credit payments found yet.'}
+            />
+          ) : filteredRows.length === 0 ? (
+            <EmptyState
+              icon="search_off"
+              title="No results found"
+              message="No payments match your current filters. Try adjusting or clearing them."
+            />
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
+              <Table>
+                <TableHead>
+                  <TableHeader>Time</TableHeader>
+                  <TableHeader>Contract</TableHeader>
+                  <TableHeader>Customer</TableHeader>
+                  {tab === 'service' && <TableHeader>Credits</TableHeader>}
+                  <TableHeader>Amount</TableHeader>
+                  <TableHeader>Status</TableHeader>
+                  <TableHeader>VNPay Code</TableHeader>
+                </TableHead>
+                <TableBody>
+                  {filteredRows.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="text-slate-500 text-xs">
+                        {formatDateTime(p.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-semibold text-slate-800">{p.contractCode || p.contractId}</div>
+                        {p.warehouseName && <div className="text-xs text-slate-500 mt-0.5">{p.warehouseName}</div>}
+                      </TableCell>
+                      <TableCell className="text-slate-700">{p.customerName || '—'}</TableCell>
+                      {tab === 'service' && (
+                        <TableCell className="font-semibold text-slate-700">
+                          {(p as ManagerServicePayment).creditsGranted} credit
+                        </TableCell>
+                      )}
+                      <TableCell className="font-bold text-slate-900">
+                        {p.amount.toLocaleString('vi-VN')} đ
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant(p.status)}>{formatStatus(p.status)}</Badge>
+                        {p.paidAt && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">
+                            at {formatDateTime(p.paidAt)}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-mono text-xs text-slate-600 break-all">{p.vnpTxnRef}</div>
+                        {p.vnpResponseCode && (
+                          <div className="text-[11px] text-slate-500 mt-0.5">Resp: {p.vnpResponseCode}</div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
