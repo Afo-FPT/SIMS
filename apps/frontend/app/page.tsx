@@ -249,7 +249,7 @@ export default function LandingPage() {
           {/* Animated pill */}
           <div className="animate-slide-up inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/25 bg-primary-light text-primary text-xs font-semibold shadow-sm">
             <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-            Intelligent Warehouse Management System
+            Smart AI-powered Inventory Management System
           </div>
 
           {/* Headline */}
@@ -264,7 +264,7 @@ export default function LandingPage() {
 
           {/* Sub */}
           <p className="animate-slide-up stagger-2 text-lg md:text-xl text-slate-500 leading-relaxed max-w-2xl mx-auto">
-            SIMS connects warehouse managers, customers, and on-floor staff on a single unified platform — with real-time inventory, AI insights, and complete contract visibility.
+            SIMS-AI connects warehouse managers, customers, and on-floor staff on a single unified platform — with real-time inventory, AI insights, and complete contract visibility.
           </p>
 
           {/* CTAs */}
@@ -305,7 +305,7 @@ export default function LandingPage() {
               Everything you need to run<br />a warehouse at scale
             </h2>
             <p className="text-slate-500 text-base leading-relaxed">
-              From inbound receiving to scheduled audits, SIMS provides purpose-built tools for every role in your logistics chain.
+              From inbound receiving to scheduled audits, SIMS-AI provides purpose-built tools for every role in your logistics chain.
             </p>
           </div>
 
@@ -669,7 +669,7 @@ export default function LandingPage() {
 
       {/* ── Footer ────────────────────────────────────────────────── */}
       <footer className="border-t border-slate-100 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-10">
+        <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-2 md:grid-cols-3 gap-10">
           <div className="col-span-2 space-y-4">
             <div className="flex items-center gap-2.5">
               <div className="size-9 bg-primary rounded-xl flex items-center justify-center shadow">
@@ -701,21 +701,11 @@ export default function LandingPage() {
             </ul>
           </div>
 
-          <div className="space-y-4">
-            <h5 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Support</h5>
-            <ul className="space-y-2.5">
-              {['Privacy Policy', 'Terms of Service', 'Contact Support'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-slate-500 hover:text-primary transition-colors">{item}</a>
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
 
         <div className="border-t border-slate-100">
           <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-slate-400">© 2025 SIMS Logistics. All rights reserved.</p>
+            <p className="text-xs text-slate-400">© 2026 SIMS-AI. All rights reserved.</p>
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>verified</span>
               Built for ISP490 Project
