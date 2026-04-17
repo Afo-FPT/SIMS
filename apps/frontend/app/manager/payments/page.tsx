@@ -16,6 +16,14 @@ import { PageHeader } from '../../../components/ui/PageHeader';
 type PaymentTab = 'contract' | 'service';
 type StatusFilter = '' | 'paid' | 'pending' | 'expired' | 'failed';
 
+function parseIsoLocalDate(value: string): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function formatStatus(status: string): string {
   if (status === 'paid') return 'Paid';
   if (status === 'pending') return 'Pending';
@@ -38,6 +46,8 @@ export default function ManagerPaymentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const load = useCallback(async (silent = false) => {
     try {
@@ -67,6 +77,17 @@ export default function ManagerPaymentsPage() {
   const filteredRows = useMemo(() => {
     return activeRows.filter((p) => {
       if (statusFilter && p.status !== statusFilter) return false;
+      const created = new Date(p.createdAt);
+      if (!Number.isNaN(created.getTime())) {
+        const from = parseIsoLocalDate(fromDate);
+        const to = parseIsoLocalDate(toDate);
+        if (from && created < from) return false;
+        if (to) {
+          const end = new Date(to);
+          end.setHours(23, 59, 59, 999);
+          if (created > end) return false;
+        }
+      }
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         const contract = (p.contractCode || p.contractId || '').toLowerCase();
@@ -75,15 +96,17 @@ export default function ManagerPaymentsPage() {
       }
       return true;
     });
-  }, [activeRows, search, statusFilter]);
+  }, [activeRows, search, statusFilter, fromDate, toDate]);
 
-  const hasActiveFilter = search.trim() !== '' || statusFilter !== '';
+  const hasActiveFilter = search.trim() !== '' || statusFilter !== '' || fromDate !== '' || toDate !== '';
 
   // Reset filters when switching tabs
   const handleTabChange = (newTab: PaymentTab) => {
     setTab(newTab);
     setSearch('');
     setStatusFilter('');
+    setFromDate('');
+    setToDate('');
   };
 
   return (
@@ -139,7 +162,7 @@ export default function ManagerPaymentsPage() {
         <>
           {/* Filters */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Input
                 placeholder="Search by contract code or customer..."
                 value={search}
@@ -156,6 +179,24 @@ export default function ManagerPaymentsPage() {
                   { value: 'failed', label: 'Failed' },
                 ]}
               />
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500">From date</p>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-500">To date</p>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
             </div>
             {hasActiveFilter && (
               <div className="mt-2 flex items-center gap-2">
@@ -164,7 +205,7 @@ export default function ManagerPaymentsPage() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => { setSearch(''); setStatusFilter(''); }}
+                  onClick={() => { setSearch(''); setStatusFilter(''); setFromDate(''); setToDate(''); }}
                   className="text-xs font-semibold text-primary hover:underline"
                 >
                   Clear filters

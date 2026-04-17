@@ -53,6 +53,7 @@ export default function ManagerCycleCountPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const [search, setSearch] = useState('');
+  const [warehouseFilter, setWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export default function ManagerCycleCountPage() {
 
   const filtered = list.filter((cc) => {
     if (statusFilter && cc.status !== statusFilter) return false;
+    if (warehouseFilter !== 'ALL' && (cc.warehouse_name ?? '') !== warehouseFilter) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       const contract = (cc.contract_code ?? '').toLowerCase();
@@ -85,7 +87,11 @@ export default function ManagerCycleCountPage() {
     return true;
   });
 
-  const hasActiveFilter = search.trim() !== '' || statusFilter !== '';
+  const warehouseOptions = Array.from(
+    new Set(list.map((cc) => cc.warehouse_name).filter((x): x is string => !!x && x.trim().length > 0))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const hasActiveFilter = search.trim() !== '' || statusFilter !== '' || warehouseFilter !== 'ALL';
 
   const handleApproveRecount = async (id: string) => {
     try {
@@ -136,7 +142,7 @@ export default function ManagerCycleCountPage() {
       <PageHeader title="Cycle Count" description="Monitor customer cycle count requests and execution status." />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Input
             placeholder="Search by contract, customer, warehouse..."
             value={search}
@@ -156,6 +162,14 @@ export default function ManagerCycleCountPage() {
               { value: 'REJECTED', label: 'Rejected' },
             ]}
           />
+          <Select
+            value={warehouseFilter}
+            onChange={(e) => setWarehouseFilter(e.target.value)}
+            options={[
+              { value: 'ALL', label: 'All warehouses' },
+              ...warehouseOptions.map((name) => ({ value: name, label: name })),
+            ]}
+          />
         </div>
         {hasActiveFilter && (
           <div className="mt-2 flex items-center gap-2">
@@ -164,7 +178,7 @@ export default function ManagerCycleCountPage() {
             </span>
             <button
               type="button"
-              onClick={() => { setSearch(''); setStatusFilter(''); }}
+              onClick={() => { setSearch(''); setStatusFilter(''); setWarehouseFilter('ALL'); }}
               className="text-xs font-semibold text-primary hover:underline"
             >
               Clear filters

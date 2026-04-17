@@ -74,9 +74,10 @@ export default function ManagerOutboundRequestsPage() {
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         const ref = (r.reference ?? r.request_id).toLowerCase();
+        const contract = (r.contract_code ?? r.contract_id).toLowerCase();
         const customer = (r.customer_name ?? '').toLowerCase();
         const warehouse = (r.warehouse_name ?? '').toLowerCase();
-        if (!ref.includes(q) && !customer.includes(q) && !warehouse.includes(q)) return false;
+        if (!ref.includes(q) && !contract.includes(q) && !customer.includes(q) && !warehouse.includes(q)) return false;
       }
       return true;
     });
@@ -100,7 +101,7 @@ export default function ManagerOutboundRequestsPage() {
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
-            placeholder="Search by reference, customer, warehouse..."
+            placeholder="Search by reference, contract code, customer, warehouse..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />

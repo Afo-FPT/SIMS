@@ -22,6 +22,18 @@ type HistoryRow = {
   updatedAt: string;
 };
 
+function formatStatusLabel(status: string): string {
+  const s = String(status || '').toLowerCase().replace(/_/g, ' ').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
+}
+
+function statusVariant(status: string): 'success' | 'error' | 'info' | 'warning' | 'neutral' {
+  if (status === 'COMPLETED' || status === 'CONFIRMED') return 'success';
+  if (status === 'REJECTED') return 'error';
+  if (status === 'DONE_BY_STAFF' || status === 'ASSIGNED_TO_STAFF' || status === 'STAFF_SUBMITTED') return 'info';
+  return 'warning';
+}
+
 function parseIsoLocalDate(value: string): Date | null {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -180,10 +192,11 @@ export default function CustomerHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<HistoryType>('ALL');
+  const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [page, setPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const rowsPerPage = 10;
 
   useEffect(() => {
     let cancelled = false;
@@ -230,6 +243,10 @@ export default function CustomerHistoryPage() {
     const to = parseIsoLocalDate(toDate);
     return rows.filter((r) => {
       if (typeFilter !== 'ALL' && r.type !== typeFilter) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        if (!r.reference.toLowerCase().includes(q)) return false;
+      }
       if (from && new Date(r.updatedAt) < from) return false;
       if (to) {
         const end = new Date(to);
@@ -238,7 +255,7 @@ export default function CustomerHistoryPage() {
       }
       return true;
     });
-  }, [rows, typeFilter, fromDate, toDate]);
+  }, [rows, typeFilter, search, fromDate, toDate]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowsPerPage));
 
@@ -250,7 +267,7 @@ export default function CustomerHistoryPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter, fromDate, toDate, rowsPerPage]);
+  }, [typeFilter, search, fromDate, toDate]);
   if (loading) {
     return (
       <div className="space-y-8">
@@ -276,7 +293,17 @@ export default function CustomerHistoryPage() {
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-end">
-          <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="xl:col-span-12 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-500">Reference</p>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search reference..."
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
             <div className="space-y-1">
               <p className="text-xs font-bold text-slate-500">Transaction type</p>
               <select
@@ -292,32 +319,6 @@ export default function CustomerHistoryPage() {
             </div>
             <DatePickerField label="From date" value={fromDate} onChange={setFromDate} />
             <DatePickerField label="To date" value={toDate} onChange={setToDate} />
-          </div>
-
-          <div className="xl:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-slate-500">Rows per page</p>
-              <div className="relative">
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-10 text-sm transition-colors hover:border-primary/40 focus:border-primary/40 focus:outline-none"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-                <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center text-slate-400">
-                  <span className="material-symbols-outlined text-base">expand_more</span>
-                </span>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-slate-500">Total records</p>
-              <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 flex items-center px-3 text-sm text-slate-600">
-                {filteredRows.length}
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -343,7 +344,9 @@ export default function CustomerHistoryPage() {
                     <Badge variant="neutral">{r.type}</Badge>
                   </TableCell>
                   <TableCell className="font-bold text-slate-900">{r.reference}</TableCell>
-                  <TableCell>{r.status}</TableCell>
+                  <TableCell>
+                    <Badge variant={statusVariant(r.status)}>{formatStatusLabel(r.status)}</Badge>
+                  </TableCell>
                   <TableCell>{r.quantity}</TableCell>
                   <TableCell className="text-sm text-slate-500">{formatDateTime(r.updatedAt)}</TableCell>
                 </TableRow>

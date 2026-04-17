@@ -11,6 +11,7 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 import { Select } from '../../../components/ui/Select';
+import { Input } from '../../../components/ui/Input';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { useToastHelpers } from '../../../lib/toast';
 import { formatDateTime } from '../../../lib/date-format';
@@ -35,6 +36,7 @@ export default function ManagerTasksPage() {
   const [detail, setDetail] = useState<StorageRequestView | null>(null);
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>('ALL');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -74,13 +76,19 @@ export default function ManagerTasksPage() {
     return sortedTasks.filter((t) => {
       if (typeFilter !== 'ALL' && t.request_type !== typeFilter) return false;
       if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        const ref = (t.reference ?? t.request_id).toLowerCase();
+        const contract = (t.contract_code ?? t.contract_id).toLowerCase();
+        if (!ref.includes(q) && !contract.includes(q)) return false;
+      }
       return true;
     });
-  }, [sortedTasks, typeFilter, statusFilter]);
+  }, [sortedTasks, typeFilter, statusFilter, search]);
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter, statusFilter]);
+  }, [typeFilter, statusFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -94,7 +102,13 @@ export default function ManagerTasksPage() {
       />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Input
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Reference or contract code"
+          />
           <Select
             label="Task type"
             value={typeFilter}

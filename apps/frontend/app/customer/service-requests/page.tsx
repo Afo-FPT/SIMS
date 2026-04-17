@@ -214,6 +214,10 @@ export default function ServiceRequestsPage() {
   const [trackingRequests, setTrackingRequests] = useState<StorageRequestView[]>([]);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackingSearch, setTrackingSearch] = useState('');
+  const [trackingTypeFilter, setTrackingTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
+  const [trackingStatusFilter, setTrackingStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'DONE_BY_STAFF' | 'COMPLETED' | 'REJECTED'>('ALL');
+  const [trackingWarehouseFilter, setTrackingWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [trackingPage, setTrackingPage] = useState(1);
   const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
   const [detailRequest, setDetailRequest] = useState<StorageRequestView | null>(null);
@@ -223,6 +227,9 @@ export default function ServiceRequestsPage() {
   const [cycleCounts, setCycleCounts] = useState<CycleCountResponse[]>([]);
   const [cycleLoading, setCycleLoading] = useState(false);
   const [cycleError, setCycleError] = useState<string | null>(null);
+  const [cycleSearch, setCycleSearch] = useState('');
+  const [cycleStatusFilter, setCycleStatusFilter] = useState<'ALL' | string>('ALL');
+  const [cycleWarehouseFilter, setCycleWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [cyclePage, setCyclePage] = useState(1);
 
   // Weekly request quota for IN/OUT/CYCLE:
@@ -489,26 +496,77 @@ export default function ServiceRequestsPage() {
     }
   };
 
-  const trackingTotalPages = Math.max(1, Math.ceil(trackingRequests.length / PAGE_SIZE));
+  const trackingWarehouseOptions = useMemo(() => {
+    const names = Array.from(
+      new Set(
+        trackingRequests
+          .map((r) => r.warehouse_name)
+          .filter((x): x is string => !!x && x.trim().length > 0)
+      )
+    );
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [trackingRequests]);
+
+  const filteredTrackingRequests = useMemo(() => {
+    const q = trackingSearch.trim().toLowerCase();
+    return trackingRequests.filter((r) => {
+      if (trackingTypeFilter !== 'ALL' && r.request_type !== trackingTypeFilter) return false;
+      if (trackingStatusFilter !== 'ALL' && r.status !== trackingStatusFilter) return false;
+      if (trackingWarehouseFilter !== 'ALL' && (r.warehouse_name ?? '') !== trackingWarehouseFilter) return false;
+      if (!q) return true;
+      return (
+        (r.reference ?? r.request_id).toLowerCase().includes(q) ||
+        (r.warehouse_name ?? '').toLowerCase().includes(q) ||
+        (r.contract_code ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [trackingRequests, trackingSearch, trackingTypeFilter, trackingStatusFilter, trackingWarehouseFilter]);
+
+  const trackingTotalPages = Math.max(1, Math.ceil(filteredTrackingRequests.length / PAGE_SIZE));
   const trackingSafePage = Math.min(trackingPage, trackingTotalPages);
   const trackingPaged = useMemo(
     () =>
-      trackingRequests.slice(
+      filteredTrackingRequests.slice(
         (trackingSafePage - 1) * PAGE_SIZE,
         trackingSafePage * PAGE_SIZE,
       ),
-    [trackingRequests, trackingSafePage],
+    [filteredTrackingRequests, trackingSafePage],
   );
 
-  const cycleTotalPages = Math.max(1, Math.ceil(cycleCounts.length / PAGE_SIZE));
+  const cycleWarehouseOptions = useMemo(() => {
+    const names = Array.from(
+      new Set(cycleCounts.map((cc) => cc.warehouse_name).filter((x): x is string => !!x && x.trim().length > 0))
+    );
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [cycleCounts]);
+
+  const cycleStatusOptions = useMemo(() => {
+    const statuses = Array.from(new Set(cycleCounts.map((cc) => cc.status).filter((x): x is string => !!x)));
+    return statuses.sort((a, b) => a.localeCompare(b));
+  }, [cycleCounts]);
+
+  const filteredCycleCounts = useMemo(() => {
+    const q = cycleSearch.trim().toLowerCase();
+    return cycleCounts.filter((cc) => {
+      if (cycleStatusFilter !== 'ALL' && cc.status !== cycleStatusFilter) return false;
+      if (cycleWarehouseFilter !== 'ALL' && (cc.warehouse_name ?? '') !== cycleWarehouseFilter) return false;
+      if (!q) return true;
+      return (
+        cc.cycle_count_id.toLowerCase().includes(q) ||
+        (cc.contract_code ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [cycleCounts, cycleSearch, cycleStatusFilter, cycleWarehouseFilter]);
+
+  const cycleTotalPages = Math.max(1, Math.ceil(filteredCycleCounts.length / PAGE_SIZE));
   const cycleSafePage = Math.min(cyclePage, cycleTotalPages);
   const cyclePaged = useMemo(
     () =>
-      cycleCounts.slice(
+      filteredCycleCounts.slice(
         (cycleSafePage - 1) * PAGE_SIZE,
         cycleSafePage * PAGE_SIZE,
       ),
-    [cycleCounts, cycleSafePage],
+    [filteredCycleCounts, cycleSafePage],
   );
 
   useEffect(() => {
@@ -546,6 +604,14 @@ export default function ServiceRequestsPage() {
       clearTimeout(timeoutId);
     };
   }, [detailRequestId]);
+
+  useEffect(() => {
+    setTrackingPage(1);
+  }, [trackingSearch, trackingTypeFilter, trackingStatusFilter, trackingWarehouseFilter]);
+
+  useEffect(() => {
+    setCyclePage(1);
+  }, [cycleSearch, cycleStatusFilter, cycleWarehouseFilter]);
 
   const statusLabel: Record<string, string> = {
     PENDING: 'Pending',
@@ -980,6 +1046,50 @@ export default function ServiceRequestsPage() {
           <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
             <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Inbound / Outbound requests</h2>
             <p className="text-sm text-slate-500 px-6 pb-4">Track status of inbound/outbound requests</p>
+            <div className="px-6 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <input
+                  type="text"
+                  value={trackingSearch}
+                  onChange={(e) => setTrackingSearch(e.target.value)}
+                  placeholder="Search by reference, contract, warehouse..."
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <select
+                  value={trackingTypeFilter}
+                  onChange={(e) => setTrackingTypeFilter(e.target.value as 'ALL' | 'IN' | 'OUT')}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="ALL">All types</option>
+                  <option value="IN">Inbound</option>
+                  <option value="OUT">Outbound</option>
+                </select>
+                <select
+                  value={trackingStatusFilter}
+                  onChange={(e) => setTrackingStatusFilter(e.target.value as any)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="ALL">All statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="DONE_BY_STAFF">Done by staff</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+                <select
+                  value={trackingWarehouseFilter}
+                  onChange={(e) => setTrackingWarehouseFilter(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="ALL">All warehouses</option>
+                  {trackingWarehouseOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             {trackingLoading ? (
               <div className="p-12 text-center text-slate-500">Loading…</div>
             ) : trackingError ? (
@@ -1040,26 +1150,26 @@ export default function ServiceRequestsPage() {
                 </table>
               </div>
             )}
-            {!trackingLoading && !trackingError && trackingRequests.length === 0 && (
+            {!trackingLoading && !trackingError && filteredTrackingRequests.length === 0 && (
               <div className="p-12 text-center text-slate-500">
-                No requests yet. Switch to &quot;New request&quot; to submit.
+                No requests match current filters.
               </div>
             )}
           </section>
 
-          {!trackingLoading && !trackingError && trackingRequests.length > 0 && (
+          {!trackingLoading && !trackingError && filteredTrackingRequests.length > 0 && (
             <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
               <p className="text-sm text-slate-500 whitespace-nowrap">
                 Showing{' '}
                 <span className="font-bold text-slate-700">
-                  {Math.min((trackingSafePage - 1) * PAGE_SIZE + 1, trackingRequests.length)}
+                  {Math.min((trackingSafePage - 1) * PAGE_SIZE + 1, filteredTrackingRequests.length)}
                 </span>
                 {' '}to{' '}
                 <span className="font-bold text-slate-700">
-                  {Math.min(trackingSafePage * PAGE_SIZE, trackingRequests.length)}
+                  {Math.min(trackingSafePage * PAGE_SIZE, filteredTrackingRequests.length)}
                 </span>
                 {' '}of{' '}
-                <span className="font-bold text-slate-700">{trackingRequests.length}</span>
+                <span className="font-bold text-slate-700">{filteredTrackingRequests.length}</span>
               </p>
               <Pagination
                 currentPage={trackingSafePage}
@@ -1070,10 +1180,45 @@ export default function ServiceRequestsPage() {
           )}
 
           <section className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Cycle Count (Inventory Checking)</h2>
+            <h2 className="text-lg font-black text-slate-900 p-6 pb-2">Cycle Count</h2>
             <p className="text-sm text-slate-500 px-6 pb-4">
               Track requested inventory cycle counts
             </p>
+            <div className="px-6 pb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  value={cycleSearch}
+                  onChange={(e) => setCycleSearch(e.target.value)}
+                  placeholder="Search by cycle id, contract code..."
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <select
+                  value={cycleStatusFilter}
+                  onChange={(e) => setCycleStatusFilter(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="ALL">All statuses</option>
+                  {cycleStatusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {formatCycleCountStatus(status)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={cycleWarehouseFilter}
+                  onChange={(e) => setCycleWarehouseFilter(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="ALL">All warehouses</option>
+                  {cycleWarehouseOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             {cycleLoading ? (
               <div className="p-12 text-center text-slate-500">Loading…</div>
             ) : cycleError ? (
@@ -1081,9 +1226,9 @@ export default function ServiceRequestsPage() {
                 <p className="text-red-600 mb-4">{cycleError}</p>
                 <Button variant="secondary" onClick={loadCycleCounts}>Retry</Button>
               </div>
-            ) : cycleCounts.length === 0 ? (
+            ) : filteredCycleCounts.length === 0 ? (
               <div className="p-12 text-center text-slate-500">
-                No cycle counts yet.
+                No cycle counts match current search.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1131,19 +1276,19 @@ export default function ServiceRequestsPage() {
               </div>
             )}
           </section>
-          {!cycleLoading && !cycleError && cycleCounts.length > 0 && (
+          {!cycleLoading && !cycleError && filteredCycleCounts.length > 0 && (
             <div className="flex items-center justify-center flex-wrap gap-3 pb-4">
               <p className="text-sm text-slate-500 whitespace-nowrap">
                 Showing{' '}
                 <span className="font-bold text-slate-700">
-                  {Math.min((cycleSafePage - 1) * PAGE_SIZE + 1, cycleCounts.length)}
+                  {Math.min((cycleSafePage - 1) * PAGE_SIZE + 1, filteredCycleCounts.length)}
                 </span>
                 {' '}to{' '}
                 <span className="font-bold text-slate-700">
-                  {Math.min(cycleSafePage * PAGE_SIZE, cycleCounts.length)}
+                  {Math.min(cycleSafePage * PAGE_SIZE, filteredCycleCounts.length)}
                 </span>
                 {' '}of{' '}
-                <span className="font-bold text-slate-700">{cycleCounts.length}</span>
+                <span className="font-bold text-slate-700">{filteredCycleCounts.length}</span>
               </p>
               <Pagination
                 currentPage={cycleSafePage}

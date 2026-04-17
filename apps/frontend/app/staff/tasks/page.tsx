@@ -218,6 +218,7 @@ export default function StaffTasksPage() {
 
   const [statusGroup, setStatusGroup] = useState<StatusGroup>('ALL');
   const [taskTypeFilter, setTaskTypeFilter] = useState<TaskType | 'ALL'>('ALL');
+  const [warehouseFilter, setWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [showReferenceCode, setShowReferenceCode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -331,6 +332,7 @@ export default function StaffTasksPage() {
         const g = getStatusGroupForRow(r);
         if (g !== statusGroup) return false;
       }
+      if (warehouseFilter !== 'ALL' && (r.warehouseName ?? '') !== warehouseFilter) return false;
 
       if (!q) return true;
       return (
@@ -341,11 +343,16 @@ export default function StaffTasksPage() {
         (r.zoneCode ?? '').toLowerCase().includes(q)
       );
     });
-  }, [allRows, taskTypeFilter, statusGroup, search]);
+  }, [allRows, taskTypeFilter, statusGroup, warehouseFilter, search]);
+
+  const warehouseOptions = useMemo(() => {
+    const names = Array.from(new Set(allRows.map((r) => r.warehouseName).filter((x): x is string => !!x)));
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [allRows]);
 
   useEffect(() => {
     setPage(1);
-  }, [taskTypeFilter, statusGroup, search]);
+  }, [taskTypeFilter, statusGroup, warehouseFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -467,6 +474,16 @@ export default function StaffTasksPage() {
               ]}
               value={taskTypeFilter}
               onChange={(e) => setTaskTypeFilter(e.target.value as TaskType | 'ALL')}
+            />
+          </div>
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All warehouses' },
+                ...warehouseOptions.map((w) => ({ value: w, label: w })),
+              ]}
+              value={warehouseFilter}
+              onChange={(e) => setWarehouseFilter(e.target.value)}
             />
           </div>
         </div>

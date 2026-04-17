@@ -196,7 +196,7 @@ export default function LandingPage() {
             <div className="size-9 bg-primary rounded-xl flex items-center justify-center shadow-md shadow-primary/25">
               <span className="material-symbols-outlined text-white" style={{ fontSize: 20 }}>warehouse</span>
             </div>
-            <span className="text-base font-black tracking-tight text-slate-900">SIMS</span>
+            <span className="text-base font-black tracking-tight text-slate-900">SIMS-AI</span>
             <span className="hidden sm:block text-[10px] font-semibold text-slate-400 border border-slate-200 rounded-md px-1.5 py-0.5 tracking-wide">LOGISTICS</span>
           </div>
 
@@ -675,7 +675,7 @@ export default function LandingPage() {
               <div className="size-9 bg-primary rounded-xl flex items-center justify-center shadow">
                 <span className="material-symbols-outlined text-white" style={{ fontSize: 20 }}>warehouse</span>
               </div>
-              <span className="text-base font-black tracking-tight text-slate-900">SIMS Logistics</span>
+              <span className="text-base font-black tracking-tight text-slate-900">SIMS-AI Logistics</span>
             </div>
             <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
               A professional warehouse management platform built for modern logistics teams and their customers.

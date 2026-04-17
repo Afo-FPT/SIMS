@@ -22,6 +22,7 @@ export default function CustomerInventoryPage() {
   const [search, setSearch] = useState('');
   const [contracts, setContracts] = useState<Array<{ id: string; code: string; status: string }>>([]);
   const [contractFilter, setContractFilter] = useState<'ALL' | string>('ALL');
+  const [warehouseFilter, setWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [page, setPage] = useState(1);
@@ -82,12 +83,20 @@ export default function CustomerInventoryPage() {
     if (lowStockOnly) {
       list = list.filter((i) => i.total_quantity < 100);
     }
+    if (warehouseFilter !== 'ALL') {
+      list = list.filter((i) => (i.warehouseName ?? 'Unknown warehouse') === warehouseFilter);
+    }
     return list;
-  }, [products, search, lowStockOnly]);
+  }, [products, search, lowStockOnly, warehouseFilter]);
+
+  const warehouseOptions = useMemo(() => {
+    const names = Array.from(new Set(products.map((p) => p.warehouseName ?? 'Unknown warehouse')));
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [products]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, contractFilter, lowStockOnly]);
+  }, [search, contractFilter, lowStockOnly, warehouseFilter]);
 
   const bannerContract = useMemo(
     () => (contractFilter === 'ALL' ? null : contracts.find((c) => c.id === contractFilter)),
@@ -176,8 +185,8 @@ export default function CustomerInventoryPage() {
 
       {/* Filters */}
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-3 items-end">
-          <div className="space-y-1 xl:col-span-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 items-end">
+          <div className="space-y-1">
             <p className="text-xs font-bold text-slate-500">Search</p>
             <div className="relative">
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -192,7 +201,7 @@ export default function CustomerInventoryPage() {
               />
             </div>
           </div>
-          <div className="space-y-1 xl:col-span-2">
+          <div className="space-y-1">
             <p className="text-xs font-bold text-slate-500">Contract</p>
             <select
               value={contractFilter}
@@ -209,7 +218,23 @@ export default function CustomerInventoryPage() {
               ))}
             </select>
           </div>
-          <label className="h-11 px-3 rounded-xl border border-slate-200 bg-white inline-flex items-center gap-2 cursor-pointer">
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-slate-500">Warehouse</p>
+            <select
+              value={warehouseFilter}
+              onChange={(e) => setWarehouseFilter(e.target.value as 'ALL' | string)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+              title="Select warehouse"
+            >
+              <option value="ALL">All warehouses</option>
+              {warehouseOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="h-11 w-full px-3 rounded-xl border border-slate-200 bg-white inline-flex items-center justify-between gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={lowStockOnly}
