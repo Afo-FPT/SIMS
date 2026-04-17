@@ -191,7 +191,7 @@ export async function listStorageRequests(
   const zoneIds = Array.from(
     new Set(
       [
-        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        ...shelves.map((s: any) => s.zoneId?.toString?.()),
         ...requests.map((r: any) => r.requestedZoneId?.toString?.())
       ].filter(Boolean)
     )
@@ -348,7 +348,7 @@ export async function getStorageRequestById(
   const zoneIds = Array.from(
     new Set(
       [
-        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        ...detailShelves.map((s: any) => s.zoneId?.toString?.()),
         (req as any).requestedZoneId?.toString?.()
       ].filter(Boolean)
     )

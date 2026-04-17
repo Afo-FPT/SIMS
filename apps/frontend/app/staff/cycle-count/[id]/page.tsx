@@ -61,7 +61,7 @@ export default function StaffCycleCountDetailPage() {
         setRows(
           res.target_items.map((t) => ({
             ...t,
-            countedQuantity: t.system_quantity,
+            countedQuantity: 0,
             note: '',
           }))
         );

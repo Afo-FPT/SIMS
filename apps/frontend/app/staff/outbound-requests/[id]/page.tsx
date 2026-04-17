@@ -182,16 +182,16 @@ export default function StaffOutboundDetailPage() {
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
         <h2 className="text-lg font-bold text-slate-900">Item details</h2>
         <div className="border border-slate-200 rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead>
               <tr className="bg-slate-50">
-                <th className="px-4 py-3 text-left font-bold text-slate-700">STT</th>
-                <th className="px-4 py-3 text-left font-bold text-slate-700">Item</th>
-                <th className="px-4 py-3 text-left font-bold text-slate-700">Shelf</th>
-                <th className="px-4 py-3 text-left font-bold text-slate-700">Zone</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Requested</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Picked</th>
-                <th className="px-4 py-3 text-right font-bold text-slate-700">Discrepancy</th>
+                <th className="w-16 px-4 py-3 text-left font-bold text-slate-700">STT</th>
+                <th className="w-[34%] px-4 py-3 text-left font-bold text-slate-700">Item</th>
+                <th className="w-[14%] px-4 py-3 text-left font-bold text-slate-700">Shelf</th>
+                <th className="w-[12%] px-4 py-3 text-left font-bold text-slate-700">Zone</th>
+                <th className="w-[14%] px-4 py-3 text-right font-bold text-slate-700">Requested</th>
+                <th className="w-[12%] px-4 py-3 text-right font-bold text-slate-700">Picked</th>
+                <th className="w-[14%] px-4 py-3 text-right font-bold text-slate-700">Discrepancy</th>
               </tr>
             </thead>
             <tbody>
@@ -200,51 +200,53 @@ export default function StaffOutboundDetailPage() {
                 const row = rows[idx];
                 return (
                   <tr key={it.request_detail_id} className="border-t border-slate-100 hover:bg-slate-50/50">
-                    <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-slate-900">{it.item_name}</p>
+                    <td className="px-4 py-3 align-middle text-slate-600">{idx + 1}</td>
+                    <td className="px-4 py-3 align-middle">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">{it.item_name}</p>
                         {it.quantity_per_unit && (
                           <p className="text-xs text-slate-500">{it.quantity_per_unit} {it.unit}/unit</p>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-slate-700">{it.shelf_code || it.shelf_id || '—'}</span>
+                    <td className="px-4 py-3 align-middle">
+                      <span className="block truncate font-medium text-slate-700">{it.shelf_code || it.shelf_id || '—'}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-slate-600">{it.zone_code || '—'}</span>
+                    <td className="px-4 py-3 align-middle">
+                      <span className="block truncate text-slate-600">{it.zone_code || '—'}</span>
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-slate-700">
+                    <td className="px-4 py-3 align-middle text-right font-medium text-slate-700">
                       {it.quantity_requested} {it.unit}
                     </td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        max={it.quantity_requested}
-                        value={row?.quantityActual ?? ''}
-                        onChange={(e) => {
-                          // Chỉ cho phép số nguyên không âm
-                          const raw = e.target.value;
-                          const intVal =
-                            raw === '' ? '' : String(Math.max(0, Math.floor(Number(raw) || 0)));
-                          const requested = it.quantity_requested;
-                          const actualNum = Number(intVal) || 0;
-                          const shortage = requested - actualNum;
-                          const patch: { quantityActual: string; damageQuantity?: string } = {
-                            quantityActual: intVal,
-                          };
-                          if (shortage > 0) patch.damageQuantity = String(shortage);
-                          else patch.damageQuantity = '';
-                          updateRow(idx, patch);
-                        }}
-                        placeholder="0"
-                        className="w-24 text-right"
-                      />
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex justify-end">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          max={it.quantity_requested}
+                          value={row?.quantityActual ?? ''}
+                          onChange={(e) => {
+                            // Only allow non-negative integers
+                            const raw = e.target.value;
+                            const intVal =
+                              raw === '' ? '' : String(Math.max(0, Math.floor(Number(raw) || 0)));
+                            const requested = it.quantity_requested;
+                            const actualNum = Number(intVal) || 0;
+                            const shortage = requested - actualNum;
+                            const patch: { quantityActual: string; damageQuantity?: string } = {
+                              quantityActual: intVal,
+                            };
+                            if (shortage > 0) patch.damageQuantity = String(shortage);
+                            else patch.damageQuantity = '';
+                            updateRow(idx, patch);
+                          }}
+                          placeholder="0"
+                          className="w-20 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-right text-sm text-slate-900 outline-none transition-colors duration-150 focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 align-middle text-right">
                       {discrepancy !== null && (
                         <span className={`font-bold ${
                           discrepancy > 0 ? 'text-emerald-600' :
