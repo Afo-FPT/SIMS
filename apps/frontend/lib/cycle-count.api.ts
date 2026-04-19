@@ -77,8 +77,14 @@ export interface CycleCountResponse {
   recount_rejected_reason?: string;
 }
 
-export async function getCycleCounts(): Promise<CycleCountResponse[]> {
-  return await apiJson<CycleCountResponse[]>('/cycle-counts', { method: 'GET' });
+export async function getCycleCounts(options?: { includeItems?: boolean }): Promise<CycleCountResponse[]> {
+  const params = new URLSearchParams();
+  if (options?.includeItems === false) {
+    params.set('includeItems', 'false');
+  }
+  const qs = params.toString();
+  const path = qs ? `/cycle-counts?${qs}` : '/cycle-counts';
+  return await apiJson<CycleCountResponse[]>(path, { method: 'GET' });
 }
 
 export async function getCycleCountById(id: string): Promise<CycleCountResponse> {

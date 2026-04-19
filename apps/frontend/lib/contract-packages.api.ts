@@ -6,6 +6,8 @@ export interface ContractPackage {
   _id: string;
   name: string;
   warehouseId: string;
+  warehouseName?: string;
+  warehouseAddress?: string;
   duration: number;
   unit: ContractPackageUnit;
   pricePerM2: number;

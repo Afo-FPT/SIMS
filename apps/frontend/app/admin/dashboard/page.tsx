@@ -1,16 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Chart as ChartJSCore } from 'chart.js';
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Legend as ChartLegend,
-  LinearScale,
-  Tooltip as ChartTooltip,
-} from 'chart.js';
-import { Pie, Bar } from 'react-chartjs-2';
+import { LazyPie } from '../../../components/charts/LazyPie';
+import { LazyBar } from '../../../components/charts/LazyBar';
+import { ensureChartSetup } from '../../../components/charts/chart-setup';
 import { listUsers, getAdminDashboardSnapshot } from '../../../lib/admin.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
@@ -23,6 +16,7 @@ import { Badge } from '../../../components/ui/Badge';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { formatDayMonth, formatTime, formatDateTime } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -50,23 +44,7 @@ const chartSubtitle = (text: string) => ({
   padding: { bottom: 10 },
 });
 
-ChartJSCore.register(ArcElement, BarElement, CategoryScale, ChartLegend, LinearScale, ChartTooltip);
-
-ChartJSCore.defaults.animation = {
-  duration: 1200,
-  easing: 'easeOutCubic',
-};
-ChartJSCore.defaults.animations = {
-  x: { duration: 900, from: 0 },
-  y: { duration: 900, from: 0 },
-  radius: { duration: 900, from: 0 },
-} as any;
-ChartJSCore.defaults.transitions.show = {
-  animations: {
-    x: { from: 0 },
-    y: { from: 0 },
-  },
-} as any;
+ensureChartSetup();
 
 function toIsoLocalDate(d: Date): string {
   const year = d.getFullYear();
@@ -76,7 +54,7 @@ function toIsoLocalDate(d: Date): string {
 }
 
 function dayKey(ts: string): string {
-  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+  return formatDayMonth(ts);
 }
 
 function dayBucket(ts: string): { key: string; label: string; sortTs: number } {
@@ -173,7 +151,7 @@ export default function AdminDashboard() {
         setStorageRequests(reqs || []);
         setCycleCounts(cycles || []);
         setSnapshot(snap);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (e) {
         if (!cancelled && isInitialLoad) {
           setError(e instanceof Error ? e.message : 'Failed to load admin overview');
@@ -257,7 +235,7 @@ export default function AdminDashboard() {
       const outbound = storage.outbound;
       const total = inbound + outbound + cycleCount;
       timeline.push({
-        period: cursor.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }),
+        period: formatDayMonth(cursor),
         inbound,
         outbound,
         cycleCount,
@@ -324,7 +302,7 @@ export default function AdminDashboard() {
         level: r.status === 'REJECTED' ? 'ERROR' : r.status === 'PENDING' ? 'WARN' : 'INFO',
         action: `Storage ${r.reference || r.request_id.slice(-8)} (${r.request_type}) — ${r.status}`,
         actor: String(r.contract_code || r.contract_id || '—'),
-        time: new Date(r.updated_at || r.created_at).toLocaleString('en-GB'),
+        time: formatDateTime(r.updated_at || r.created_at),
         ts,
       });
     }
@@ -336,7 +314,7 @@ export default function AdminDashboard() {
         level: st === 'REJECTED' || st === 'ADJUSTMENT_REQUESTED' ? 'WARN' : 'INFO',
         action: `Cycle count ${c.cycle_count_id.slice(-8).toUpperCase()} — ${st}`,
         actor: String(c.contract_code || '—'),
-        time: new Date(c.updated_at || c.created_at).toLocaleString('en-GB'),
+        time: formatDateTime(c.updated_at || c.created_at),
         ts,
       });
     }
@@ -473,7 +451,7 @@ export default function AdminDashboard() {
             >
               Insight
             </Button>
-            <Pie
+            <LazyPie
               data={{
                 labels: roleDistributionBusiness.map((d) => d.role),
                 datasets: [
@@ -536,7 +514,7 @@ export default function AdminDashboard() {
             >
               Insight
             </Button>
-            <Pie
+            <LazyPie
               data={{
                 labels: completionOverviewThree.map((d) => d.name),
                 datasets: [
@@ -623,7 +601,7 @@ export default function AdminDashboard() {
           >
             Insight
           </Button>
-          <Bar
+          <LazyBar
             data={{
               labels: operationsTimeline.map((d) => d.period),
               datasets: [

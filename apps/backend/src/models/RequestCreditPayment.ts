@@ -46,6 +46,7 @@ const RequestCreditPaymentSchema = new Schema<IRequestCreditPayment>(
 );
 
 RequestCreditPaymentSchema.index({ customerId: 1, contractId: 1, status: 1 });
+RequestCreditPaymentSchema.index({ status: 1, paidAt: -1 });
 
 const RequestCreditPayment = mongoose.model<IRequestCreditPayment>(
   "RequestCreditPayment",

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
 import {
   listStorageRequests,
@@ -62,11 +63,7 @@ function safeToDate(v: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDateTime(v: string): string {
-  const d = safeToDate(v);
-  if (!d) return '—';
-  return d.toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
+
 
 function getStatusGroupForRow(row: StaffTaskRow): Exclude<StatusGroup, 'ALL'> {
   if (row.type === 'INVENTORY_CHECKING') {
@@ -221,6 +218,7 @@ export default function StaffTasksPage() {
 
   const [statusGroup, setStatusGroup] = useState<StatusGroup>('ALL');
   const [taskTypeFilter, setTaskTypeFilter] = useState<TaskType | 'ALL'>('ALL');
+  const [warehouseFilter, setWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [showReferenceCode, setShowReferenceCode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -334,6 +332,7 @@ export default function StaffTasksPage() {
         const g = getStatusGroupForRow(r);
         if (g !== statusGroup) return false;
       }
+      if (warehouseFilter !== 'ALL' && (r.warehouseName ?? '') !== warehouseFilter) return false;
 
       if (!q) return true;
       return (
@@ -344,11 +343,16 @@ export default function StaffTasksPage() {
         (r.zoneCode ?? '').toLowerCase().includes(q)
       );
     });
-  }, [allRows, taskTypeFilter, statusGroup, search]);
+  }, [allRows, taskTypeFilter, statusGroup, warehouseFilter, search]);
+
+  const warehouseOptions = useMemo(() => {
+    const names = Array.from(new Set(allRows.map((r) => r.warehouseName).filter((x): x is string => !!x)));
+    return names.sort((a, b) => a.localeCompare(b));
+  }, [allRows]);
 
   useEffect(() => {
     setPage(1);
-  }, [taskTypeFilter, statusGroup, search]);
+  }, [taskTypeFilter, statusGroup, warehouseFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / limit));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -472,6 +476,16 @@ export default function StaffTasksPage() {
               onChange={(e) => setTaskTypeFilter(e.target.value as TaskType | 'ALL')}
             />
           </div>
+          <div className="min-w-[240px] flex-1">
+            <Select
+              options={[
+                { value: 'ALL', label: 'All warehouses' },
+                ...warehouseOptions.map((w) => ({ value: w, label: w })),
+              ]}
+              value={warehouseFilter}
+              onChange={(e) => setWarehouseFilter(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
@@ -487,6 +501,7 @@ export default function StaffTasksPage() {
         />
       ) : (
         <>
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader className="w-16">#</TableHeader>
@@ -549,6 +564,7 @@ export default function StaffTasksPage() {
               })}
             </TableBody>
           </Table>
+          </div>
 
           {totalPages > 1 && (
             <div className="flex justify-center">

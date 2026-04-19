@@ -124,7 +124,8 @@ export async function requestDraftContractController(req: Request, res: Response
       error.message.includes("Invalid") ||
       error.message.includes("must be") ||
       error.message.includes("cannot be") ||
-      error.message.includes("Not enough")
+      error.message.includes("Not enough") ||
+      error.message.includes("greater than 0")
     ) {
       return res.status(400).json({ message: error.message });
     }

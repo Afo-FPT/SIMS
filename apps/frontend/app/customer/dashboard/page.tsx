@@ -15,6 +15,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { formatTime, formatDateTime } from '../../../lib/date-format';
 
 export default function CustomerDashboard() {
   const ITEMS_PER_PAGE = 5;
@@ -53,7 +54,7 @@ export default function CustomerDashboard() {
       setStoredItems(items);
       setStorageRequests(sr);
       setCycleCounts(cc);
-      setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+      setLastUpdated(formatTime(new Date()));
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load dashboard data';
       if (isInitial) {
@@ -114,7 +115,7 @@ export default function CustomerDashboard() {
 
   const contractStatusVariant = (status: string) => {
     if (status === 'active') return 'success' as const;
-    if (status === 'draft' || status === 'pending_payment') return 'warning' as const;
+    if (status === 'draft' || status === 'pending_payment' || status === 'scheduled') return 'warning' as const;
     if (status === 'terminated') return 'error' as const;
     return 'neutral' as const;
   };
@@ -258,7 +259,7 @@ export default function CustomerDashboard() {
                         {r.status}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600">{new Date(r.updated_at || r.created_at).toLocaleString('en-GB')}</TableCell>
+                    <TableCell className="text-sm text-slate-600">{formatDateTime(r.updated_at || r.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -298,7 +299,7 @@ export default function CustomerDashboard() {
                       <Badge variant={contractStatusVariant(c.status)}>{c.status}</Badge>
                     </TableCell>
                     <TableCell className="text-slate-700">{c.warehouseName || c.warehouseId || '—'}</TableCell>
-                    <TableCell className="text-sm text-slate-600">{new Date(c.updatedAt || c.createdAt).toLocaleString('en-GB')}</TableCell>
+                    <TableCell className="text-sm text-slate-600">{formatDateTime(c.updatedAt || c.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Persona } from '../types';
 import { deleteReadNotifications, listMyNotifications, markNotificationRead, type AppNotification, getMyUnreadCount, markAllNotificationsRead } from '../lib/notifications.api';
 import { getNotificationSocket } from '../lib/notifications.socket';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
+import { formatDateTime } from '../lib/date-format';
 
 interface HeaderProps {
   activeView: string;
@@ -19,6 +20,17 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
   const [totalPages, setTotalPages] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<AppNotification | null>(null);
+
+  const refreshNotifications = useCallback(async () => {
+    const [res, count] = await Promise.all([
+      listMyNotifications({ page: 1, limit: 10 }),
+      getMyUnreadCount(),
+    ]);
+    setRows(res.notifications || []);
+    setPage(res.pagination?.page || 1);
+    setTotalPages(res.pagination?.totalPages || 1);
+    setUnread(count.unread ?? (res.notifications || []).filter((n) => !n.read).length);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,18 +63,40 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
 
   useEffect(() => {
     const s = getNotificationSocket();
-    if (!s) return;
+    if (!s) return undefined;
 
     const onNew = (n: any) => {
-      setRows((prev) => [normalizeNotification(n), ...prev].slice(0, 50));
+      const incoming = normalizeNotification(n);
+      setRows((prev) => {
+        const next = [incoming, ...prev];
+        const map = new Map(next.map((x) => [x.id, x]));
+        return Array.from(map.values()).slice(0, 50);
+      });
       setUnread((u) => u + 1);
+    };
+    const onReconnect = () => {
+      refreshNotifications().catch(() => {
+        // ignore transient reconnect sync errors
+      });
     };
 
     s.on('notification:new', onNew);
+    s.on('connect', onReconnect);
+    s.on('reconnect', onReconnect);
+
+    const intervalId = window.setInterval(() => {
+      refreshNotifications().catch(() => {
+        // ignore transient polling errors
+      });
+    }, 30000);
+
     return () => {
       s.off('notification:new', onNew);
+      s.off('connect', onReconnect);
+      s.off('reconnect', onReconnect);
+      window.clearInterval(intervalId);
     };
-  }, []);
+  }, [refreshNotifications]);
 
   // Show all notifications fetched so far (page 1 + loaded pages).
   const items = useMemo(() => rows, [rows]);
@@ -150,10 +184,6 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
     <header className="h-20 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 px-8 flex items-center justify-between sticky top-0 z-40 shrink-0">
       <div className="flex flex-col">
         <h2 className="text-xl font-extrabold text-slate-900 tracking-tight font-display">{getTitle()}</h2>
-        <div className="flex items-center gap-2">
-          <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">System Online • v4.0.12</p>
-        </div>
       </div>
 
       <div className="flex items-center gap-5">
@@ -222,7 +252,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
                           <p className="font-bold text-slate-900 truncate">{n.title}</p>
                           <p className="text-sm text-slate-600 mt-0.5 line-clamp-2">{n.message}</p>
                           <p className="text-xs text-slate-400 mt-1">
-                            {new Date(n.createdAt).toLocaleString('en-GB')}
+                            {formatDateTime(n.createdAt)}
                           </p>
                         </div>
                       </div>
@@ -262,7 +292,7 @@ const Header: React.FC<HeaderProps> = ({ activeView, persona }) => {
                 {selectedNotification.message || 'No details.'}
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                {new Date(selectedNotification.createdAt).toLocaleString('en-GB')}
+                {formatDateTime(selectedNotification.createdAt)}
               </p>
             </div>
             {(selectedNotification.meta as any)?.reason && (

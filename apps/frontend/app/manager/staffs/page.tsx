@@ -26,6 +26,7 @@ export default function ManagerStaffsPage() {
   const [staffs, setStaffs] = useState<StaffOption[]>([]);
   const [searchDraft, setSearchDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [staffSearch, setStaffSearch] = useState('');
   const [nextStaffByWarehouse, setNextStaffByWarehouse] = useState<Record<string, string>>({});
   const [editingWarehouseId, setEditingWarehouseId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +88,16 @@ export default function ManagerStaffsPage() {
     [staffs]
   );
 
+  const filteredRows = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      const name = (r.staff_name ?? '').toLowerCase();
+      const email = (r.staff_email ?? '').toLowerCase();
+      return name.includes(q) || email.includes(q);
+    });
+  }, [rows, staffSearch]);
+
   if (loading) return <LoadingSkeleton className="h-64 w-full" />;
   if (error) return <ErrorState title="Failed to load assignments" message={error} onRetry={loadRows} />;
 
@@ -98,7 +109,7 @@ export default function ManagerStaffsPage() {
       />
 
       <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Search warehouse"
             value={searchDraft}
@@ -109,6 +120,12 @@ export default function ManagerStaffsPage() {
                 setSearchQuery(searchDraft.trim());
               }
             }}
+          />
+          <Input
+            label="Search assigned staff"
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+            placeholder="Staff name or email"
           />
         </div>
       </section>
@@ -121,12 +138,12 @@ export default function ManagerStaffsPage() {
             <TableHeader className="text-right">Action</TableHeader>
           </TableHead>
           <TableBody>
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <TableRow>
                 <td colSpan={3} className="px-6 py-4 text-slate-500">No warehouses found.</td>
               </TableRow>
             ) : (
-              rows.map((row) => (
+              filteredRows.map((row) => (
                 <TableRow key={row.warehouse_id}>
                   <TableCell className="font-bold text-slate-900">{row.warehouse_name}</TableCell>
                   <TableCell>

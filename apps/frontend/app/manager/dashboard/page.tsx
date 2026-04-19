@@ -12,6 +12,7 @@ import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '.
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { formatTime, formatDateTime } from '../../../lib/date-format';
 
 export default function ManagerDashboard() {
   const ITEMS_PER_PAGE = 4;
@@ -23,6 +24,7 @@ export default function ManagerDashboard() {
   const [outboundVolume, setOutboundVolume] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [approvalInPage, setApprovalInPage] = useState(1);
   const [approvalOutPage, setApprovalOutPage] = useState(1);
   const [approvalCyclePage, setApprovalCyclePage] = useState(1);
@@ -30,13 +32,19 @@ export default function ManagerDashboard() {
   const [cycleReviewPage, setCycleReviewPage] = useState(1);
 
   useEffect(() => {
-    loadData();
+    void loadData(true);
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') void loadData(false);
+    }, 15000);
+    return () => clearInterval(poll);
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (isInitial: boolean) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (isInitial) {
+        setLoading(true);
+        setError(null);
+      }
       const [contractRows, requestRows, cycleRows, stockIn, stockOut] = await Promise.all([
         getCustomerContracts(),
         listStorageRequests(),
@@ -60,11 +68,14 @@ export default function ManagerDashboard() {
           0,
         ),
       );
+      setLastUpdated(formatTime(new Date()));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-      toast.error('Failed to load dashboard data');
+      if (isInitial) {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+        toast.error('Failed to load dashboard data');
+      }
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
@@ -178,7 +189,7 @@ export default function ManagerDashboard() {
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Dashboard</h1>
           <p className="text-sm text-slate-500 mt-1">Operations overview, approvals, capacity risk, and team execution</p>
         </div>
-        <ErrorState title="Failed to load dashboard" message={error || 'Unknown error'} onRetry={loadData} />
+        <ErrorState title="Failed to load dashboard" message={error || 'Unknown error'} onRetry={() => void loadData(true)} />
       </div>
     );
   }
@@ -190,10 +201,11 @@ export default function ManagerDashboard() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Manager Dashboard</h1>
           <p className="text-sm text-slate-500 mt-1">Operations overview — approvals, contracts, inventory risk, and team workload.</p>
+          <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
         </div>
         <button
           type="button"
-          onClick={loadData}
+          onClick={() => void loadData(true)}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors shadow-card"
         >
           <span className="material-symbols-outlined" style={{ fontSize: 16 }}>refresh</span>
@@ -459,7 +471,7 @@ export default function ManagerDashboard() {
                         <TableCell>
                           <Badge variant="warning">DRAFT</Badge>
                         </TableCell>
-                        <TableCell className="text-slate-600 text-sm">{new Date(c.createdAt).toLocaleString('en-GB')}</TableCell>
+                        <TableCell className="text-slate-600 text-sm">{formatDateTime(c.createdAt)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -499,7 +511,7 @@ export default function ManagerDashboard() {
                     </p>
                     <div className="flex items-center justify-between gap-3">
                       <Badge variant="neutral">{c.warehouseName || c.warehouseId || '—'}</Badge>
-                      <p className="text-xs text-slate-500">{new Date(c.createdAt).toLocaleString('en-GB')}</p>
+                      <p className="text-xs text-slate-500">{formatDateTime(c.createdAt)}</p>
                     </div>
                   </div>
                 ))}
@@ -559,7 +571,7 @@ export default function ManagerDashboard() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-slate-600 text-sm">
-                      {new Date(t.updated_at || t.created_at).toLocaleString('en-GB')}
+                      {formatDateTime(t.updated_at || t.created_at)}
                     </TableCell>
                   </TableRow>
                 ))}

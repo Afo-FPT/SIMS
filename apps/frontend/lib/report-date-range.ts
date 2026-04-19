@@ -1,3 +1,5 @@
+import { formatDateMedium } from './date-format';
+
 /** Quick ranges: both dates set, end anchored to today (local). */
 export type QuickPreset = '7d' | '2w' | '1m' | '1y';
 
@@ -66,8 +68,7 @@ export function formatReportRangeSummary(startIso: string, endIso: string): stri
   const endMs = parseLocalDateEndOfDay(endIso);
   if (endMs < startMs) return 'Invalid range (start after end)';
   const inclusiveDays = Math.floor((endMs - startMs) / 86400000) + 1;
-  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' };
-  const a = new Date(startMs).toLocaleDateString('en-GB', opts);
-  const b = new Date(endMs).toLocaleDateString('en-GB', opts);
+  const a = formatDateMedium(new Date(startMs));
+  const b = formatDateMedium(new Date(endMs));
   return `${a} → ${b} · ${inclusiveDays} day${inclusiveDays === 1 ? '' : 's'}`;
 }

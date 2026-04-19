@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listStorageRequests, type StorageRequestView } from '../../../lib/storage-requests.api';
 import { Badge } from '../../../components/ui/Badge';
+import { Button } from '../../../components/ui/Button';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { Modal } from '../../../components/ui/Modal';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
@@ -10,8 +11,10 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Pagination } from '../../../components/ui/Pagination';
 import { Select } from '../../../components/ui/Select';
+import { Input } from '../../../components/ui/Input';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 
 const PAGE_SIZE = 10;
 
@@ -33,6 +36,7 @@ export default function ManagerTasksPage() {
   const [detail, setDetail] = useState<StorageRequestView | null>(null);
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'IN' | 'OUT'>('ALL');
   const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>('ALL');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -72,13 +76,19 @@ export default function ManagerTasksPage() {
     return sortedTasks.filter((t) => {
       if (typeFilter !== 'ALL' && t.request_type !== typeFilter) return false;
       if (statusFilter !== 'ALL' && t.status !== statusFilter) return false;
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        const ref = (t.reference ?? t.request_id).toLowerCase();
+        const contract = (t.contract_code ?? t.contract_id).toLowerCase();
+        if (!ref.includes(q) && !contract.includes(q)) return false;
+      }
       return true;
     });
-  }, [sortedTasks, typeFilter, statusFilter]);
+  }, [sortedTasks, typeFilter, statusFilter, search]);
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter, statusFilter]);
+  }, [typeFilter, statusFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -92,7 +102,13 @@ export default function ManagerTasksPage() {
       />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Input
+            label="Search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Reference or contract code"
+          />
           <Select
             label="Task type"
             value={typeFilter}
@@ -121,8 +137,10 @@ export default function ManagerTasksPage() {
         <TableSkeleton rows={5} cols={6} />
       ) : error ? (
         <ErrorState title="Failed to load" message={error} onRetry={load} />
+      ) : tasks.length === 0 ? (
+        <EmptyState icon="assignment" title="No tasks" message="No approved or completed tasks found." />
       ) : filteredTasks.length === 0 ? (
-        <EmptyState icon="assignment" title="No tasks" message="No tasks found for this filter" />
+        <EmptyState icon="search_off" title="No results found" message="No tasks match the current filters. Try changing the type or status." />
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
@@ -148,10 +166,7 @@ export default function ManagerTasksPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-700 text-sm">
-                    {new Date(t.updated_at || t.created_at).toLocaleString('en-GB', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {formatDateTime(t.updated_at || t.created_at)}
                   </TableCell>
                   <TableCell>
                     <button type="button" onClick={() => setDetail(t)} className="text-sm font-bold text-primary hover:underline">
@@ -188,31 +203,50 @@ export default function ManagerTasksPage() {
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
           title={detail.reference ?? detail.request_id}
-          size="xl"
+          description={`${detail.request_type === 'IN' ? 'Inbound' : 'Outbound'} · ${formatRequestStatus(detail.status)}`}
+          size="lg"
+          footer={
+            <div className="flex justify-end">
+              <Button variant="ghost" size="sm" onClick={() => setDetail(null)}>Close</Button>
+            </div>
+          }
         >
           <div className="space-y-5">
-            <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Type</dt>
-                <dd className="font-bold text-slate-900">{detail.request_type === 'IN' ? 'Inbound' : 'Outbound'}</dd>
+            {/* Task overview */}
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Type</p>
+                <Badge variant={detail.request_type === 'IN' ? 'info' : 'warning'} size="sm">
+                  {detail.request_type === 'IN' ? 'Inbound' : 'Outbound'}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Contract</dt>
-                <dd className="font-bold text-slate-900">{detail.contract_code ?? detail.contract_id}</dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Status</p>
+                <Badge size="sm" variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>
+                  {formatRequestStatus(detail.status)}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Status</dt>
-                <dd><Badge variant={detail.status === 'COMPLETED' ? 'success' : detail.status === 'DONE_BY_STAFF' ? 'info' : 'warning'}>{formatRequestStatus(detail.status)}</Badge></dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Contract</p>
+                <p className="font-semibold text-slate-900">{detail.contract_code ?? detail.contract_id}</p>
               </div>
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-slate-500">Updated</dt>
-                <dd className="font-bold text-slate-900">{new Date(detail.updated_at || detail.created_at).toLocaleString('en-GB')}</dd>
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Last updated</p>
+                <p className="font-semibold text-slate-900">
+                  {formatDateTime(detail.updated_at || detail.created_at)}
+                </p>
               </div>
-            </dl>
+            </div>
 
-            <section>
-              <h3 className="text-sm font-black text-slate-900 mb-3">Items</h3>
-              <div className="rounded-2xl border border-slate-200 overflow-hidden">
+            {/* Items */}
+            <div className="border-t border-slate-100 pt-5">
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-bold text-slate-800">Items</h3>
+                <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-semibold">
+                  {detail.items.length}
+                </span>
+              </div>
+              <div className="rounded-2xl border border-slate-200 overflow-hidden max-h-72 overflow-y-auto custom-scrollbar">
                 <Table>
                   <TableHead>
                     <TableHeader>Item name</TableHeader>
@@ -223,16 +257,21 @@ export default function ManagerTasksPage() {
                   <TableBody>
                     {detail.items.map((it) => (
                       <TableRow key={it.request_detail_id}>
-                        <TableCell className="text-slate-900">{it.item_name}</TableCell>
-                        <TableCell className="text-slate-700">{it.quantity_requested} {it.unit}</TableCell>
-                        <TableCell className="text-slate-700">{it.quantity_actual ?? '—'}</TableCell>
-                        <TableCell className="text-slate-700">{it.shelf_code ?? '—'}</TableCell>
+                        <TableCell className="font-medium text-slate-900">{it.item_name}</TableCell>
+                        <TableCell className="text-slate-600">{it.quantity_requested} {it.unit}</TableCell>
+                        <TableCell className="text-slate-600">{it.quantity_actual ?? '—'}</TableCell>
+                        <TableCell>
+                          {it.shelf_code
+                            ? <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">{it.shelf_code}</span>
+                            : <span className="text-slate-400">—</span>
+                          }
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-            </section>
+            </div>
           </div>
         </Modal>
       )}

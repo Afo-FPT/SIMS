@@ -12,6 +12,7 @@ import { useToastHelpers } from '../../../../lib/toast';
 import { LoadingSkeleton } from '../../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../../components/ui/ErrorState';
 import { Button } from '../../../../components/ui/Button';
+import { formatDateTime } from '../../../../lib/date-format';
 
 const statusLabel: Record<string, string> = {
   PENDING: 'Pending',
@@ -22,11 +23,7 @@ const statusLabel: Record<string, string> = {
 };
 
 function formatDate(s: string) {
-  try {
-    return new Date(s).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return s;
-  }
+  return formatDateTime(s);
 }
 
 function statusPillClass(status: string) {

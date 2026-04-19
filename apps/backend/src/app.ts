@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import Warehouse from "./models/Warehouse";
 
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
@@ -94,6 +95,20 @@ app.use("/api/system-settings", systemSettingRoutes);
 app.use("/api/staff-warehouses", staffWarehouseRoutes);
 
 
+
+/** Public: list active warehouses for landing page (no auth required) */
+app.get("/api/public/warehouses", async (_req, res) => {
+  try {
+    const warehouses = await Warehouse.find({ status: "ACTIVE" })
+      .select("name address area description")
+      .sort({ name: 1 })
+      .lean()
+      .exec();
+    return res.json({ data: warehouses });
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to load warehouses" });
+  }
+});
 
 app.get("/", (req, res) => {
   res.json({ message: "SIMS-AI backend running" });

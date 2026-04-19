@@ -13,6 +13,7 @@ import {
 } from '../../../lib/admin.api';
 import { useToast } from '../../../lib/toast';
 import { Button } from '../../../components/ui/Button';
+import { formatDateTime } from '../../../lib/date-format';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
@@ -23,6 +24,7 @@ import { LoadingSkeleton, TableSkeleton } from '../../../components/ui/LoadingSk
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Pagination } from '../../../components/ui/Pagination';
+import { PageHeader } from '../../../components/ui/PageHeader';
 
 export default function AdminUsersPage() {
   const { showToast } = useToast();
@@ -132,53 +134,53 @@ export default function AdminUsersPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Users</h1>
-          <p className="text-slate-500 mt-1">User & role management</p>
-        </div>
-        <Button onClick={() => setCreateModalOpen(true)}>Create user</Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Users"
+        description="User & role management"
+        actions={<Button onClick={() => setCreateModalOpen(true)}>Create user</Button>}
+      />
 
       {/* Toolbar */}
-      <div className="flex flex-wrap gap-4 items-end">
-        <div className="flex-1 min-w-[200px]">
-          <Input
-            placeholder="Search by name or email"
-            value={search}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="flex-1 min-w-[200px]">
+            <Input
+              placeholder="Search by name or email"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+          <Select
+            options={[
+              { value: '', label: 'All roles' },
+              { value: 'ADMIN', label: 'Admin' },
+              { value: 'MANAGER', label: 'Manager' },
+              { value: 'STAFF', label: 'Staff' },
+              { value: 'CUSTOMER', label: 'Customer' },
+            ]}
+            value={roleFilter}
             onChange={(e) => {
-              setSearch(e.target.value);
+              setRoleFilter(e.target.value as Role | '');
+              setPage(1);
+            }}
+          />
+          <Select
+            options={[
+              { value: '', label: 'All status' },
+              { value: 'ACTIVE', label: 'Active' },
+              { value: 'LOCKED', label: 'Locked' },
+            ]}
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as UserStatus | '');
               setPage(1);
             }}
           />
         </div>
-        <Select
-          options={[
-            { value: '', label: 'All roles' },
-            { value: 'ADMIN', label: 'Admin' },
-            { value: 'MANAGER', label: 'Manager' },
-            { value: 'STAFF', label: 'Staff' },
-            { value: 'CUSTOMER', label: 'Customer' },
-          ]}
-          value={roleFilter}
-          onChange={(e) => {
-            setRoleFilter(e.target.value as Role | '');
-            setPage(1);
-          }}
-        />
-        <Select
-          options={[
-            { value: '', label: 'All status' },
-            { value: 'ACTIVE', label: 'Active' },
-            { value: 'LOCKED', label: 'Locked' },
-          ]}
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as UserStatus | '');
-            setPage(1);
-          }}
-        />
       </div>
 
       {/* Table */}
@@ -194,6 +196,7 @@ export default function AdminUsersPage() {
         />
       ) : (
         <>
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
           <Table>
             <TableHead>
               <TableHeader>Name</TableHeader>
@@ -231,9 +234,7 @@ export default function AdminUsersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-500 text-sm">
-                    {user.lastLoginAt
-                      ? new Date(user.lastLoginAt).toLocaleString()
-                      : 'Never'}
+                    {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
                   </TableCell>
                   <TableCell>
                     <DropdownMenu.Root>
@@ -294,6 +295,7 @@ export default function AdminUsersPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
 
           {totalPages > 1 && (
             <div className="flex justify-center">
@@ -389,9 +391,16 @@ function UserFormModal({
       open={open}
       onOpenChange={onOpenChange}
       title={user ? 'Edit user' : 'Create user'}
+      description={user ? 'Update user profile and role.' : 'Create a new user account.'}
       size="md"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button type="submit" form="user-form" size="sm">Save</Button>
+        </div>
+      }
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form id="user-form" onSubmit={handleSubmit} className="space-y-4">
         <Input
           label="Name"
           value={name}
@@ -431,12 +440,6 @@ function UserFormModal({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
-        <div className="flex gap-3 justify-end pt-4">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button type="submit">Save</Button>
-        </div>
       </form>
     </Modal>
   );

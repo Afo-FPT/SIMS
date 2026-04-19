@@ -111,7 +111,11 @@ export async function getCycleCountsController(req: Request, res: Response) {
     const userId = req.user.userId;
     const userRole = req.user.role;
 
-    const cycleCounts = await getCycleCounts(userId, userRole);
+    const includeItems =
+      typeof req.query.includeItems === "string"
+        ? req.query.includeItems.toLowerCase() !== "false"
+        : true;
+    const cycleCounts = await getCycleCounts(userId, userRole, { includeItems });
 
     res.status(200).json({
       message: "Cycle counts retrieved successfully",

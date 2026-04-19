@@ -1,16 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  Chart as ChartJSCore,
-  Legend as ChartLegend,
-  LinearScale,
-  Tooltip as ChartTooltip,
-} from 'chart.js';
-import { Pie, Bar } from 'react-chartjs-2';
+import { LazyPie } from '../../../components/charts/LazyPie';
+import { LazyBar } from '../../../components/charts/LazyBar';
+import { ensureChartSetup } from '../../../components/charts/chart-setup';
 import { listMyStoredItems } from '../../../lib/stored-items.api';
 import { listStorageRequests } from '../../../lib/storage-requests.api';
 import { getCycleCounts } from '../../../lib/cycle-count.api';
@@ -21,33 +14,11 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { formatTime } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
-ChartJSCore.register(
-  ArcElement,
-  BarElement,
-  CategoryScale,
-  ChartLegend,
-  LinearScale,
-  ChartTooltip,
-);
-
-ChartJSCore.defaults.animation = {
-  duration: 1200,
-  easing: 'easeOutCubic',
-};
-ChartJSCore.defaults.animations = {
-  x: { duration: 900, from: 0 },
-  y: { duration: 900, from: 0 },
-  radius: { duration: 900, from: 0 },
-} as any;
-ChartJSCore.defaults.transitions.show = {
-  animations: {
-    x: { from: 0 },
-    y: { from: 0 },
-  },
-} as any;
+ensureChartSetup();
 
 function dayKey(ts: string): string {
   const d = new Date(ts);
@@ -89,7 +60,7 @@ export default function CustomerReportsPage() {
         setStoredItems(items);
         setRequests(req);
         setCycleCounts(cc);
-        setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+        setLastUpdated(formatTime(new Date()));
       } catch (e) {
         if (!cancelled && isInitial) setError(e instanceof Error ? e.message : 'Failed to load reports');
       } finally {
@@ -345,7 +316,7 @@ export default function CustomerReportsPage() {
           </div>
           <div className="grid grid-cols-1 gap-6">
             <div className="h-72 relative">
-              <Bar
+              <LazyBar
                 data={{
                   labels: ioTrend.map((d) => d.periodLabel),
                   datasets: [
@@ -406,7 +377,7 @@ export default function CustomerReportsPage() {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72 relative">
-              <Bar
+              <LazyBar
                 data={{
                   labels: discrepancyRows.map((d) => d.id),
                   datasets: [
@@ -429,7 +400,7 @@ export default function CustomerReportsPage() {
               />
             </div>
             <div className="h-72 relative">
-              <Pie
+              <LazyPie
                 data={{
                   labels: discrepancyPie.map((d) => d.name),
                   datasets: [
@@ -480,7 +451,7 @@ export default function CustomerReportsPage() {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="h-72 relative">
-              <Pie
+              <LazyPie
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
                   datasets: [
@@ -494,7 +465,7 @@ export default function CustomerReportsPage() {
               />
             </div>
             <div className="h-72 relative">
-              <Bar
+              <LazyBar
                 data={{
                   labels: requestStatusSummary.map((d) => d.name),
                   datasets: [
@@ -555,7 +526,7 @@ export default function CustomerReportsPage() {
             <KpiCard title="Total moved quantity" value={totalFormat(topProductsSummary.totalMoved)} />
           </div>
           <div className="h-72 relative">
-            <Bar
+            <LazyBar
               data={{
                 labels: topProductsByQuantity.map((d) => d.item),
                 datasets: [

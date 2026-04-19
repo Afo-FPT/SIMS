@@ -7,14 +7,7 @@ import { getCustomerContractById } from '../../../../../lib/customer.api';
 import type { Contract } from '../../../../../lib/customer-types';
 import { startContractVNPayPayment } from '../../../../../lib/payment.api';
 import { useToastHelpers } from '../../../../../lib/toast';
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
+import { formatDate } from '../../../../../lib/date-format';
 
 function getDateRangeDisplay(contract: Contract): string {
   if (contract.rentedZones?.length) {

@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import Contract from "../models/Contract";
+import Shelf from "../models/Shelf";
 import Payment, { IPayment, PaymentStatus } from "../models/Payment";
 import { buildVNPayPaymentUrl, verifyVNPayReturn } from "../config/vnpay";
 import { DEFAULT_PRICE_PER_ZONE } from "./contract.service";
@@ -7,6 +8,21 @@ import RequestCreditPayment, { type IRequestCreditPayment } from "../models/Requ
 import { grantRequestCredits, REQUEST_CREDIT_PRICE_VND } from "./request-credit.service";
 import { assertContractEligibleForRequestCredits } from "./contract-rules.service";
 import { getOrCreateRequestCreditPricing } from "./system-setting.service";
+
+function getContractRentalEarliestStart(contract: {
+  rentedZones?: { startDate: Date }[];
+  requestedStartDate?: Date;
+}): Date | null {
+  const zones = contract.rentedZones || [];
+  if (zones.length > 0) {
+    const t = Math.min(...zones.map((rz) => new Date(rz.startDate).getTime()));
+    return new Date(t);
+  }
+  if (contract.requestedStartDate) {
+    return new Date(contract.requestedStartDate);
+  }
+  return null;
+}
 
 export interface StartVNPayPaymentResult {
   payment: IPayment;
@@ -171,7 +187,17 @@ export async function handleVNPayReturn(
     if (newStatus === "paid") {
       const contract = await Contract.findById(contractId);
       if (contract && contract.status === "pending_payment") {
-        contract.status = "active";
+        const start = getContractRentalEarliestStart(contract);
+        const now = Date.now();
+        if (start && start.getTime() > now) {
+          contract.status = "scheduled";
+        } else {
+          contract.status = "active";
+          const zones = contract.rentedZones || [];
+          for (const rz of zones) {
+            await Shelf.updateMany({ zoneId: rz.zoneId }, { status: "RENTED" });
+          }
+        }
         await contract.save();
       }
     }

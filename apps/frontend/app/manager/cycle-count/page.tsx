@@ -8,6 +8,7 @@ import {
   type CycleCountResponse,
 } from '../../../lib/cycle-count.api';
 import { useToastHelpers } from '../../../lib/toast';
+import { formatDateTime } from '../../../lib/date-format';
 import { Badge } from '../../../components/ui/Badge';
 import {
   Table,
@@ -21,6 +22,7 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { Button } from '../../../components/ui/Button';
+import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { PageHeader } from '../../../components/ui/PageHeader';
 
@@ -50,6 +52,8 @@ export default function ManagerCycleCountPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [search, setSearch] = useState('');
+  const [warehouseFilter, setWarehouseFilter] = useState<'ALL' | string>('ALL');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -60,7 +64,7 @@ export default function ManagerCycleCountPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getCycleCounts();
+      const data = await getCycleCounts({ includeItems: false });
       setList(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load cycle counts');
@@ -70,9 +74,24 @@ export default function ManagerCycleCountPage() {
     }
   };
 
-  const filtered = list.filter((cc) =>
-    statusFilter ? cc.status === statusFilter : true
-  );
+  const filtered = list.filter((cc) => {
+    if (statusFilter && cc.status !== statusFilter) return false;
+    if (warehouseFilter !== 'ALL' && (cc.warehouse_name ?? '') !== warehouseFilter) return false;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      const contract = (cc.contract_code ?? '').toLowerCase();
+      const customer = (cc.customer_name ?? '').toLowerCase();
+      const warehouse = (cc.warehouse_name ?? '').toLowerCase();
+      if (!contract.includes(q) && !customer.includes(q) && !warehouse.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const warehouseOptions = Array.from(
+    new Set(list.map((cc) => cc.warehouse_name).filter((x): x is string => !!x && x.trim().length > 0))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const hasActiveFilter = search.trim() !== '' || statusFilter !== '' || warehouseFilter !== 'ALL';
 
   const handleApproveRecount = async (id: string) => {
     try {
@@ -123,33 +142,62 @@ export default function ManagerCycleCountPage() {
       <PageHeader title="Cycle Count" description="Monitor customer cycle count requests and execution status." />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Filters</p>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="min-w-[200px]">
-            <Select
-              label="Status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              options={[
-                { value: '', label: 'All statuses' },
-                { value: 'PENDING_MANAGER_APPROVAL', label: 'Pending approval' },
-                { value: 'ASSIGNED_TO_STAFF', label: 'Assigned to staff' },
-                { value: 'STAFF_SUBMITTED', label: 'Submitted by staff' },
-                { value: 'RECOUNT_REQUIRED', label: 'Recount required' },
-                { value: 'ADJUSTMENT_REQUESTED', label: 'Adjustment requested' },
-                { value: 'CONFIRMED', label: 'Confirmed' },
-                { value: 'REJECTED', label: 'Rejected' },
-              ]}
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Input
+            placeholder="Search by contract, customer, warehouse..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'PENDING_MANAGER_APPROVAL', label: 'Pending approval' },
+              { value: 'ASSIGNED_TO_STAFF', label: 'Assigned to staff' },
+              { value: 'STAFF_SUBMITTED', label: 'Submitted by staff' },
+              { value: 'RECOUNT_REQUIRED', label: 'Recount required' },
+              { value: 'ADJUSTMENT_REQUESTED', label: 'Adjustment requested' },
+              { value: 'CONFIRMED', label: 'Confirmed' },
+              { value: 'REJECTED', label: 'Rejected' },
+            ]}
+          />
+          <Select
+            value={warehouseFilter}
+            onChange={(e) => setWarehouseFilter(e.target.value)}
+            options={[
+              { value: 'ALL', label: 'All warehouses' },
+              ...warehouseOptions.map((name) => ({ value: name, label: name })),
+            ]}
+          />
         </div>
+        {hasActiveFilter && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-slate-500">
+              {filtered.length}/{list.length} result{filtered.length !== 1 ? 's' : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setStatusFilter(''); setWarehouseFilter('ALL'); }}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Clear filters
+            </button>
+          </div>
+        )}
       </div>
 
-      {filtered.length === 0 ? (
+      {list.length === 0 ? (
         <EmptyState
           icon="fact_check"
           title="No cycle counts"
-          message="No cycle counts match the current filter."
+          message="No cycle count requests have been created yet."
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon="search_off"
+          title="No results found"
+          message="No cycle counts match your current filters. Try adjusting or clearing them."
         />
       ) : (
         <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
@@ -200,18 +248,10 @@ export default function ManagerCycleCountPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {new Date(cc.requested_at).toLocaleString('vi-VN', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {formatDateTime(cc.requested_at)}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm">
-                    {cc.counting_deadline
-                      ? new Date(cc.counting_deadline).toLocaleString('vi-VN', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })
-                      : '—'}
+                    {formatDateTime(cc.counting_deadline)}
                   </TableCell>
                   <TableCell className="text-slate-600 text-sm max-w-[200px] truncate" title={cc.note || undefined}>
                     {cc.note || '—'}

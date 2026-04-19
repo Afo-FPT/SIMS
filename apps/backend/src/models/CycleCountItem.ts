@@ -65,6 +65,7 @@ CycleCountItemSchema.index({ cycleCountId: 1 });
 CycleCountItemSchema.index({ shelfId: 1 });
 CycleCountItemSchema.index({ storedItemId: 1 });
 CycleCountItemSchema.index({ cycleCountId: 1, shelfId: 1 });
+CycleCountItemSchema.index({ discrepancy: 1, createdAt: -1 });
 
 const CycleCountItem = mongoose.model<ICycleCountItem>(
   "CycleCountItem",

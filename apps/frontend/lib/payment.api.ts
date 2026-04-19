@@ -182,6 +182,8 @@ export interface RequestCreditSummaryResponse {
   unfinished_count: number;
   total_used: number;
   remaining_free_requests: number;
+  purchased_available_credits: number;
+  total_remaining_requests: number;
   requires_extra_credit: boolean;
 }
 

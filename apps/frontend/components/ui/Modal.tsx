@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { cn } from '../../lib/utils';
 
@@ -30,27 +30,15 @@ export function Modal({
     xl: 'max-w-4xl',
   };
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [open]);
-
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200] animate-fade-in" />
         <Dialog.Content
           className={cn(
             'fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
-            'bg-white rounded-3xl shadow-modal z-50 w-full max-h-[90vh]',
+            'bg-white rounded-3xl shadow-modal z-[200] w-full max-h-[90vh]',
             'flex flex-col animate-zoom-in',
-            'data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95',
             sizes[size],
           )}
         >

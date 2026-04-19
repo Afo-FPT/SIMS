@@ -1199,7 +1199,7 @@ export async function getManagerZonePricingComboData(
   );
 
   const contracts = await Contract.find({
-    status: { $in: ["active", "expired", "terminated", "pending_payment"] },
+    status: { $in: ["active", "expired", "terminated", "pending_payment", "scheduled"] },
     rentedZones: { $exists: true, $not: { $size: 0 } }
   })
     .select("rentedZones")

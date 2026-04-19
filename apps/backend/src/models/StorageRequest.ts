@@ -69,6 +69,11 @@ StorageRequestSchema.index({ requestedZoneId: 1 });
 StorageRequestSchema.index({ status: 1 });
 StorageRequestSchema.index({ requestType: 1 });
 StorageRequestSchema.index({ assignedStaffIds: 1 });
+StorageRequestSchema.index({ createdAt: -1 });
+StorageRequestSchema.index({ customerId: 1, createdAt: -1 });
+StorageRequestSchema.index({ assignedStaffIds: 1, status: 1, createdAt: -1 });
+StorageRequestSchema.index({ requestType: 1, status: 1, createdAt: -1 });
+StorageRequestSchema.index({ status: 1, createdAt: -1 });
 
 const StorageRequest = mongoose.model<IStorageRequest>("StorageRequest", StorageRequestSchema);
 

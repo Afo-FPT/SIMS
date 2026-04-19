@@ -6,18 +6,7 @@ import Link from 'next/link';
 import { getCustomerContracts } from '../../../lib/customer.api';
 import type { Contract } from '../../../lib/customer-types';
 import { Pagination } from '../../../components/ui/Pagination';
-
-/**
- * Format date for display
- */
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
+import { formatDate } from '../../../lib/date-format';
 
 /**
  * Get status display text
@@ -30,6 +19,8 @@ function getStatusDisplay(status: Contract['status']): string {
       return 'Pending confirmation';
     case 'pending_payment':
       return 'Pending payment';
+    case 'scheduled':
+      return 'Paid — starts on start date';
     case 'expired':
       return 'Expired';
     case 'terminated':
@@ -50,6 +41,8 @@ function getStatusBadgeClass(status: Contract['status']): string {
       return 'bg-amber-100 text-amber-700';
     case 'pending_payment':
       return 'bg-amber-100 text-amber-700';
+    case 'scheduled':
+      return 'bg-sky-100 text-sky-800';
     default:
       return 'bg-slate-100 text-slate-600';
   }
@@ -260,6 +253,7 @@ export default function ContractsPage() {
                   <option value="active">Rented</option>
                   <option value="draft">Pending confirmation</option>
                   <option value="pending_payment">Pending payment</option>
+                  <option value="scheduled">Paid — waiting for start date</option>
                   <option value="expired">Expired</option>
                   <option value="terminated">Terminated</option>
                 </select>

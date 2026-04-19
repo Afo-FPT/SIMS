@@ -21,6 +21,7 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { formatTime, formatDateTime } from '../../../lib/date-format';
 
 export default function StaffDashboard() {
   const ITEMS_PER_PAGE = 5;
@@ -53,7 +54,7 @@ export default function StaffDashboard() {
       ]);
       setRequests(reqs);
       setCycleCounts(cycles);
-      setLastUpdated(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+      setLastUpdated(formatTime(new Date()));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load dashboard data';
       if (isInitial) {
@@ -125,16 +126,7 @@ export default function StaffDashboard() {
   const recentTasks = recentTasksAll.slice((requestPage - 1) * ITEMS_PER_PAGE, requestPage * ITEMS_PER_PAGE);
   const recentCycles = recentCycleAll.slice((cyclePage - 1) * ITEMS_PER_PAGE, cyclePage * ITEMS_PER_PAGE);
 
-  const formatDate = (s: string) => {
-    try {
-      return new Date(s).toLocaleString('en-GB', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-      });
-    } catch {
-      return s;
-    }
-  };
+  const formatDate = (s: string) => formatDateTime(s);
 
   const statusVariant = (status: StorageRequestView['status']) => {
     switch (status) {
@@ -155,6 +147,7 @@ export default function StaffDashboard() {
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Dashboard</h1>
+          <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
         </div>
         <button
           type="button"

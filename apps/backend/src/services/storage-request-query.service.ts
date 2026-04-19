@@ -78,7 +78,12 @@ export async function listStorageRequests(
   if (query.requestType) q.requestType = query.requestType;
   if (query.status) q.status = query.status;
 
-  const requests = await StorageRequest.find(q).sort({ createdAt: -1 }).lean();
+  const requests = await StorageRequest.find(q)
+    .select(
+      "_id contractId customerId requestedZoneId reference requestType status approvedBy approvedAt customerConfirmedAt assignedStaffIds createdAt updatedAt"
+    )
+    .sort({ createdAt: -1 })
+    .lean();
   if (requests.length === 0) return [];
 
   const contractIds = [
@@ -148,8 +153,25 @@ export async function listStorageRequests(
 
   const requestIds = requests.map((r: any) => r._id);
   const details = await StorageRequestDetail.find({ requestId: { $in: requestIds } })
-    .populate("shelfId", "shelfCode zoneId")
+    .select(
+      "_id requestId shelfId itemName unit quantityPerUnit volumePerUnitM3 quantityRequested quantityActual quantityOnHandBefore quantityOnHandAfter damageQuantity lossReason lossNotes"
+    )
     .lean();
+
+  const shelfIds = Array.from(
+    new Set(
+      details
+        .map((d: any) => d.shelfId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const Shelf = (await import("../models/Shelf")).default;
+  const shelves = shelfIds.length
+    ? await Shelf.find({ _id: { $in: shelfIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id shelfCode zoneId")
+        .lean()
+    : [];
+  const shelfById = new Map(shelves.map((s: any) => [s._id.toString(), s]));
 
   const detailsByRequest = new Map<string, any[]>();
   for (const d of details) {
@@ -169,7 +191,7 @@ export async function listStorageRequests(
   const zoneIds = Array.from(
     new Set(
       [
-        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        ...shelves.map((s: any) => s.zoneId?.toString?.()),
         ...requests.map((r: any) => r.requestedZoneId?.toString?.())
       ].filter(Boolean)
     )
@@ -223,7 +245,7 @@ export async function listStorageRequests(
       created_at: r.createdAt,
       updated_at: r.updatedAt,
       items: ds.map((d: any) => {
-        const shelf = d.shelfId;
+        const shelf = d.shelfId?.toString?.() ? shelfById.get(d.shelfId.toString()) : undefined;
         const zoneId = shelf?.zoneId?.toString?.();
         return {
           request_detail_id: d._id.toString(),
@@ -302,14 +324,31 @@ export async function getStorageRequestById(
   );
 
   const details = await StorageRequestDetail.find({ requestId: req._id })
-    .populate("shelfId", "shelfCode zoneId")
+    .select(
+      "_id requestId shelfId itemName unit quantityPerUnit volumePerUnitM3 quantityRequested quantityActual quantityOnHandBefore quantityOnHandAfter damageQuantity lossReason lossNotes"
+    )
     .lean();
+
+  const detailShelfIds = Array.from(
+    new Set(
+      details
+        .map((d: any) => d.shelfId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const Shelf = (await import("../models/Shelf")).default;
+  const detailShelves = detailShelfIds.length
+    ? await Shelf.find({ _id: { $in: detailShelfIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id shelfCode zoneId")
+        .lean()
+    : [];
+  const detailShelfById = new Map(detailShelves.map((s: any) => [s._id.toString(), s]));
 
   const Zone = (await import("../models/Zone")).default;
   const zoneIds = Array.from(
     new Set(
       [
-        ...details.map((d: any) => d.shelfId?.zoneId?.toString?.()),
+        ...detailShelves.map((s: any) => s.zoneId?.toString?.()),
         (req as any).requestedZoneId?.toString?.()
       ].filter(Boolean)
     )
@@ -358,7 +397,7 @@ export async function getStorageRequestById(
     created_at: (req as any).createdAt,
     updated_at: (req as any).updatedAt,
     items: details.map((d: any) => {
-      const shelf = d.shelfId;
+      const shelf = d.shelfId?.toString?.() ? detailShelfById.get(d.shelfId.toString()) : undefined;
       const zoneId = shelf?.zoneId?.toString?.();
       return {
         request_detail_id: d._id.toString(),

@@ -15,10 +15,11 @@ import {
   type ZoneOption,
 } from '../../../lib/rent-requests.api';
 import { Modal } from '../../../components/ui/Modal';
+import { Button } from '../../../components/ui/Button';
 
 const today = new Date().toISOString().slice(0, 10);
-/** Start date must be at least 1 day from today. */
-const minStartDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+/** Start date can be today. */
+const minStartDate = today;
 
 function addDuration(start: string, pkg: ContractPackageOption | null): string {
   if (!pkg) return start;
@@ -267,7 +268,7 @@ export default function RentRequestsPage() {
     const start = new Date(startDate);
     const end = endDate ? new Date(endDate) : null;
     if (isNaN(start.getTime())) e.startDate = 'Invalid start date';
-    if (start < new Date(minStartDate)) e.startDate = 'Start date must be at least 1 day from today';
+    if (start < new Date(minStartDate)) e.startDate = 'Start date must be today or later';
     if (end) {
       if (isNaN(end.getTime())) e.endDate = 'Invalid end date';
       else if (end <= start) e.endDate = 'End date must be after start date';
@@ -518,7 +519,7 @@ export default function RentRequestsPage() {
             </div>
 
             <p className="text-xs text-slate-500">
-              At least 1 day from today. End date is set automatically from the selected package.
+              Start date can be today. End date is set automatically from the selected package.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -628,44 +629,47 @@ export default function RentRequestsPage() {
           if (!open) setTermsAccepted(false);
         }}
         title="Rental terms & conditions"
+        description="Please read and accept the terms before submitting your request."
         size="lg"
-      >
-        <div className="space-y-4 text-sm text-slate-700">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 whitespace-pre-wrap">
-            {rentalTermsContent}
+        footer={
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-slate-800 font-medium">
+                {rentalTermsAgreementLabel}
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowTermsModal(false);
+                  setTermsAccepted(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!termsAccepted || loading}
+                isLoading={loading}
+                onClick={submitDraftContract}
+              >
+                Accept & create draft
+              </Button>
+            </div>
           </div>
-
-          <label className="flex items-start gap-2 cursor-pointer pt-2">
-            <input
-              type="checkbox"
-              checked={termsAccepted}
-              onChange={(e) => setTermsAccepted(e.target.checked)}
-              className="mt-0.5"
-            />
-            <span className="text-slate-800 font-medium">
-              {rentalTermsAgreementLabel}
-            </span>
-          </label>
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowTermsModal(false);
-                setTermsAccepted(false);
-              }}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!termsAccepted || loading}
-              onClick={submitDraftContract}
-              className="px-4 py-2 rounded-xl bg-primary text-white font-bold hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Creating…' : 'Accept & create draft'}
-            </button>
+        }
+      >
+        <div className="text-sm text-slate-700">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 whitespace-pre-wrap max-h-64 overflow-y-auto custom-scrollbar">
+            {rentalTermsContent}
           </div>
         </div>
       </Modal>

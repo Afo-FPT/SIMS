@@ -7,6 +7,8 @@ import Contract from "../models/Contract";
 import StoredItem from "../models/StoredItem";
 import User from "../models/User";
 import Shelf from "../models/Shelf";
+import StorageRequest from "../models/StorageRequest";
+import StorageRequestDetail from "../models/StorageRequestDetail";
 import { consumeReservedCreditForEntity } from "./request-credit.service";
 import StaffWarehouse from "../models/StaffWarehouse";
 
@@ -137,12 +139,80 @@ export interface CycleCountResponse {
 
 async function applyInventoryFromCycleCountItems(
   cycleCountId: Types.ObjectId,
-  session: mongoose.ClientSession
+  session: mongoose.ClientSession,
+  actorUserId?: string,
+  generateLossOutbound = false
 ): Promise<void> {
+  const cycleCount = await CycleCount.findById(cycleCountId).session(session);
+  if (!cycleCount) {
+    throw new Error("Cycle count not found");
+  }
   const items = await CycleCountItem.find({ cycleCountId }).session(session);
   if (items.length === 0) {
     throw new Error("Cycle count has no items to adjust");
   }
+
+  if (generateLossOutbound) {
+    // Auto-generate one outbound request for detected losses/damage (system > counted)
+    // so customers can track it like a normal outbound operation.
+    const shortageRows = items.filter((it) => it.systemQuantity > it.countedQuantity);
+    if (shortageRows.length > 0) {
+      const reference = `CC-DMG-${cycleCount._id.toString()}`;
+      const existed = await StorageRequest.findOne({
+        contractId: cycleCount.contractId,
+        requestType: "OUT",
+        reference
+      }).session(session);
+
+      if (!existed) {
+        const storedItemIds = shortageRows.map((it) => it.storedItemId);
+        const storedItems = await StoredItem.find({ _id: { $in: storedItemIds } })
+          .select("_id itemName unit")
+          .session(session);
+        const storedById = new Map(storedItems.map((si) => [si._id.toString(), si]));
+
+        const [outbound] = await StorageRequest.create(
+          [
+            {
+              contractId: cycleCount.contractId,
+              customerId: cycleCount.createdByCustomerId,
+              requestType: "OUT",
+              reference,
+              status: "DONE_BY_STAFF",
+              approvedBy: actorUserId && Types.ObjectId.isValid(actorUserId)
+                ? new Types.ObjectId(actorUserId)
+                : undefined,
+              approvedAt: new Date()
+            }
+          ],
+          { session }
+        );
+
+        const detailsPayload = shortageRows.map((it) => {
+          const si = storedById.get(it.storedItemId.toString());
+          const lossQty = Math.max(0, it.systemQuantity - it.countedQuantity);
+          return {
+            requestId: outbound._id,
+            shelfId: it.shelfId,
+            itemName: si?.itemName || "Unknown item",
+            unit: si?.unit || "pcs",
+            quantityRequested: lossQty,
+            quantityActual: lossQty,
+            quantityOnHandBefore: it.systemQuantity,
+            quantityOnHandAfter: it.countedQuantity,
+            damageQuantity: lossQty,
+            lossReason: "cycle_count_damage",
+            lossNotes: `Auto-generated from cycle count ${cycleCount._id.toString()}`
+          };
+        });
+
+        if (detailsPayload.length > 0) {
+          await StorageRequestDetail.insertMany(detailsPayload, { session });
+        }
+      }
+    }
+  }
+
   for (const item of items) {
     const storedItem = await StoredItem.findById(item.storedItemId).session(session);
     if (!storedItem) {
@@ -577,7 +647,7 @@ export async function submitCycleCountResult(
     // - Recount round: auto apply inventory and close.
     const isRecountRound = (cycleCount.recountRound || 0) > 0;
     if (isRecountRound) {
-      await applyInventoryFromCycleCountItems(cycleCount._id, session);
+      await applyInventoryFromCycleCountItems(cycleCount._id, session, staffId, true);
       cycleCount.status = "CONFIRMED";
       cycleCount.inventoryAdjusted = true;
       cycleCount.confirmedAt = new Date();
@@ -652,7 +722,7 @@ export async function confirmCycleCount(
     }
 
     // Apply inventory update from submitted items
-    await applyInventoryFromCycleCountItems(cycleCount._id, session);
+    await applyInventoryFromCycleCountItems(cycleCount._id, session, userId, true);
 
     // Update status
     cycleCount.status = "CONFIRMED";
@@ -758,7 +828,7 @@ export async function applyCycleCountAdjustment(
       throw new Error("Cycle count must be in ADJUSTMENT_REQUESTED or STAFF_SUBMITTED status to apply adjustment");
     }
 
-    await applyInventoryFromCycleCountItems(cycleCount._id, session);
+    await applyInventoryFromCycleCountItems(cycleCount._id, session, managerId);
 
     // Đánh dấu cycle count đã điều chỉnh và kết thúc
     const now = new Date();
@@ -838,12 +908,14 @@ export async function requestRecount(
  */
 export async function getCycleCounts(
   userId: string,
-  userRole: string
+  userRole: string,
+  options?: { includeItems?: boolean }
 ): Promise<CycleCountResponse[]> {
   if (!Types.ObjectId.isValid(userId)) {
     throw new Error("Invalid user ID");
   }
 
+  const includeItems = options?.includeItems !== false;
   const query: any = {};
 
   // Role-based filtering
@@ -853,7 +925,9 @@ export async function getCycleCounts(
     // Staff can only see assigned cycle counts
     const assignments = await CycleCountAssignment.find({
       staffId: new Types.ObjectId(userId)
-    });
+    })
+      .select("cycleCountId")
+      .lean();
     const cycleCountIds = assignments.map((a) => a.cycleCountId);
     query._id = { $in: cycleCountIds };
   }
@@ -870,63 +944,104 @@ export async function getCycleCounts(
     .sort({ createdAt: -1 })
     .lean();
 
-  const results: CycleCountResponse[] = [];
+  const cycleCountIds = cycleCounts.map((cc) => cc._id);
 
-  for (const cc of cycleCounts) {
-    // Get warehouse info
-    const contract = await Contract.findById(cc.contractId).lean();
-    const warehouse = contract
-      ? await mongoose.model("Warehouse").findById((contract as any).warehouseId).lean()
-      : null;
+  const contractIds = Array.from(
+    new Set(
+      cycleCounts
+        .map((cc: any) => (cc.contractId as any)?._id?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const contracts = contractIds.length
+    ? await Contract.find({ _id: { $in: contractIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id warehouseId")
+        .lean()
+    : [];
+  const contractById = new Map(contracts.map((c: any) => [c._id.toString(), c]));
 
-    // Get assigned staff
-    const assignments = await CycleCountAssignment.find({
-      cycleCountId: cc._id
-    })
-      .populate("staffId", "name email")
-      .lean();
+  const warehouseIds = Array.from(
+    new Set(
+      contracts
+        .map((c: any) => c.warehouseId?.toString?.())
+        .filter(Boolean)
+    )
+  );
+  const WarehouseModel = mongoose.model("Warehouse");
+  const warehouses = warehouseIds.length
+    ? await WarehouseModel.find({ _id: { $in: warehouseIds.map((id) => new Types.ObjectId(id)) } })
+        .select("_id name")
+        .lean()
+    : [];
+  const warehouseById = new Map(warehouses.map((w: any) => [w._id.toString(), w]));
 
-    // Get items if status is STAFF_SUBMITTED or CONFIRMED
-    let items: any[] = [];
-    if (cc.status === "STAFF_SUBMITTED" || cc.status === "CONFIRMED" || cc.status === "RECOUNT_REQUIRED") {
-      const countItems = await CycleCountItem.find({
-        cycleCountId: cc._id
-      })
+  const assignments = cycleCountIds.length
+    ? await CycleCountAssignment.find({ cycleCountId: { $in: cycleCountIds } })
+        .populate("staffId", "name email")
+        .lean()
+    : [];
+  const assignmentsByCycleId = new Map<string, any[]>();
+  for (const a of assignments) {
+    const key = a.cycleCountId.toString();
+    assignmentsByCycleId.set(key, [...(assignmentsByCycleId.get(key) || []), a]);
+  }
+
+  const cycleIdsWithItems = includeItems
+    ? cycleCounts
+        .filter((cc) => cc.status === "STAFF_SUBMITTED" || cc.status === "CONFIRMED" || cc.status === "RECOUNT_REQUIRED")
+        .map((cc) => cc._id)
+    : [];
+  const countItems = cycleIdsWithItems.length
+    ? await CycleCountItem.find({ cycleCountId: { $in: cycleIdsWithItems } })
         .populate("shelfId", "shelfCode")
         .populate("storedItemId", "itemName unit")
-        .lean();
+        .lean()
+    : [];
+  const itemsByCycleId = new Map<string, any[]>();
+  for (const item of countItems) {
+    const key = (item as any).cycleCountId?.toString?.();
+    if (!key) continue;
+    itemsByCycleId.set(key, [...(itemsByCycleId.get(key) || []), item]);
+  }
 
-      items = countItems.map((item: any) => {
-        const storedItem =
-          typeof item.storedItemId === "object"
-            ? item.storedItemId
-            : { _id: item.storedItemId };
-        const shelf =
-          typeof item.shelfId === "object"
-            ? item.shelfId
-            : { _id: item.shelfId };
-        return {
-          item_id: item._id.toString(),
-          stored_item_id: storedItem?._id?.toString?.() || "",
-          shelf_id: shelf?._id?.toString?.() || "",
-          shelf_code: shelf?.shelfCode,
-          item_name: storedItem?.itemName,
-          unit: storedItem?.unit,
-          system_quantity: item.systemQuantity,
-          counted_quantity: item.countedQuantity,
-          discrepancy: item.discrepancy,
-          note: item.note
-        };
-      });
-    }
+  return cycleCounts.map((cc) => {
+    const contractIdStr =
+      (cc.contractId as any)?._id?.toString?.() ||
+      (typeof cc.contractId === "object" && (cc.contractId as any)?.toString
+        ? (cc.contractId as any).toString()
+        : "");
+    const contractDoc = contractById.get(contractIdStr);
+    const warehouseId = contractDoc?.warehouseId?.toString?.() || "";
+    const warehouseDoc = warehouseId ? warehouseById.get(warehouseId) : null;
+    const assignees = assignmentsByCycleId.get(cc._id.toString()) || [];
 
-    results.push({
+    const rawItems = itemsByCycleId.get(cc._id.toString()) || [];
+    const items = rawItems.map((item: any) => {
+      const storedItem =
+        typeof item.storedItemId === "object"
+          ? item.storedItemId
+          : { _id: item.storedItemId };
+      const shelf =
+        typeof item.shelfId === "object"
+          ? item.shelfId
+          : { _id: item.shelfId };
+      return {
+        item_id: item._id.toString(),
+        stored_item_id: storedItem?._id?.toString?.() || "",
+        shelf_id: shelf?._id?.toString?.() || "",
+        shelf_code: shelf?.shelfCode,
+        item_name: storedItem?.itemName,
+        unit: storedItem?.unit,
+        system_quantity: item.systemQuantity,
+        counted_quantity: item.countedQuantity,
+        discrepancy: item.discrepancy,
+        note: item.note
+      };
+    });
+
+    return {
       cycle_count_id: cc._id.toString(),
-      contract_id:
-        (cc.contractId as any)?._id?.toString?.() ||
-        (typeof cc.contractId === "object" && (cc.contractId as any)?.toString
-          ? (cc.contractId as any).toString()
-          : ""),
+      contract_id: contractIdStr,
       contract_code: (cc.contractId as any)?.contractCode || "",
       customer_id:
         (cc.createdByCustomerId as any)?._id?.toString?.() ||
@@ -974,7 +1089,7 @@ export async function getCycleCounts(
           email: (cc.confirmedBy as any).email
         }
         : undefined,
-      assigned_staff: assignments.map((a) => ({
+      assigned_staff: assignees.map((a) => ({
         user_id: (a.staffId as any)?._id?.toString?.() || (a.staffId as any)?.toString?.() || "",
         name: (a.staffId as any).name,
         email: (a.staffId as any).email,
@@ -1006,14 +1121,12 @@ export async function getCycleCounts(
         }
         : undefined,
       recount_rejected_reason: cc.recountRejectedReason,
-      warehouse_id: warehouse ? (warehouse as any)._id.toString() : "",
-      warehouse_name: warehouse ? (warehouse as any).name : "",
+      warehouse_id: warehouseId,
+      warehouse_name: warehouseDoc ? (warehouseDoc as any).name : "",
       created_at: cc.createdAt,
       updated_at: cc.updatedAt
-    });
-  }
-
-  return results;
+    };
+  });
 }
 
 /**

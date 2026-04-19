@@ -4,12 +4,28 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listContractPackages, type ContractPackage } from '../lib/contract-packages.api';
 import { clearAuth, getAuthState } from '../lib/auth';
+import { getApiUrl } from '../lib/api-client';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import { ErrorState } from '../components/ui/ErrorState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { cn } from '../lib/utils';
+
+interface PublicWarehouse {
+  _id: string;
+  name: string;
+  address: string;
+  area: number;
+  description?: string;
+}
+
+async function listPublicWarehouses(): Promise<PublicWarehouse[]> {
+  const res = await fetch(getApiUrl('/public/warehouses'));
+  if (!res.ok) throw new Error('Failed to load warehouses');
+  const json = await res.json();
+  return (json?.data ?? json) as PublicWarehouse[];
+}
 
 function dashboardPathForRole(role: string | null): string | null {
   if (!role) return null;
@@ -102,33 +118,59 @@ export default function LandingPage() {
     setSession({ loggedIn, dashboardPath });
   }, []);
 
-  const [pricingLoading, setPricingLoading] = useState(true);
-  const [pricingError, setPricingError] = useState<string | null>(null);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packagesError, setPackagesError] = useState<string | null>(null);
   const [packages, setPackages] = useState<ContractPackage[]>([]);
+
+  const [warehousesLoading, setWarehousesLoading] = useState(true);
+  const [warehouses, setWarehouses] = useState<PublicWarehouse[]>([]);
+
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function loadPackages() {
+    async function load() {
       try {
-        setPricingLoading(true);
-        setPricingError(null);
+        setPackagesLoading(true);
+        setPackagesError(null);
         const list = await listContractPackages();
         if (cancelled) return;
         setPackages(list);
       } catch (e) {
         if (cancelled) return;
-        setPricingError(e instanceof Error ? e.message : 'Failed to load pricing packages');
+        setPackagesError(e instanceof Error ? e.message : 'Failed to load packages');
       } finally {
-        if (!cancelled) setPricingLoading(false);
+        if (!cancelled) setPackagesLoading(false);
       }
     }
-    loadPackages();
+    load();
     return () => { cancelled = true; };
   }, []);
 
-  const MAX_PRICING_PACKAGES = 6;
-  const packagesPreview = useMemo(() => packages.slice(0, MAX_PRICING_PACKAGES), [packages]);
-  const hasMorePackages = packages.length > MAX_PRICING_PACKAGES;
+  useEffect(() => {
+    let cancelled = false;
+    listPublicWarehouses()
+      .then((list) => { if (!cancelled) { setWarehouses(list); if (list.length > 0) setSelectedWarehouseId(list[0]._id); } })
+      .catch(() => { if (!cancelled) setWarehouses([]); })
+      .finally(() => { if (!cancelled) setWarehousesLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const activePackages = useMemo(() => packages.filter((p) => p.isActive), [packages]);
+
+  const packagesByWarehouse = useMemo(() => {
+    const map = new Map<string, ContractPackage[]>();
+    for (const p of activePackages) {
+      if (!map.has(p.warehouseId)) map.set(p.warehouseId, []);
+      map.get(p.warehouseId)!.push(p);
+    }
+    return map;
+  }, [activePackages]);
+
+  const selectedPackages = useMemo(
+    () => (selectedWarehouseId ? (packagesByWarehouse.get(selectedWarehouseId) ?? []) : []),
+    [selectedWarehouseId, packagesByWarehouse],
+  );
 
   const navigateTo = (path: string) => router.push(path);
   const handleLogout = () => {
@@ -154,15 +196,15 @@ export default function LandingPage() {
             <div className="size-9 bg-primary rounded-xl flex items-center justify-center shadow-md shadow-primary/25">
               <span className="material-symbols-outlined text-white" style={{ fontSize: 20 }}>warehouse</span>
             </div>
-            <span className="text-base font-black tracking-tight text-slate-900">SIMS</span>
+            <span className="text-base font-black tracking-tight text-slate-900">SIMS-AI</span>
             <span className="hidden sm:block text-[10px] font-semibold text-slate-400 border border-slate-200 rounded-md px-1.5 py-0.5 tracking-wide">LOGISTICS</span>
           </div>
 
           <div className="hidden md:flex items-center gap-6">
-            {(['Features', 'How It Works', 'Pricing'] as const).map((label, i) => (
+            {(['Features', 'How It Works', 'Packages'] as const).map((label, i) => (
               <a
                 key={label}
-                href={['#features', '#how-it-works', '#pricing'][i]}
+                href={['#features', '#how-it-works', '#packages'][i]}
                 className="text-sm font-medium text-slate-500 hover:text-primary transition-colors duration-200"
               >
                 {label}
@@ -207,7 +249,7 @@ export default function LandingPage() {
           {/* Animated pill */}
           <div className="animate-slide-up inline-flex items-center gap-2 px-4 py-2 rounded-full border border-primary/25 bg-primary-light text-primary text-xs font-semibold shadow-sm">
             <span className="size-1.5 rounded-full bg-primary animate-pulse" />
-            Intelligent Warehouse Management System
+            Smart AI-powered Inventory Management System
           </div>
 
           {/* Headline */}
@@ -222,7 +264,7 @@ export default function LandingPage() {
 
           {/* Sub */}
           <p className="animate-slide-up stagger-2 text-lg md:text-xl text-slate-500 leading-relaxed max-w-2xl mx-auto">
-            SIMS connects warehouse managers, customers, and on-floor staff on a single unified platform — with real-time inventory, AI insights, and complete contract visibility.
+            SIMS-AI connects warehouse managers, customers, and on-floor staff on a single unified platform — with real-time inventory, AI insights, and complete contract visibility.
           </p>
 
           {/* CTAs */}
@@ -263,7 +305,7 @@ export default function LandingPage() {
               Everything you need to run<br />a warehouse at scale
             </h2>
             <p className="text-slate-500 text-base leading-relaxed">
-              From inbound receiving to scheduled audits, SIMS provides purpose-built tools for every role in your logistics chain.
+              From inbound receiving to scheduled audits, SIMS-AI provides purpose-built tools for every role in your logistics chain.
             </p>
           </div>
 
@@ -337,157 +379,247 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── Pricing ───────────────────────────────────────────────── */}
-      <section id="pricing" className="relative py-28 px-6 bg-slate-50/70 border-y border-slate-100 overflow-hidden">
+      {/* ── Warehouses & Packages ─────────────────────────────────── */}
+      <section id="packages" className="relative py-28 px-6 bg-slate-50/70 border-y border-slate-100 overflow-hidden">
         <div className="pointer-events-none absolute inset-0 bg-dot-grid opacity-[0.4]" />
         <div className="pointer-events-none absolute -top-32 right-0 size-[500px] rounded-full bg-primary/[0.06] blur-3xl" />
 
         <div className="relative max-w-7xl mx-auto">
+          {/* Section header */}
           <div className="text-center mb-16">
-            <p className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Pricing</p>
+            <p className="text-xs font-bold text-primary uppercase tracking-widest mb-3">Facilities & Packages</p>
             <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-4">
-              Flexible storage packages
+              Pick a warehouse, choose a plan
             </h2>
             <p className="text-slate-500 max-w-xl mx-auto text-base leading-relaxed">
-              Choose from predefined packages or submit a custom request tailored to your business needs.
+              Browse our warehouse network and the storage packages available at each facility. All pricing is transparent — no hidden fees.
             </p>
           </div>
 
-          {pricingLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-6xl mx-auto">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
-                  <LoadingSkeleton className="h-5 w-24 rounded-full" />
-                  <LoadingSkeleton className="h-7 w-4/5" />
-                  <LoadingSkeleton className="h-4 w-full" />
-                  <LoadingSkeleton className="h-4 w-2/3" />
-                  <div className="pt-5 border-t border-slate-100 space-y-3">
-                    <LoadingSkeleton className="h-14 w-full rounded-xl" />
-                    <LoadingSkeleton className="h-11 w-full rounded-xl" />
+          {warehousesLoading ? (
+            /* Loading skeleton */
+            <div className="flex flex-col lg:flex-row gap-6">
+              <div className="lg:w-72 shrink-0 space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl border border-slate-200 bg-white p-5 space-y-2">
+                    <LoadingSkeleton className="h-4 w-3/5" />
+                    <LoadingSkeleton className="h-3 w-4/5" />
+                    <LoadingSkeleton className="h-3 w-2/5" />
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl border border-slate-200 bg-white p-6 space-y-3">
+                    <LoadingSkeleton className="h-5 w-24 rounded-full" />
+                    <LoadingSkeleton className="h-6 w-4/5" />
+                    <LoadingSkeleton className="h-4 w-full" />
+                    <LoadingSkeleton className="h-10 w-full rounded-xl mt-4" />
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : pricingError ? (
-            <ErrorState
-              title="Failed to load storage packages"
-              message={pricingError}
-              onRetry={() => window.location.reload()}
-            />
-          ) : packages.length === 0 ? (
+          ) : warehouses.length === 0 ? (
             <EmptyState
-              icon="inventory_2"
-              title="No packages available yet"
-              message="No predefined packages have been configured. You can still submit a rental request with a custom duration."
-              action={
-                <Button variant="primary" onClick={() => navigateTo('/request')}>
-                  Request Custom Period
-                </Button>
-              }
+              icon="warehouse"
+              title="No facilities listed yet"
+              message="Our warehouse network will be published here soon."
             />
           ) : (
-            <>
-              {hasMorePackages && (
-                <p className="text-center text-xs text-slate-400 mb-8">
-                  Showing <span className="font-bold text-slate-700">{MAX_PRICING_PACKAGES}</span> of{' '}
-                  <span className="font-bold text-slate-700">{packages.length}</span> packages
-                </p>
-              )}
+            <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 lg:h-[640px]">
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                {packagesPreview.map((p, idx) => {
-                  const isFeatured = idx === 1 && packagesPreview.length >= 3;
-                  return (
-                    <article
-                      key={p._id}
+              {/* ── Left: warehouse list ─────────────────── */}
+              <div className="w-full lg:w-72 shrink-0 lg:h-full">
+                {/* Mobile: horizontal scroll tabs */}
+                <div className="lg:hidden flex gap-2 overflow-x-auto pb-2 -mx-6 px-6 no-scrollbar">
+                  {warehouses.map((wh, idx) => (
+                    <button
+                      key={wh._id}
+                      type="button"
+                      onClick={() => setSelectedWarehouseId(wh._id)}
                       className={cn(
-                        'group relative flex flex-col rounded-2xl p-6 transition-all duration-300',
-                        isFeatured
-                          ? 'pricing-featured bg-primary text-white shadow-xl shadow-primary/25 hover:-translate-y-1.5'
-                          : 'bg-white border border-slate-200 shadow-card hover:shadow-elevated hover:-translate-y-1 hover:border-primary/30',
+                        'shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold transition-all',
+                        selectedWarehouseId === wh._id
+                          ? 'bg-primary text-white border-primary shadow-md'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40',
                       )}
                     >
-                      {isFeatured && (
-                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10">
-                          <span className="px-3.5 py-1 bg-amber-400 text-slate-900 text-[10px] font-black rounded-full uppercase tracking-wider shadow-sm">
-                            Most Popular
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warehouse</span>
+                      <span className="whitespace-nowrap">{wh.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Desktop: vertical card list — scrollable */}
+                <div className="hidden lg:flex flex-col gap-2 h-full overflow-y-auto pr-1 custom-scrollbar">
+                  {warehouses.map((wh, idx) => {
+                    const pkgCount = packagesByWarehouse.get(wh._id)?.length ?? 0;
+                    const isSelected = selectedWarehouseId === wh._id;
+                    return (
+                      <button
+                        key={wh._id}
+                        type="button"
+                        onClick={() => setSelectedWarehouseId(wh._id)}
+                        className={cn(
+                          'w-full text-left rounded-2xl border p-4 transition-all duration-200',
+                          isSelected
+                            ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-primary/40 hover:shadow-card',
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className={cn(
+                            'size-8 rounded-lg flex items-center justify-center shrink-0',
+                            isSelected ? 'bg-white/20' : 'bg-primary-light',
+                          )}>
+                            <span
+                              className={cn('material-symbols-outlined', isSelected ? 'text-white' : 'text-primary')}
+                              style={{ fontSize: 16 }}
+                            >warehouse</span>
+                          </div>
+                          <span className={cn(
+                            'text-[10px] font-black rounded-md px-1.5 py-0.5 tracking-widest',
+                            isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400',
+                          )}>
+                            #{String(idx + 1).padStart(2, '0')}
                           </span>
+                        </div>
+                        <p className={cn('text-sm font-black leading-snug', isSelected ? 'text-white' : 'text-slate-900')}>
+                          {wh.name}
+                        </p>
+                        <div className={cn('flex items-start gap-1 mt-1.5', isSelected ? 'text-white/70' : 'text-slate-500')}>
+                          <span className="material-symbols-outlined shrink-0 mt-px" style={{ fontSize: 13 }}>location_on</span>
+                          <p className="text-xs line-clamp-2 leading-snug">{wh.address}</p>
+                        </div>
+                        <div className={cn('flex items-center justify-between mt-3 pt-2.5 border-t', isSelected ? 'border-white/20' : 'border-slate-100')}>
+                          <span className={cn('text-[10px] font-semibold', isSelected ? 'text-white/60' : 'text-slate-400')}>
+                            {wh.area.toLocaleString()} m²
+                          </span>
+                          <span className={cn(
+                            'text-[10px] font-black px-2 py-0.5 rounded-full',
+                            isSelected ? 'bg-white/20 text-white' : 'bg-primary-light text-primary',
+                          )}>
+                            {pkgCount} package{pkgCount !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ── Right: packages for selected warehouse ── */}
+              <div className="flex-1 min-w-0 overflow-y-auto max-h-[600px] lg:max-h-none lg:h-full custom-scrollbar">
+                {(() => {
+                  const wh = warehouses.find((w) => w._id === selectedWarehouseId);
+                  return (
+                    <>
+                      {/* Warehouse detail header */}
+                      {wh && (
+                        <div className="bg-white rounded-2xl border border-slate-200 p-5 mb-5 flex flex-wrap items-center gap-4 shadow-card">
+                          <div className="size-10 rounded-xl bg-primary-light flex items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-primary" style={{ fontSize: 20 }}>warehouse</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-black text-slate-900">{wh.name}</p>
+                            {wh.description && (
+                              <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{wh.description}</p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>location_on</span>
+                              {wh.address}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>straighten</span>
+                              {wh.area.toLocaleString()} m²
+                            </span>
+                          </div>
                         </div>
                       )}
 
-                      {/* Header */}
-                      <div className="flex items-center gap-3 mb-5">
-                        <div className={cn(
-                          'size-10 rounded-xl flex items-center justify-center shadow-sm shrink-0',
-                          isFeatured ? 'bg-white/20' : 'bg-primary-light',
-                        )}>
-                          <span
-                            className={cn('material-symbols-outlined', isFeatured ? 'text-white' : 'text-primary')}
-                            style={{ fontSize: 20 }}
-                          >
-                            inventory_2
-                          </span>
+                      {/* Packages */}
+                      {packagesLoading ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {Array.from({ length: 2 }).map((_, i) => (
+                            <div key={i} className="rounded-2xl border border-slate-200 bg-white p-6 space-y-3">
+                              <LoadingSkeleton className="h-5 w-24 rounded-full" />
+                              <LoadingSkeleton className="h-6 w-4/5" />
+                              <LoadingSkeleton className="h-4 w-full" />
+                              <LoadingSkeleton className="h-10 w-full rounded-xl mt-4" />
+                            </div>
+                          ))}
                         </div>
-                        <Badge variant={isFeatured ? 'neutral' : 'info'} size="sm">
-                          {p.duration} {p.unit}{p.duration > 1 ? 's' : ''}
-                        </Badge>
-                      </div>
+                      ) : packagesError ? (
+                        <ErrorState title="Failed to load packages" message={packagesError} onRetry={() => window.location.reload()} />
+                      ) : selectedPackages.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center">
+                          <span className="material-symbols-outlined text-slate-300 text-5xl">inventory_2</span>
+                          <p className="mt-3 text-sm font-semibold text-slate-500">No packages available for this warehouse yet.</p>
+                          <p className="text-xs text-slate-400 mt-1">You can still submit a custom rental request.</p>
+                          <button
+                            type="button"
+                            onClick={() => navigateTo('/request')}
+                            className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-700 transition-colors"
+                          >
+                            Request Custom Period
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-4">
+                          {selectedPackages.map((p) => (
+                            <article
+                              key={p._id}
+                              className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-card hover:shadow-elevated hover:-translate-y-1 hover:border-primary/30 transition-all duration-200"
+                            >
+                              {/* Duration badge */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-8 rounded-lg bg-primary-light flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-primary" style={{ fontSize: 16 }}>inventory_2</span>
+                                  </div>
+                                  <Badge variant="info" size="sm">
+                                    {p.duration} {p.unit}{p.duration > 1 ? 's' : ''}
+                                  </Badge>
+                                </div>
+                              </div>
 
-                      <h3 className={cn('text-lg font-bold leading-snug mb-2', isFeatured ? 'text-white' : 'text-slate-900')}>
-                        {p.name}
-                      </h3>
+                              <h3 className="text-base font-black text-slate-900 leading-snug mb-1">{p.name}</h3>
+                              <p className="text-xs text-slate-500 leading-relaxed mb-4 flex-1 line-clamp-2">
+                                {p.description || 'Storage rental package with a fixed duration and transparent pricing.'}
+                              </p>
 
-                      <p className={cn('text-sm leading-relaxed mb-5 line-clamp-2 flex-1', isFeatured ? 'text-white/70' : 'text-slate-500')}>
-                        {p.description || 'Storage rental package with a fixed duration and transparent pricing.'}
-                      </p>
+                              {/* Price */}
+                              <div className="rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 mb-4">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1">Pricing</p>
+                                <p className="text-base font-black tabular-nums text-primary">
+                                  {Number(p.pricePerM2 ?? 0).toLocaleString('vi-VN')} ₫/m²
+                                </p>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  + {Number(p.pricePerDay ?? 0).toLocaleString('vi-VN')} ₫/day
+                                </p>
+                              </div>
 
-                      {/* Price block */}
-                      <div className={cn(
-                        'rounded-xl px-4 py-3 mb-4',
-                        isFeatured ? 'bg-white/15' : 'bg-slate-50 border border-slate-100',
-                      )}>
-                        <p className={cn('text-[10px] font-semibold uppercase tracking-wider mb-1', isFeatured ? 'text-white/60' : 'text-slate-400')}>
-                          Pricing basis
-                        </p>
-                        <p className={cn('text-base font-black tabular-nums', isFeatured ? 'text-white' : 'text-primary')}>
-                          {Number(p.pricePerM2 ?? 0).toLocaleString('vi-VN')} ₫/m²
-                        </p>
-                        <p className={cn('text-xs mt-0.5', isFeatured ? 'text-white/60' : 'text-slate-400')}>
-                          + {Number(p.pricePerDay ?? 0).toLocaleString('vi-VN')} ₫/day
-                        </p>
-                      </div>
-
-                      {/* CTA */}
-                      <button
-                        type="button"
-                        onClick={() => navigateTo('/customer/rent-requests')}
-                        className={cn(
-                          'w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 active:scale-[0.98]',
-                          isFeatured
-                            ? 'bg-white text-primary hover:bg-slate-50 shadow'
-                            : 'bg-primary text-white hover:bg-primary-700',
-                        )}
-                      >
-                        Choose this package
-                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_forward</span>
-                      </button>
-                    </article>
+                              <button
+                                type="button"
+                                onClick={() => navigateTo('/customer/rent-requests')}
+                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-700 transition-all active:scale-[0.98]"
+                              >
+                                Choose this package
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>
+                              </button>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   );
-                })}
+                })()}
               </div>
 
-              {hasMorePackages && (
-                <div className="mt-12 text-center">
-                  <Button
-                    variant="outline" size="md"
-                    onClick={() => navigateTo('/customer/rent-requests')}
-                    rightIcon={<span className="material-symbols-outlined" style={{ fontSize: 18 }}>open_in_new</span>}
-                  >
-                    View all packages
-                  </Button>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </div>
       </section>
@@ -537,13 +669,13 @@ export default function LandingPage() {
 
       {/* ── Footer ────────────────────────────────────────────────── */}
       <footer className="border-t border-slate-100 bg-white">
-        <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-2 md:grid-cols-4 gap-10">
+        <div className="max-w-7xl mx-auto px-6 py-14 grid grid-cols-2 md:grid-cols-3 gap-10">
           <div className="col-span-2 space-y-4">
             <div className="flex items-center gap-2.5">
               <div className="size-9 bg-primary rounded-xl flex items-center justify-center shadow">
                 <span className="material-symbols-outlined text-white" style={{ fontSize: 20 }}>warehouse</span>
               </div>
-              <span className="text-base font-black tracking-tight text-slate-900">SIMS Logistics</span>
+              <span className="text-base font-black tracking-tight text-slate-900">SIMS-AI Logistics</span>
             </div>
             <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
               A professional warehouse management platform built for modern logistics teams and their customers.
@@ -569,21 +701,11 @@ export default function LandingPage() {
             </ul>
           </div>
 
-          <div className="space-y-4">
-            <h5 className="text-xs font-bold text-slate-900 uppercase tracking-widest">Support</h5>
-            <ul className="space-y-2.5">
-              {['Privacy Policy', 'Terms of Service', 'Contact Support'].map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-slate-500 hover:text-primary transition-colors">{item}</a>
-                </li>
-              ))}
-            </ul>
-          </div>
         </div>
 
         <div className="border-t border-slate-100">
           <div className="max-w-7xl mx-auto px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-slate-400">© 2025 SIMS Logistics. All rights reserved.</p>
+            <p className="text-xs text-slate-400">© 2026 SIMS-AI. All rights reserved.</p>
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }}>verified</span>
               Built for ISP490 Project
