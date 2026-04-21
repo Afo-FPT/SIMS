@@ -14,7 +14,7 @@ import { formatDate } from '../../../lib/date-format';
 function getStatusDisplay(status: Contract['status']): string {
   switch (status) {
     case 'active':
-      return 'Rented';
+      return 'Active';
     case 'draft':
       return 'Pending confirmation';
     case 'pending_payment':
@@ -250,7 +250,7 @@ export default function ContractsPage() {
                   className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <option value="all">All statuses</option>
-                  <option value="active">Rented</option>
+                  <option value="active">Active</option>
                   <option value="draft">Pending confirmation</option>
                   <option value="pending_payment">Pending payment</option>
                   <option value="scheduled">Paid — waiting for start date</option>

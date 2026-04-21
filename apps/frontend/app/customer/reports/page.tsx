@@ -13,7 +13,7 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
-import { defaultReportDateRange, type QuickPreset } from '../../../lib/report-date-range';
+import { rollingPresetRange, type QuickPreset } from '../../../lib/report-date-range';
 import { formatTime } from '../../../lib/date-format';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
@@ -26,13 +26,13 @@ function dayKey(ts: string): string {
 }
 
 export default function CustomerReportsPage() {
-  const init = useMemo(() => defaultReportDateRange(), []);
+  const init = useMemo(() => rollingPresetRange('7d'), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [ioStartDate, setIoStartDate] = useState(init.start);
-  const [ioEndDate, setIoEndDate] = useState(init.end);
-  const [ioPreset, setIoPreset] = useState<QuickPreset | null>('1m');
+  const [startDate, setStartDate] = useState(init.start);
+  const [endDate, setEndDate] = useState(init.end);
+  const [activePreset, setActivePreset] = useState<QuickPreset | null>('7d');
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
@@ -105,20 +105,20 @@ export default function CustomerReportsPage() {
     });
   }
 
-  const ioRequests = useMemo(() => filterRequestsByRange(requests, ioStartDate, ioEndDate), [requests, ioStartDate, ioEndDate]);
-  const discrepancyCycleCounts = useMemo(() => cycleCounts, [cycleCounts]);
+  const filteredRequests = useMemo(() => filterRequestsByRange(requests, startDate, endDate), [requests, startDate, endDate]);
+  const discrepancyCycleCounts = useMemo(() => filterCycleCountsByRange(cycleCounts, startDate, endDate), [cycleCounts, startDate, endDate]);
 
   const ioTrend = useMemo(() => {
     const map = new Map<string, { key: string; periodLabel: string; inbound: number; outbound: number }>();
-    const fromDate = new Date(ioStartDate);
-    const toDate = new Date(ioEndDate);
+    const fromDate = new Date(startDate);
+    const toDate = new Date(endDate);
     const dayMs = 24 * 60 * 60 * 1000;
     for (let t = fromDate.getTime(); t <= toDate.getTime(); t += dayMs) {
       const d = new Date(t);
       const key = dayKey(d.toISOString());
       map.set(key, { key, periodLabel: key, inbound: 0, outbound: 0 });
     }
-    ioRequests.forEach((r) => {
+    filteredRequests.forEach((r) => {
       const ts = r.updated_at || r.created_at;
       const key = dayKey(ts);
       if (!map.has(key)) map.set(key, { key, periodLabel: key, inbound: 0, outbound: 0 });
@@ -128,7 +128,7 @@ export default function CustomerReportsPage() {
       else row.outbound += qty;
     });
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-  }, [ioRequests, ioStartDate, ioEndDate]);
+  }, [filteredRequests, startDate, endDate]);
 
   const discrepancyRows = useMemo(() => {
     return discrepancyCycleCounts.map((c) => {
@@ -156,21 +156,21 @@ export default function CustomerReportsPage() {
   }, [discrepancyRows]);
 
   const requestStatusSummary = useMemo(() => {
-    const pending = requests.filter((r) => r.status === 'PENDING').length;
-    const inProgress = requests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
-    const completed = requests.filter((r) => r.status === 'COMPLETED').length;
-    const rejected = requests.filter((r) => r.status === 'REJECTED').length;
+    const pending = filteredRequests.filter((r) => r.status === 'PENDING').length;
+    const inProgress = filteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const completed = filteredRequests.filter((r) => r.status === 'COMPLETED').length;
+    const rejected = filteredRequests.filter((r) => r.status === 'REJECTED').length;
     return [
       { name: 'Pending', value: pending },
       { name: 'In progress', value: inProgress },
       { name: 'Completed', value: completed },
       { name: 'Rejected', value: rejected },
     ];
-  }, [requests]);
+  }, [filteredRequests]);
 
   const topProductsByQuantity = useMemo(() => {
     const map = new Map<string, { item: string; inbound: number; outbound: number }>();
-    requests.forEach((r) => {
+    filteredRequests.forEach((r) => {
       (r.items || []).forEach((i: any) => {
         const key = i.item_name || 'Unknown';
         if (!map.has(key)) map.set(key, { item: key, inbound: 0, outbound: 0 });
@@ -184,7 +184,7 @@ export default function CustomerReportsPage() {
       .map((r) => ({ ...r, total: r.inbound + r.outbound }))
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
-  }, [requests]);
+  }, [filteredRequests]);
 
   const pieAnimatedOptions = useMemo(
     () => ({
@@ -200,7 +200,7 @@ export default function CustomerReportsPage() {
       },
       plugins: {
         title: { display: true, text: 'Distribution overview', color: '#0f172a', font: { size: 13, weight: 'bold' as const } },
-        subtitle: { display: true, text: 'Current period data • Unit: requests', color: '#64748b' },
+        subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: requests`, color: '#64748b' },
         legend: { position: 'bottom' as const },
         tooltip: {
           callbacks: {
@@ -209,7 +209,7 @@ export default function CustomerReportsPage() {
         },
       },
     }),
-    [],
+    [startDate, endDate],
   );
 
   const ioSummary = useMemo(() => {
@@ -275,6 +275,23 @@ export default function CustomerReportsPage() {
       )}
 
       <section className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
+          <div className="mt-1 mb-4">
+            <ChartDateFilterBar
+              enableToggle
+              initialCollapsed={false}
+              startDate={startDate}
+              endDate={endDate}
+              activePreset={activePreset}
+              onStartChange={setStartDate}
+              onEndChange={setEndDate}
+              onClearPreset={() => setActivePreset(null)}
+              onApplyPreset={(range, preset) => {
+                setStartDate(range.start);
+                setEndDate(range.end);
+                setActivePreset(preset);
+              }}
+            />
+          </div>
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-slate-900">Inbound/Outbound History Report</h2>
@@ -286,28 +303,11 @@ export default function CustomerReportsPage() {
                 size="sm"
                 isLoading={insightLoadingKey === 'io_history'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'io_history'}
-                onClick={() => handleInsightRequest('io_history', { ioTrend }, { startDate: ioStartDate, endDate: ioEndDate })}
+                onClick={() => handleInsightRequest('io_history', { ioTrend }, { startDate, endDate })}
               >
                 Insight
               </Button>
             </div>
-          </div>
-          <div className="mt-3">
-            <ChartDateFilterBar
-              enableToggle
-              initialCollapsed
-              startDate={ioStartDate}
-              endDate={ioEndDate}
-              activePreset={ioPreset}
-              onStartChange={setIoStartDate}
-              onEndChange={setIoEndDate}
-              onClearPreset={() => setIoPreset(null)}
-              onApplyPreset={(range, preset) => {
-                setIoStartDate(range.start);
-                setIoEndDate(range.end);
-                setIoPreset(preset);
-              }}
-            />
           </div>
           <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
             <KpiCard title="Total inbound" value={ioSummary.totalInbound.toLocaleString('en-US')} />
@@ -328,7 +328,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'Inbound/outbound comparison', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Range: ${ioStartDate} -> ${ioEndDate} • Unit: quantity`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
                     legend: { position: 'bottom' },
                     tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                   },
@@ -365,7 +365,7 @@ export default function CustomerReportsPage() {
                 size="sm"
                 isLoading={insightLoadingKey === 'discrepancy'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'discrepancy'}
-                onClick={() => handleInsightRequest('discrepancy', { discrepancyRows, discrepancyPie })}
+                onClick={() => handleInsightRequest('discrepancy', { discrepancyRows, discrepancyPie }, { startDate, endDate })}
               >
                 Insight
               </Button>
@@ -389,7 +389,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'System vs actual by cycle', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: quantity`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
                     legend: { position: 'bottom' },
                   },
                   scales: {
@@ -439,7 +439,7 @@ export default function CustomerReportsPage() {
                 size="sm"
                 isLoading={insightLoadingKey === 'request_status'}
                 disabled={insightLoadingKey !== null && insightLoadingKey !== 'request_status'}
-                onClick={() => handleInsightRequest('request_status', { requestStatusSummary })}
+                onClick={() => handleInsightRequest('request_status', { requestStatusSummary }, { startDate, endDate })}
               >
                 Insight
               </Button>
@@ -480,7 +480,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'Request status count', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: requests`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: requests`, color: '#64748b' },
                     legend: { position: 'bottom' },
                     tooltip: { callbacks: { label: (ctx: any) => `${ctx.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                   },
@@ -516,7 +516,7 @@ export default function CustomerReportsPage() {
               size="sm"
               isLoading={insightLoadingKey === 'top_products'}
               disabled={insightLoadingKey !== null && insightLoadingKey !== 'top_products'}
-              onClick={() => handleInsightRequest('top_products', { topProductsByQuantity })}
+              onClick={() => handleInsightRequest('top_products', { topProductsByQuantity }, { startDate, endDate })}
             >
               Insight
             </Button>
@@ -548,7 +548,7 @@ export default function CustomerReportsPage() {
                 maintainAspectRatio: false,
                 plugins: {
                   title: { display: true, text: 'Top moved products', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                  subtitle: { display: true, text: `Updated: ${lastUpdated ?? '--:--:--'} • Unit: quantity`, color: '#64748b' },
+                  subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
                   legend: { position: 'bottom' },
                   tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                 },

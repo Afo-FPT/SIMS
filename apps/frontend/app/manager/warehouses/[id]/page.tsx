@@ -59,6 +59,10 @@ export default function ManagerWarehouseDetailPage() {
   const [utilByShelfId, setUtilByShelfId] = useState<Record<string, ShelfUtilization>>({});
   const [utilLoading, setUtilLoading] = useState(false);
   const [selectedZoneId, setSelectedZoneId] = useState<string>('');
+  const [shelfFilterZone, setShelfFilterZone] = useState<string>('all');
+  const [shelfSearch, setShelfSearch] = useState('');
+  const [showCreateZoneForm, setShowCreateZoneForm] = useState(false);
+  const [showCreateShelfForm, setShowCreateShelfForm] = useState(false);
   const [spaceLimits, setSpaceLimits] = useState<SpaceLimits>({
     zone_area_percent_of_warehouse: 80,
     shelf_area_percent_of_zone: 80,
@@ -470,6 +474,15 @@ export default function ManagerWarehouseDetailPage() {
   };
 
   const [zoneEditAreaStr, setZoneEditAreaStr] = useState('');
+  const filteredShelves = useMemo(() => {
+    const q = shelfSearch.trim().toLowerCase();
+    return shelves.filter((s) => {
+      const byZone = shelfFilterZone === 'all' || s.zone === shelfFilterZone;
+      const haystack = `${s.code} ${s.zone || ''} ${s.contractCode || ''}`.toLowerCase();
+      const bySearch = !q || haystack.includes(q);
+      return byZone && bySearch;
+    });
+  }, [shelves, shelfFilterZone, shelfSearch]);
 
   const handleStartEditZoneWithArea = (zone: ManagerZoneOption) => {
     if (editingZoneId && editingZoneId !== zone.id) {
@@ -679,6 +692,14 @@ export default function ManagerWarehouseDetailPage() {
       <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Zones</h2>
+          <Button
+            type="button"
+            size="sm"
+            variant={showCreateZoneForm ? 'secondary' : 'primary'}
+            onClick={() => setShowCreateZoneForm((v) => !v)}
+          >
+            {showCreateZoneForm ? 'Close create' : 'Create zone'}
+          </Button>
         </div>
         <p className="text-sm text-slate-600">
           Zones group shelves for location tracking. Contracts are assigned to zones.
@@ -687,46 +708,48 @@ export default function ManagerWarehouseDetailPage() {
           Zone limit: up to {spaceLimits.zone_area_percent_of_warehouse}% of warehouse area
           ({zoneMaxAllowed.toFixed(2)} m²). Used {usedZoneArea.toFixed(2)} m², remaining {remainingZoneArea.toFixed(2)} m².
         </p>
-        <form
-          onSubmit={handleCreateZone}
-          className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 pb-4 border-b border-slate-100"
-        >
-          <Input
-            label="Zone code"
-            value={zoneForm.zoneCode}
-            onChange={(e) => setZoneForm((p) => ({ ...p, zoneCode: e.target.value }))}
-            placeholder="A"
-            required
-          />
-          <Input
-            label="Zone name"
-            value={zoneForm.name}
-            onChange={(e) => setZoneForm((p) => ({ ...p, name: e.target.value }))}
-            placeholder="Zone A"
-            required
-          />
-          <Input
-            label="Area (m²)"
-            type="number"
-            min={0}
-            step="0.01"
-            value={zoneAreaStr}
-            onChange={(e) => setZoneAreaStr(e.target.value)}
-            placeholder="120"
-            required
-          />
-          <Input
-            label="Description (optional)"
-            value={zoneForm.description}
-            onChange={(e) => setZoneForm((p) => ({ ...p, description: e.target.value }))}
-            placeholder="Short description"
-          />
-          <div className="md:col-span-4 flex justify-end">
-            <Button type="submit" isLoading={creatingZone}>
-              Create zone
-            </Button>
-          </div>
-        </form>
+        {showCreateZoneForm && (
+          <form
+            onSubmit={handleCreateZone}
+            className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-2 pb-4 border-b border-slate-100"
+          >
+            <Input
+              label="Zone code"
+              value={zoneForm.zoneCode}
+              onChange={(e) => setZoneForm((p) => ({ ...p, zoneCode: e.target.value }))}
+              placeholder="A"
+              required
+            />
+            <Input
+              label="Zone name"
+              value={zoneForm.name}
+              onChange={(e) => setZoneForm((p) => ({ ...p, name: e.target.value }))}
+              placeholder="Zone A"
+              required
+            />
+            <Input
+              label="Area (m²)"
+              type="number"
+              min={0}
+              step="0.01"
+              value={zoneAreaStr}
+              onChange={(e) => setZoneAreaStr(e.target.value)}
+              placeholder="120"
+              required
+            />
+            <Input
+              label="Description (optional)"
+              value={zoneForm.description}
+              onChange={(e) => setZoneForm((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Short description"
+            />
+            <div className="md:col-span-4 flex justify-end">
+              <Button type="submit" isLoading={creatingZone}>
+                Create zone
+              </Button>
+            </div>
+          </form>
+        )}
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
@@ -864,23 +887,33 @@ export default function ManagerWarehouseDetailPage() {
       <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card space-y-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-black text-slate-900">Shelves</h2>
-          {shelves.length > 0 && (
+          <div className="flex items-center gap-2">
             <Button
-              variant={editingShelvesSection ? 'secondary' : 'ghost'}
-              size="sm"
               type="button"
-              onClick={() => {
-                if (editingShelvesSection) {
-                  handleCancelShelvesSectionEdit();
-                } else {
-                  resetShelfDraftFromShelves();
-                  setEditingShelvesSection(true);
-                }
-              }}
+              size="sm"
+              variant={showCreateShelfForm ? 'secondary' : 'primary'}
+              onClick={() => setShowCreateShelfForm((v) => !v)}
             >
-              {editingShelvesSection ? 'Cancel edit' : 'Edit'}
+              {showCreateShelfForm ? 'Close create' : 'Create shelf'}
             </Button>
-          )}
+            {shelves.length > 0 && (
+              <Button
+                variant={editingShelvesSection ? 'secondary' : 'ghost'}
+                size="sm"
+                type="button"
+                onClick={() => {
+                  if (editingShelvesSection) {
+                    handleCancelShelvesSectionEdit();
+                  } else {
+                    resetShelfDraftFromShelves();
+                    setEditingShelvesSection(true);
+                  }
+                }}
+              >
+                {editingShelvesSection ? 'Cancel edit' : 'Edit'}
+              </Button>
+            )}
+          </div>
         </div>
         <p className="text-sm text-slate-600">
           Create shelves inside zones and see their current status.
@@ -890,70 +923,72 @@ export default function ManagerWarehouseDetailPage() {
           ({zoneShelfMaxAllowed.toFixed(2)} m²). Used {usedShelfAreaInZone.toFixed(2)} m², remaining {remainingShelfAreaInZone.toFixed(2)} m².
         </p>
 
-        <form onSubmit={handleCreateShelf} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Select
-              label="Zone"
-              value={selectedZoneId}
-              onChange={(e) => setSelectedZoneId(e.target.value)}
-              options={[
-                { value: '', label: 'Select zone' },
-                ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` })),
-              ]}
-            />
-            <Input
-              label="Shelf code"
-              value={shelfForm.shelfCode}
-              onChange={(e) => setShelfForm((p) => ({ ...p, shelfCode: e.target.value }))}
-              placeholder="A-01-01"
-              required
-            />
-            <Input
-              label="Tier count"
-              type="number"
-              min={1}
-              value={shelfForm.tierCountStr}
-              onChange={(e) => setShelfForm((p) => ({ ...p, tierCountStr: e.target.value }))}
-              placeholder="e.g. 3"
-              required
-            />
-            <Input
-              label="Height (m)"
-              type="number"
-              step="0.01"
-              min={0}
-              value={shelfForm.heightStr}
-              onChange={(e) => setShelfForm((p) => ({ ...p, heightStr: e.target.value }))}
-              placeholder="1.2"
-              required
-            />
-            <Input
-              label="Width (m)"
-              type="number"
-              step="0.01"
-              min={0}
-              value={shelfForm.widthStr}
-              onChange={(e) => setShelfForm((p) => ({ ...p, widthStr: e.target.value }))}
-              placeholder="2.0"
-              required
-            />
-            <Input
-              label="Depth (m)"
-              type="number"
-              step="0.01"
-              min={0}
-              value={shelfForm.depthStr}
-              onChange={(e) => setShelfForm((p) => ({ ...p, depthStr: e.target.value }))}
-              placeholder="1.0"
-              required
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
-              Create shelf
-            </Button>
-          </div>
-        </form>
+        {showCreateShelfForm && (
+          <form onSubmit={handleCreateShelf} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <Select
+                label="Zone"
+                value={selectedZoneId}
+                onChange={(e) => setSelectedZoneId(e.target.value)}
+                options={[
+                  { value: '', label: 'Select zone' },
+                  ...zones.map((z) => ({ value: z.id, label: `${z.zoneCode} — ${z.name}` })),
+                ]}
+              />
+              <Input
+                label="Shelf code"
+                value={shelfForm.shelfCode}
+                onChange={(e) => setShelfForm((p) => ({ ...p, shelfCode: e.target.value }))}
+                placeholder="A-01-01"
+                required
+              />
+              <Input
+                label="Tier count"
+                type="number"
+                min={1}
+                value={shelfForm.tierCountStr}
+                onChange={(e) => setShelfForm((p) => ({ ...p, tierCountStr: e.target.value }))}
+                placeholder="e.g. 3"
+                required
+              />
+              <Input
+                label="Height (m)"
+                type="number"
+                step="0.01"
+                min={0}
+                value={shelfForm.heightStr}
+                onChange={(e) => setShelfForm((p) => ({ ...p, heightStr: e.target.value }))}
+                placeholder="1.2"
+                required
+              />
+              <Input
+                label="Width (m)"
+                type="number"
+                step="0.01"
+                min={0}
+                value={shelfForm.widthStr}
+                onChange={(e) => setShelfForm((p) => ({ ...p, widthStr: e.target.value }))}
+                placeholder="2.0"
+                required
+              />
+              <Input
+                label="Depth (m)"
+                type="number"
+                step="0.01"
+                min={0}
+                value={shelfForm.depthStr}
+                onChange={(e) => setShelfForm((p) => ({ ...p, depthStr: e.target.value }))}
+                placeholder="1.0"
+                required
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button type="submit" isLoading={creatingShelf} disabled={!selectedZoneId}>
+                Create shelf
+              </Button>
+            </div>
+          </form>
+        )}
 
         <div className="mt-6">
           {loading ? (
@@ -962,6 +997,28 @@ export default function ManagerWarehouseDetailPage() {
             <EmptyState icon="warehouse" title="No shelves" message="No shelf data" />
           ) : (
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-card">
+              <div className="grid grid-cols-1 gap-3 border-b border-slate-100 px-4 py-3 md:grid-cols-3">
+                <Select
+                  label="Filter by zone"
+                  value={shelfFilterZone}
+                  onChange={(e) => setShelfFilterZone(e.target.value)}
+                  options={[
+                    { value: 'all', label: 'All zones' },
+                    ...zones.map((z) => ({
+                      value: z.zoneCode ?? z.name ?? '',
+                      label: `${z.zoneCode} — ${z.name}`,
+                    })),
+                  ]}
+                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Search shelf"
+                    value={shelfSearch}
+                    onChange={(e) => setShelfSearch(e.target.value)}
+                    placeholder="Search by shelf code, zone, contract..."
+                  />
+                </div>
+              </div>
               {utilLoading && (
                 <p className="text-xs text-slate-500 px-4 py-2 border-b border-slate-100">
                   Loading shelf capacity...
@@ -983,7 +1040,13 @@ export default function ManagerWarehouseDetailPage() {
                   <TableHeader>Warning</TableHeader>
                 </TableHead>
                 <TableBody>
-                  {shelves.map((s) => {
+                  {filteredShelves.length === 0 ? (
+                    <TableRow>
+                      <td colSpan={12} className="px-6 py-8 text-center text-sm text-slate-500">
+                        No shelves match current filters.
+                      </td>
+                    </TableRow>
+                  ) : filteredShelves.map((s) => {
                     const u = utilByShelfId[s.id];
                     const used = u?.current_utilization ?? 0;
                     const max = u?.max_capacity ?? 0;

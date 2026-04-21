@@ -10,7 +10,7 @@ import { formatDate, formatDateTime } from '../../../../lib/date-format';
 function getStatusDisplay(status: Contract['status']): string {
   switch (status) {
     case 'active':
-      return 'Rented';
+      return 'Active';
     case 'draft':
       return 'Pending confirmation';
     case 'pending_payment':

@@ -383,7 +383,7 @@ export default function RentRequestsPage() {
                 No zones available for this warehouse. {zonesError || 'Please contact manager.'}
               </p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2.5">
                 {zones.map((z) => {
                   const zid = zoneKey(z);
                   const disabled = !isZoneSelectable(z);
@@ -407,45 +407,59 @@ export default function RentRequestsPage() {
                           return next;
                         });
                       }}
-                      className={`text-left rounded-2xl border px-4 py-3 text-sm transition-colors ${
+                      className={`text-left rounded-xl border px-3 py-2.5 text-sm transition-all ${
                         checked
-                          ? 'border-primary bg-primary/5'
+                          ? 'border-primary bg-primary/5 shadow-sm'
                           : isRented
                           ? 'border-amber-200 bg-amber-50/80'
-                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
-                      } ${disabled ? 'opacity-90 cursor-not-allowed' : 'cursor-pointer'}`}
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
+                      } ${disabled ? 'opacity-85 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-900">
-                            {z.zoneCode} — {z.name}
-                          </p>
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-slate-900 leading-tight min-w-0">
+                              {z.zoneCode} — {z.name}
+                            </p>
+                            <span className="inline-flex shrink-0 items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700">
+                              {Number(z.area ?? 0) > 0 ? `${Number(z.area).toLocaleString('en-US')} m²` : 'Size —'}
+                            </span>
+                          </div>
                           {z.description && (
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                               {z.description}
                             </p>
                           )}
-                          <p className="text-xs text-slate-500 mt-1">
-                            Zone status:{' '}
-                            <span className="font-semibold">
-                              {z.status === 'ACTIVE' ? 'Active' : z.status || '—'}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                              z.status === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}>
+                              Zone: {z.status === 'ACTIVE' ? 'Active' : z.status || '—'}
                             </span>
-                            {' · '}
-                            Lease:{' '}
-                            <span className={`font-semibold ${isRented ? 'text-amber-800' : 'text-emerald-700'}`}>
-                              {isRented ? 'Rented' : 'Available'}
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold border ${
+                              isRented
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                              Lease: {isRented ? 'Rented' : 'Available'}
                             </span>
-                          </p>
+                          </div>
                           {showVacancyNote && typeof z.daysUntilAvailable === 'number' && (
-                            <p className="text-xs text-amber-800 mt-1.5 font-medium">
+                            <p className="text-xs text-amber-800 mt-1 font-medium leading-tight">
                               This zone will become available in {z.daysUntilAvailable}{' '}
                               {z.daysUntilAvailable === 1 ? 'day' : 'days'} (current lease ends).
                             </p>
                           )}
                         </div>
                         {!disabled && (
-                          <span className="inline-flex shrink-0 items-center justify-center size-5 rounded-full border border-primary text-primary text-xs font-bold">
-                            {checked ? '✓' : ''}
+                          <span className={`inline-flex shrink-0 items-center justify-center size-5 rounded-full border text-xs font-bold ${
+                            checked
+                              ? 'border-primary bg-primary text-white'
+                              : 'border-primary text-primary'
+                          }`}>
+                            {checked ? '✓' : ' '}
                           </span>
                         )}
                       </div>

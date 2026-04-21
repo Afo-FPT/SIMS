@@ -17,6 +17,15 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { formatTime, formatDateTime } from '../../../lib/date-format';
 
+function formatServiceStatus(status: string): string {
+  return String(status || '')
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 export default function CustomerDashboard() {
   const ITEMS_PER_PAGE = 5;
   const toast = useToastHelpers();
@@ -242,7 +251,9 @@ export default function CustomerDashboard() {
                   <TableRow key={r.request_id}>
                     <TableCell className="font-bold text-slate-900">{r.reference || r.request_id.slice(-8)}</TableCell>
                     <TableCell>
-                      <Badge variant="neutral">{r.request_type === 'IN' ? 'Inbound' : 'Outbound'}</Badge>
+                      <Badge variant={r.request_type === 'IN' ? 'info' : 'warning'}>
+                        {r.request_type === 'IN' ? 'Inbound' : 'Outbound'}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge
@@ -256,7 +267,7 @@ export default function CustomerDashboard() {
                                 : 'warning'
                         }
                       >
-                        {r.status}
+                        {formatServiceStatus(r.status)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-slate-600">{formatDateTime(r.updated_at || r.created_at)}</TableCell>

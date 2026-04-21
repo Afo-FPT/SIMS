@@ -19,7 +19,7 @@ import { useToastHelpers } from '../../../lib/toast';
 
 export default function AdminConfigPage() {
   const toast = useToastHelpers();
-  const [activeTab, setActiveTab] = useState<'policy' | 'ai'>('policy');
+  const [activeTab, setActiveTab] = useState<'policy' | 'ai'>('ai');
 
   const [spaceZonePercent, setSpaceZonePercent] = useState('80');
   const [spaceShelfPercent, setSpaceShelfPercent] = useState('80');
@@ -341,11 +341,11 @@ export default function AdminConfigPage() {
       </div>
 
       <div className="flex gap-2">
-        <Button variant={activeTab === 'policy' ? 'primary' : 'secondary'} size="sm" onClick={() => setActiveTab('policy')}>
-          Policy Config
-        </Button>
         <Button variant={activeTab === 'ai' ? 'primary' : 'secondary'} size="sm" onClick={() => setActiveTab('ai')}>
           AI & FAQs
+        </Button>
+        <Button variant={activeTab === 'policy' ? 'primary' : 'secondary'} size="sm" onClick={() => setActiveTab('policy')}>
+          Policy Config
         </Button>
       </div>
 
