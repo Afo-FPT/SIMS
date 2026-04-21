@@ -18,8 +18,8 @@ import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
 
 const today = new Date().toISOString().slice(0, 10);
-/** Start date must be at least 1 day from today. */
-const minStartDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+/** Start date can be today. */
+const minStartDate = today;
 
 function addDuration(start: string, pkg: ContractPackageOption | null): string {
   if (!pkg) return start;
@@ -268,7 +268,7 @@ export default function RentRequestsPage() {
     const start = new Date(startDate);
     const end = endDate ? new Date(endDate) : null;
     if (isNaN(start.getTime())) e.startDate = 'Invalid start date';
-    if (start < new Date(minStartDate)) e.startDate = 'Start date must be at least 1 day from today';
+    if (start < new Date(minStartDate)) e.startDate = 'Start date must be today or later';
     if (end) {
       if (isNaN(end.getTime())) e.endDate = 'Invalid end date';
       else if (end <= start) e.endDate = 'End date must be after start date';
@@ -533,7 +533,7 @@ export default function RentRequestsPage() {
             </div>
 
             <p className="text-xs text-slate-500">
-              At least 1 day from today. End date is set automatically from the selected package.
+              Start date can be today. End date is set automatically from the selected package.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
