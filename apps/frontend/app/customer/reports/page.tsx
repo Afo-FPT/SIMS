@@ -15,6 +15,7 @@ import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { ChartDateFilterBar } from '../../../components/reports/ChartDateFilterBar';
 import { rollingPresetRange, type QuickPreset } from '../../../lib/report-date-range';
 import { formatTime } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 
@@ -43,7 +44,6 @@ export default function CustomerReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function run(isInitial: boolean) {
       try {
@@ -71,15 +71,22 @@ export default function CustomerReportsPage() {
     }
 
     void run(true);
-    pollTimer = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void run(false);
       }
-    }, 15000);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void run(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
     };
   }, []);
 

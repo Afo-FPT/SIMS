@@ -16,6 +16,7 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { formatTime, formatDateTime } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 function formatServiceStatus(status: string): string {
   return String(status || '')
@@ -41,10 +42,19 @@ export default function CustomerDashboard() {
 
   useEffect(() => {
     void loadData(true);
-    const poll = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void loadData(false);
-    }, 15000);
-    return () => clearInterval(poll);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void loadData(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
+    };
   }, []);
 
   const loadData = async (isInitial: boolean) => {

@@ -13,6 +13,7 @@ import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { formatTime, formatDateTime } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 export default function ManagerDashboard() {
   const ITEMS_PER_PAGE = 4;
@@ -33,10 +34,21 @@ export default function ManagerDashboard() {
 
   useEffect(() => {
     void loadData(true);
-    const poll = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void loadData(false);
-    }, 15000);
-    return () => clearInterval(poll);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void loadData(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
+    socket?.on('reports:data-changed', onRealtimeChanged);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
+      socket?.off('reports:data-changed', onRealtimeChanged);
+    };
   }, []);
 
   const loadData = async (isInitial: boolean) => {

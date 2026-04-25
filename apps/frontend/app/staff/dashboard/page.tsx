@@ -21,7 +21,9 @@ import { Pagination } from '../../../components/ui/Pagination';
 import { TableSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { EmptyState } from '../../../components/ui/EmptyState';
+import { Select } from '../../../components/ui/Select';
 import { formatTime, formatDateTime } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 export default function StaffDashboard() {
   const ITEMS_PER_PAGE = 5;
@@ -33,13 +35,23 @@ export default function StaffDashboard() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [requestPage, setRequestPage] = useState(1);
   const [cyclePage, setCyclePage] = useState(1);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('all');
 
   useEffect(() => {
     void loadData(true);
-    const poll = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void loadData(false);
-    }, 15000);
-    return () => clearInterval(poll);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void loadData(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
+    };
   }, []);
 
   const loadData = async (isInitial: boolean) => {
@@ -95,29 +107,53 @@ export default function StaffDashboard() {
   }
 
   const today = new Date().toDateString();
-  const totalTasks = requests.length;
-  const inProgressTasks = requests.filter(
+  const warehouseOptions = [
+    { value: 'all', label: 'All warehouses' },
+    ...Array.from(
+      new Map(
+        [...requests, ...cycleCounts]
+          .map((x: any): [string, string] => [
+            String(x.warehouse_id || '').trim(),
+            String(x.warehouse_name || x.warehouse_id || '').trim()
+          ])
+          .filter(([id]) => id)
+      ).entries()
+    )
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label })),
+  ];
+  const filteredRequests =
+    selectedWarehouseId === 'all'
+      ? requests
+      : requests.filter((r: any) => String(r.warehouse_id || '') === selectedWarehouseId);
+  const filteredCycleCounts =
+    selectedWarehouseId === 'all'
+      ? cycleCounts
+      : cycleCounts.filter((c: any) => String(c.warehouse_id || '') === selectedWarehouseId);
+
+  const totalTasks = filteredRequests.length;
+  const inProgressTasks = filteredRequests.filter(
     (r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF',
   ).length;
-  const pendingTasks = requests.filter((r) => r.status === 'PENDING').length;
-  const completedToday = requests.filter(
+  const pendingTasks = filteredRequests.filter((r) => r.status === 'PENDING').length;
+  const completedToday = filteredRequests.filter(
     (r) =>
       (r.status === 'DONE_BY_STAFF' || r.status === 'COMPLETED') &&
       new Date(r.updated_at).toDateString() === today,
   ).length;
-  const discrepancyTasks = cycleCounts.filter(
+  const discrepancyTasks = filteredCycleCounts.filter(
     (c) =>
       (c.status === 'COMPLETED' || c.status === 'STAFF_SUBMITTED') &&
       (c.items || c.target_items || []).some(
         (it: any) => typeof it.discrepancy === 'number' && it.discrepancy !== 0,
       ),
   ).length;
-  const assignedCycleCounts = cycleCounts.filter((c) => c.status !== 'CONFIRMED').length;
+  const assignedCycleCounts = filteredCycleCounts.filter((c) => c.status !== 'CONFIRMED').length;
 
-  const recentTasksAll = [...requests]
+  const recentTasksAll = [...filteredRequests]
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
     .slice(0, 50);
-  const recentCycleAll = [...cycleCounts]
+  const recentCycleAll = [...filteredCycleCounts]
     .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
     .slice(0, 50);
 
@@ -149,14 +185,29 @@ export default function StaffDashboard() {
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Dashboard</h1>
           <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
         </div>
-        <button
-          type="button"
-          onClick={reloadData}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-primary"
-        >
-          <span className="material-symbols-outlined text-lg">refresh</span>
-          Refresh data
-        </button>
+        <div className="flex items-end gap-3">
+          <div className="min-w-56">
+            <Select
+              label="Warehouse"
+              options={warehouseOptions}
+              value={selectedWarehouseId}
+              onChange={(e) => {
+                setSelectedWarehouseId(e.target.value);
+                setRequestPage(1);
+                setCyclePage(1);
+              }}
+              className="bg-white"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={reloadData}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-xs font-black uppercase tracking-widest text-white transition-colors hover:bg-primary"
+          >
+            <span className="material-symbols-outlined text-lg">refresh</span>
+            Refresh data
+          </button>
+        </div>
       </div>
 
       <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-900 to-primary p-6 text-white shadow-lg md:p-8">
@@ -202,12 +253,12 @@ export default function StaffDashboard() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Link href="/staff/inbound-requests" className="rounded-2xl border border-slate-200 p-4 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inbound tasks</p>
-              <p className="mt-2 text-xl font-black text-slate-900">{requests.filter((r) => r.request_type === 'IN').length}</p>
+              <p className="mt-2 text-xl font-black text-slate-900">{filteredRequests.filter((r) => r.request_type === 'IN').length}</p>
               <p className="mt-1 text-xs text-slate-500">Putaway queue</p>
             </Link>
             <Link href="/staff/outbound-requests" className="rounded-2xl border border-slate-200 p-4 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Outbound tasks</p>
-              <p className="mt-2 text-xl font-black text-slate-900">{requests.filter((r) => r.request_type === 'OUT').length}</p>
+              <p className="mt-2 text-xl font-black text-slate-900">{filteredRequests.filter((r) => r.request_type === 'OUT').length}</p>
               <p className="mt-1 text-xs text-slate-500">Picking queue</p>
             </Link>
             <Link href="/staff/cycle-count" className="rounded-2xl border border-slate-200 p-4 transition-colors hover:border-primary/40 hover:bg-primary/[0.03]">

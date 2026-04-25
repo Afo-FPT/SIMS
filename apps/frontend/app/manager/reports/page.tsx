@@ -18,6 +18,7 @@ import {
   type ReportGranularity,
 } from '../../../lib/reports.api';
 import { requestReportInsight } from '../../../lib/ai-insights.api';
+import { listWarehouses, listZonesByWarehouse } from '../../../lib/manager.api';
 import { useToastHelpers } from '../../../lib/toast';
 import { getNotificationSocket } from '../../../lib/notifications.socket';
 import {
@@ -79,9 +80,7 @@ function expiryBucketLabelForDate(isoDate: string, granularity: ManagerDeepGranu
 
 const EXPIRY_TABLE_PAGE_SIZE = 10;
 const ZONE_PRICING_TABLE_PAGE_SIZE = 10;
-const ZONE_PRICING_WAREHOUSE_FILTER_ALL = 'all';
-/** Select value when zone rows have no warehouse id in payload */
-const ZONE_PRICING_WAREHOUSE_NONE_KEY = '__no_warehouse__';
+const MANAGER_REPORT_WAREHOUSE_FILTER_ALL = 'all';
 
 const MANAGER_CONTRACT_STATUSES = [
   'draft',
@@ -128,6 +127,17 @@ export default function ManagerReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const initR = defaultReportDateRange();
+  const [globalStart, setGlobalStart] = useState(initR.start);
+  const [globalEnd, setGlobalEnd] = useState(initR.end);
+  const [globalPreset, setGlobalPreset] = useState<QuickPreset | null>(null);
+  const [globalWarehouseFilter, setGlobalWarehouseFilter] = useState<string>(MANAGER_REPORT_WAREHOUSE_FILTER_ALL);
+  const [globalWarehouseOptions, setGlobalWarehouseOptions] = useState<Array<{ value: string; label: string }>>([
+    { value: MANAGER_REPORT_WAREHOUSE_FILTER_ALL, label: 'All warehouses' },
+  ]);
+  const [globalZoneFilter, setGlobalZoneFilter] = useState<string>('all');
+  const [globalZoneOptions, setGlobalZoneOptions] = useState<Array<{ value: string; label: string }>>([
+    { value: 'all', label: 'All zones' },
+  ]);
   const [kpiStart, setKpiStart] = useState(initR.start);
   const [kpiEnd, setKpiEnd] = useState(initR.end);
   const [kpiPreset, setKpiPreset] = useState<QuickPreset | null>(null);
@@ -156,20 +166,9 @@ export default function ManagerReportsPage() {
   const [contractRiskEnd, setContractRiskEnd] = useState(initR.end);
   const [contractRiskPreset, setContractRiskPreset] = useState<QuickPreset | null>(null);
 
-  const deepExpiryInitRange = useMemo(() => rollingPresetRange('2w'), []);
-  const [deepExpiryStart, setDeepExpiryStart] = useState(deepExpiryInitRange.start);
-  const [deepExpiryEnd, setDeepExpiryEnd] = useState(deepExpiryInitRange.end);
-  const [deepExpiryPreset, setDeepExpiryPreset] = useState<QuickPreset | null>('2w');
-
-
-  const [deepPenaltyStart, setDeepPenaltyStart] = useState(initR.start);
-  const [deepPenaltyEnd, setDeepPenaltyEnd] = useState(initR.end);
-  const [deepPenaltyPreset, setDeepPenaltyPreset] = useState<QuickPreset | null>(null);
-  const revenueInitRange = useMemo(() => rollingPresetRange('7d'), []);
-  const [revenueStart, setRevenueStart] = useState(revenueInitRange.start);
-  const [revenueEnd, setRevenueEnd] = useState(revenueInitRange.end);
-  const [revenuePreset, setRevenuePreset] = useState<QuickPreset | null>('7d');
-  const deepSnapshotDate = useMemo(() => defaultReportDateRange().end, []);
+  const effectiveWarehouseId =
+    globalWarehouseFilter === MANAGER_REPORT_WAREHOUSE_FILTER_ALL ? undefined : globalWarehouseFilter;
+  const effectiveZoneId = globalZoneFilter === 'all' ? undefined : globalZoneFilter;
 
   const [insightsByKey, setInsightsByKey] = useState<Record<string, string>>({});
   const [insightLoadingKey, setInsightLoadingKey] = useState<string | null>(null);
@@ -210,9 +209,6 @@ export default function ManagerReportsPage() {
   const [deepPricingData, setDeepPricingData] = useState<ZonePricingComboRow[] | null>(null);
   const [deepPricingLoading, setDeepPricingLoading] = useState(false);
   const [zonePricingTablePage, setZonePricingTablePage] = useState(1);
-  const [zonePricingWarehouseFilter, setZonePricingWarehouseFilter] = useState<string>(
-    ZONE_PRICING_WAREHOUSE_FILTER_ALL,
-  );
 
   const [deepPenaltyData, setDeepPenaltyData] = useState<PenaltyTopCustomerRow[] | null>(null);
   const [deepPenaltyLoading, setDeepPenaltyLoading] = useState(false);
@@ -221,8 +217,8 @@ export default function ManagerReportsPage() {
   const [revenueLoading, setRevenueLoading] = useState(false);
 
   const deepExpiryGranularity = useMemo(
-    () => inferManagerDeepGranularity(deepExpiryStart, deepExpiryEnd),
-    [deepExpiryStart, deepExpiryEnd],
+    () => inferManagerDeepGranularity(globalStart, globalEnd),
+    [globalStart, globalEnd],
   );
 
   const expiryFilteredDetailRows: ExpiryDetailTableRow[] = useMemo(() => {
@@ -251,14 +247,7 @@ export default function ManagerReportsPage() {
     return expiryFilteredDetailRows.slice(start, start + EXPIRY_TABLE_PAGE_SIZE);
   }, [expiryFilteredDetailRows, safeExpiryDetailPage]);
 
-  const zonePricingFilteredRows = useMemo(() => {
-    const d = deepPricingData ?? [];
-    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_FILTER_ALL) return d;
-    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_NONE_KEY) {
-      return d.filter((r) => !(r.warehouseId || '').trim());
-    }
-    return d.filter((r) => (r.warehouseId || '').trim() === zonePricingWarehouseFilter);
-  }, [deepPricingData, zonePricingWarehouseFilter]);
+  const zonePricingFilteredRows = useMemo(() => deepPricingData ?? [], [deepPricingData]);
 
   const zonePricingDetailTotalPages = Math.max(
     1,
@@ -273,23 +262,6 @@ export default function ManagerReportsPage() {
     return zonePricingFilteredRows.slice(start, start + ZONE_PRICING_TABLE_PAGE_SIZE);
   }, [zonePricingFilteredRows, safeZonePricingDetailPage]);
 
-  const zonePricingWarehouseSelectOptions = useMemo(() => {
-    const d = deepPricingData ?? [];
-    const byKey = new Map<string, string>();
-    for (const r of d) {
-      const id = (r.warehouseId || '').trim();
-      const key = id || ZONE_PRICING_WAREHOUSE_NONE_KEY;
-      if (!byKey.has(key)) {
-        byKey.set(key, id ? (r.warehouseName || '—').trim() || '—' : 'Unknown warehouse');
-      }
-    }
-    const entries = [...byKey.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-    return [
-      { value: ZONE_PRICING_WAREHOUSE_FILTER_ALL, label: 'All warehouses' },
-      ...entries.map(([value, label]) => ({ value, label })),
-    ];
-  }, [deepPricingData]);
-
   const selectedExpiryBucket = useMemo(
     () => deepExpiryData?.buckets?.[expirySelectedBucketIndex] ?? null,
     [deepExpiryData, expirySelectedBucketIndex],
@@ -303,14 +275,11 @@ export default function ManagerReportsPage() {
 
   const zonePricingSummary = useMemo(() => {
     const rows = deepPricingData ?? [];
-    const zoneCount = rows.length;
-    const avgOccupancy = zoneCount
-      ? rows.reduce((s, r) => s + (Number(r.occupancyPercent) || 0), 0) / zoneCount
-      : 0;
-    const avgSuggestedRent = zoneCount
-      ? rows.reduce((s, r) => s + (Number(r.suggestedMonthlyPrice) || 0), 0) / zoneCount
-      : 0;
-    return { zoneCount, avgOccupancy, avgSuggestedRent };
+    const warehouseCount = rows.length;
+    const totalZones = rows.reduce((s, r) => s + (Number(r.totalZoneCount) || 0), 0);
+    const totalRentedZones = rows.reduce((s, r) => s + (Number(r.rentedZoneCount) || 0), 0);
+    const rentedRatioPercent = totalZones > 0 ? (totalRentedZones / totalZones) * 100 : 0;
+    return { warehouseCount, totalZones, totalRentedZones, rentedRatioPercent };
   }, [deepPricingData]);
 
   const damageSummary = useMemo(() => {
@@ -338,6 +307,10 @@ export default function ManagerReportsPage() {
   const outboundChartHeight = Math.max(220, 10 * 42);
   const topOutboundProductsSignatureRef = useRef<string>('');
   const topOutboundOrderRef = useRef<string[]>([]);
+  const deepExpiryLoadedRef = useRef(false);
+  const deepPricingLoadedRef = useRef(false);
+  const deepPenaltyLoadedRef = useRef(false);
+  const revenueLoadedRef = useRef(false);
   const normalizeTopOutboundProducts = (list: TopOutboundProductItem[]): TopOutboundProductItem[] => {
     const incoming = Array.isArray(list) ? list : [];
     const keyOf = (p: TopOutboundProductItem) => String(p.itemName ?? '').trim();
@@ -505,9 +478,64 @@ export default function ManagerReportsPage() {
   }, [deepExpiryData]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await listWarehouses();
+        if (cancelled) return;
+        setGlobalWarehouseOptions([
+          { value: MANAGER_REPORT_WAREHOUSE_FILTER_ALL, label: 'All warehouses' },
+          ...rows.map((w) => ({ value: w.id, label: w.name || '—' })),
+        ]);
+      } catch {
+        if (!cancelled) {
+          setGlobalWarehouseOptions([{ value: MANAGER_REPORT_WAREHOUSE_FILTER_ALL, label: 'All warehouses' }]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!effectiveWarehouseId) {
+      setGlobalZoneOptions([{ value: 'all', label: 'All zones' }]);
+      setGlobalZoneFilter('all');
+      return () => {
+        cancelled = true;
+      };
+    }
+    (async () => {
+      try {
+        const zones = await listZonesByWarehouse(effectiveWarehouseId);
+        if (cancelled) return;
+        const options = [
+          { value: 'all', label: 'All zones' },
+          ...zones.map((z) => ({
+            value: z.id,
+            label: z.zoneCode ? `${z.zoneCode} - ${z.name}` : z.name || '—',
+          })),
+        ];
+        setGlobalZoneOptions(options);
+        setGlobalZoneFilter((prev) => (options.some((o) => o.value === prev) ? prev : 'all'));
+      } catch {
+        if (!cancelled) {
+          setGlobalZoneOptions([{ value: 'all', label: 'All zones' }]);
+          setGlobalZoneFilter('all');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveWarehouseId]);
+
+  useEffect(() => {
     topOutboundOrderRef.current = [];
     topOutboundProductsSignatureRef.current = '';
-  }, [outboundStart, outboundEnd]);
+  }, [globalStart, globalEnd, effectiveWarehouseId]);
 
   useEffect(() => {
     setExpiryDetailPage(1);
@@ -519,29 +547,16 @@ export default function ManagerReportsPage() {
 
   useEffect(() => {
     setZonePricingTablePage(1);
-  }, [zonePricingWarehouseFilter, deepPricingData]);
+  }, [deepPricingData]);
 
   useEffect(() => {
     setZonePricingTablePage((p) => Math.min(Math.max(1, p), zonePricingDetailTotalPages));
   }, [zonePricingDetailTotalPages]);
 
   useEffect(() => {
-    if (!deepPricingData?.length) return;
-    if (zonePricingWarehouseFilter === ZONE_PRICING_WAREHOUSE_FILTER_ALL) return;
-    const keys = new Set<string>();
-    for (const r of deepPricingData) {
-      keys.add((r.warehouseId || '').trim() || ZONE_PRICING_WAREHOUSE_NONE_KEY);
-    }
-    if (!keys.has(zonePricingWarehouseFilter)) {
-      setZonePricingWarehouseFilter(ZONE_PRICING_WAREHOUSE_FILTER_ALL);
-    }
-  }, [deepPricingData, zonePricingWarehouseFilter]);
-
-  useEffect(() => {
     setInsightsByKey({});
     setInsightLoadingKey(null);
     setInsightError(null);
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
 
     const fetchData = async () => {
@@ -558,13 +573,13 @@ export default function ManagerReportsPage() {
           topOutboundData,
           processingTimeData,
         ] = await Promise.all([
-          getManagerReport(kpiStart, kpiEnd, 'day'),
-          getManagerReport(trendStart, trendEnd, trendGranularity),
-          getManagerReport(spaceStart, spaceEnd, 'day'),
-          getManagerReport(stockStart, stockEnd, 'day'),
-          getManagerReport(contractRiskStart, contractRiskEnd, 'day'),
-          getTopOutboundProducts(outboundStart, outboundEnd),
-          getProcessingTime(processingStart, processingEnd, processingTimeGranularity),
+          getManagerReport(globalStart, globalEnd, 'day', effectiveWarehouseId, effectiveZoneId),
+          getManagerReport(globalStart, globalEnd, trendGranularity, effectiveWarehouseId, effectiveZoneId),
+          getManagerReport(globalStart, globalEnd, 'day', effectiveWarehouseId, effectiveZoneId),
+          getManagerReport(globalStart, globalEnd, 'day', effectiveWarehouseId, effectiveZoneId),
+          getManagerReport(globalStart, globalEnd, 'day', effectiveWarehouseId, effectiveZoneId),
+          getTopOutboundProducts(globalStart, globalEnd, effectiveWarehouseId, effectiveZoneId),
+          getProcessingTime(globalStart, globalEnd, processingTimeGranularity, effectiveWarehouseId, effectiveZoneId),
         ]);
 
         if (cancelled) return;
@@ -620,34 +635,18 @@ export default function ManagerReportsPage() {
     };
 
     void fetchData();
-    pollTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void fetchData();
-      }
-    }, 15000);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearInterval(pollTimer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [
-    kpiStart,
-    kpiEnd,
-    trendStart,
-    trendEnd,
+    globalStart,
+    globalEnd,
     trendGranularity,
-    spaceStart,
-    spaceEnd,
-    stockStart,
-    stockEnd,
-    contractRiskStart,
-    contractRiskEnd,
-    outboundStart,
-    outboundEnd,
-    processingStart,
-    processingEnd,
+    effectiveWarehouseId,
+    effectiveZoneId,
     hasLoaded,
     toast,
     reportsRealtimeVersion,
@@ -657,10 +656,19 @@ export default function ManagerReportsPage() {
     if (tab !== 'deep') return;
     let cancelled = false;
     (async () => {
-      setDeepExpiryLoading(true);
+      setDeepExpiryLoading(!deepExpiryLoadedRef.current);
       try {
-        const data = await getManagerExpiryStackedReport(deepExpiryStart, deepExpiryEnd, deepExpiryGranularity);
-        if (!cancelled) setDeepExpiryData(data);
+        const data = await getManagerExpiryStackedReport(
+          globalStart,
+          globalEnd,
+          deepExpiryGranularity,
+          effectiveWarehouseId,
+          effectiveZoneId,
+        );
+        if (!cancelled) {
+          setDeepExpiryData(data);
+          deepExpiryLoadedRef.current = true;
+        }
       } catch (e) {
         if (!cancelled) {
           setDeepExpiryData(null);
@@ -673,23 +681,26 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepExpiryStart, deepExpiryEnd, deepExpiryGranularity, toast, reportsRealtimeVersion]);
+  }, [tab, globalStart, globalEnd, deepExpiryGranularity, toast, reportsRealtimeVersion, effectiveWarehouseId, effectiveZoneId]);
 
   useEffect(() => {
     if (!deepExpiryData?.buckets?.length) return;
-    const targetLabel = expiryBucketLabelForDate(deepExpiryEnd, deepExpiryData.granularity);
+    const targetLabel = expiryBucketLabelForDate(globalEnd, deepExpiryData.granularity);
     const idx = deepExpiryData.buckets.findIndex((b) => b.label === targetLabel);
     setExpirySelectedBucketIndex(idx >= 0 ? idx : deepExpiryData.buckets.length - 1);
-  }, [deepExpiryData, deepExpiryEnd]);
+  }, [deepExpiryData, globalEnd]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
     let cancelled = false;
     (async () => {
-      setDeepPricingLoading(true);
+      setDeepPricingLoading(!deepPricingLoadedRef.current);
       try {
-        const data = await getManagerZonePricingCombo(deepSnapshotDate, deepSnapshotDate);
-        if (!cancelled) setDeepPricingData(data);
+        const data = await getManagerZonePricingCombo(globalStart, globalEnd, effectiveWarehouseId, effectiveZoneId);
+        if (!cancelled) {
+          setDeepPricingData(data);
+          deepPricingLoadedRef.current = true;
+        }
       } catch (e) {
         if (!cancelled) {
           setDeepPricingData(null);
@@ -702,16 +713,19 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepSnapshotDate, toast, reportsRealtimeVersion]);
+  }, [tab, globalStart, globalEnd, toast, reportsRealtimeVersion, effectiveWarehouseId, effectiveZoneId]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
     let cancelled = false;
     (async () => {
-      setDeepPenaltyLoading(true);
+      setDeepPenaltyLoading(!deepPenaltyLoadedRef.current);
       try {
-        const data = await getManagerPenaltyTopCustomers(deepPenaltyStart, deepPenaltyEnd, 10);
-        if (!cancelled) setDeepPenaltyData(data);
+        const data = await getManagerPenaltyTopCustomers(globalStart, globalEnd, 10, effectiveWarehouseId, effectiveZoneId);
+        if (!cancelled) {
+          setDeepPenaltyData(data);
+          deepPenaltyLoadedRef.current = true;
+        }
       } catch (e) {
         if (!cancelled) {
           setDeepPenaltyData(null);
@@ -724,16 +738,19 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, deepPenaltyStart, deepPenaltyEnd, toast, reportsRealtimeVersion]);
+  }, [tab, globalStart, globalEnd, toast, reportsRealtimeVersion, effectiveWarehouseId, effectiveZoneId]);
 
   useEffect(() => {
     if (tab !== 'deep') return;
     let cancelled = false;
     (async () => {
-      setRevenueLoading(true);
+      setRevenueLoading(!revenueLoadedRef.current);
       try {
-        const data = await getManagerRevenueReport(revenueStart, revenueEnd, 'week');
-        if (!cancelled) setRevenueData(data);
+        const data = await getManagerRevenueReport(globalStart, globalEnd, 'week', effectiveWarehouseId, effectiveZoneId);
+        if (!cancelled) {
+          setRevenueData(data);
+          revenueLoadedRef.current = true;
+        }
       } catch (e) {
         if (!cancelled) {
           setRevenueData(null);
@@ -746,7 +763,7 @@ export default function ManagerReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [tab, revenueStart, revenueEnd, toast, reportsRealtimeVersion]);
+  }, [tab, globalStart, globalEnd, toast, reportsRealtimeVersion, effectiveWarehouseId, effectiveZoneId]);
 
   useEffect(() => {
     const socket = getNotificationSocket();
@@ -766,11 +783,13 @@ export default function ManagerReportsPage() {
     const onConnect = () => bump();
 
     socket.on('reports:data-changed', onChanged);
+    socket.on('notification:new', onChanged);
     socket.on('connect', onConnect);
 
     return () => {
       if (debounce) clearTimeout(debounce);
       socket.off('reports:data-changed', onChanged);
+      socket.off('notification:new', onChanged);
       socket.off('connect', onConnect);
     };
   }, []);
@@ -785,8 +804,8 @@ export default function ManagerReportsPage() {
       setInsightLoadingKey(chartKey);
       const res = await requestReportInsight({
         chartKey,
-        startDate: range?.startDate ?? kpiStart,
-        endDate: range?.endDate ?? kpiEnd,
+        startDate: range?.startDate ?? globalStart,
+        endDate: range?.endDate ?? globalEnd,
         data,
       });
       setInsightsByKey((prev) => ({ ...prev, [chartKey]: res.insight }));
@@ -1427,26 +1446,51 @@ export default function ManagerReportsPage() {
       {tab === 'deep' && (
         <div className="space-y-8">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+            <p className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Date range</p>
+            <div>
+              <ChartDateFilterBar
+                enableToggle
+                startDate={globalStart}
+                endDate={globalEnd}
+                activePreset={globalPreset}
+                onStartChange={setGlobalStart}
+                onEndChange={setGlobalEnd}
+                onClearPreset={() => setGlobalPreset(null)}
+                onApplyPreset={(r, preset) => {
+                  setGlobalStart(r.start);
+                  setGlobalEnd(r.end);
+                  setGlobalPreset(preset);
+                }}
+              />
+            </div>
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
+            <p className="mb-3 text-xs font-black uppercase tracking-widest text-slate-500">Warehouse & zone</p>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Select
+                label="Warehouse"
+                options={globalWarehouseOptions}
+                value={globalWarehouseFilter}
+                onChange={(e) => setGlobalWarehouseFilter(e.target.value)}
+                className="bg-white"
+              />
+              <Select
+                label="Zone"
+                options={globalZoneOptions}
+                value={globalZoneFilter}
+                onChange={(e) => setGlobalZoneFilter(e.target.value)}
+                className="bg-white"
+                disabled={!effectiveWarehouseId}
+              />
+            </div>
+          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-4">
               <div>
                 <h2 className="text-lg font-black text-slate-900">System Revenue</h2>
                 <p className="text-xs text-slate-500">Revenue by paid transactions</p>
               </div>
             </div>
-            <ChartDateFilterBar
-              enableToggle
-              startDate={revenueStart}
-              endDate={revenueEnd}
-              activePreset={revenuePreset}
-              onStartChange={setRevenueStart}
-              onEndChange={setRevenueEnd}
-              onClearPreset={() => setRevenuePreset(null)}
-              onApplyPreset={(r, preset) => {
-                setRevenueStart(r.start);
-                setRevenueEnd(r.end);
-                setRevenuePreset(preset);
-              }}
-            />
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <StatCard title="Total revenue" value={formatZonePricingVnd(revenueData?.summary.totalRevenue ?? 0)} />
               <StatCard title="Contract revenue" value={formatZonePricingVnd(revenueData?.summary.contractRevenue ?? 0)} />
@@ -1492,27 +1536,13 @@ export default function ManagerReportsPage() {
                       backendGranularity: deepExpiryData?.granularity,
                       inferredGranularity: deepExpiryGranularity,
                     },
-                    { startDate: deepExpiryStart, endDate: deepExpiryEnd },
+                    { startDate: globalStart, endDate: globalEnd },
                   );
                 }}
               >
                 Insight
               </Button>
             </div>
-            <ChartDateFilterBar
-              enableToggle
-              startDate={deepExpiryStart}
-              endDate={deepExpiryEnd}
-              activePreset={deepExpiryPreset}
-              onStartChange={setDeepExpiryStart}
-              onEndChange={setDeepExpiryEnd}
-              onClearPreset={() => setDeepExpiryPreset(null)}
-              onApplyPreset={(r, preset) => {
-                setDeepExpiryStart(r.start);
-                setDeepExpiryEnd(r.end);
-                setDeepExpiryPreset(preset);
-              }}
-            />
             <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Contracts at risk</p>
@@ -1712,12 +1742,12 @@ export default function ManagerReportsPage() {
             )}
           </section>
 
-          {/* 2. Combo pricing */}
+          {/* 2. Rented zones by warehouse */}
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
             <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1 pr-2">
-                <h2 className="text-lg font-black text-slate-900">Zone fill vs suggested rent</h2>
-                <p className="text-xs text-slate-500">Unit: occupancy (%) and monthly rent (VND)</p>
+                <h2 className="text-lg font-black text-slate-900">Rented Zones by Warehouse</h2>
+                <p className="text-xs text-slate-500">Unit: zones rented in selected date range</p>
               </div>
               <Button
                 variant="ghost"
@@ -1729,7 +1759,7 @@ export default function ManagerReportsPage() {
                   handleInsightRequest(
                     'manager_deep_zone_pricing',
                     deepPricingData,
-                    { startDate: deepSnapshotDate, endDate: deepSnapshotDate },
+                    { startDate: globalStart, endDate: globalEnd },
                   )
                 }
               >
@@ -1738,16 +1768,18 @@ export default function ManagerReportsPage() {
             </div>
             <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Zones</p>
-                <p className="text-lg font-black text-slate-900 tabular-nums">{zonePricingSummary.zoneCount}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Warehouses</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{zonePricingSummary.warehouseCount}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Avg occupancy</p>
-                <p className="text-lg font-black text-slate-900 tabular-nums">{Math.round(zonePricingSummary.avgOccupancy)}%</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Rented zones</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">{zonePricingSummary.totalRentedZones}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Avg suggested rent</p>
-                <p className="text-lg font-black text-slate-900 tabular-nums">{formatZonePricingVnd(zonePricingSummary.avgSuggestedRent)}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Rented ratio</p>
+                <p className="text-lg font-black text-slate-900 tabular-nums">
+                  {Math.round(zonePricingSummary.rentedRatioPercent)}%
+                </p>
               </div>
             </div>
             <div className="relative h-80 w-full">
@@ -1757,26 +1789,25 @@ export default function ManagerReportsPage() {
                 <LazyChart
                   type="bar"
                   data={{
-                    labels: deepPricingData.map((r) => r.zoneCode),
+                    labels: deepPricingData.map(
+                      (r) => `${r.warehouseName || '—'} (${r.rentedZoneCount}/${r.totalZoneCount})`,
+                    ),
                     datasets: [
                       {
-                        type: 'bar',
-                        label: 'Occupancy %',
-                        data: deepPricingData.map((r) => r.occupancyPercent),
-                        backgroundColor: 'rgba(14, 165, 233, 0.55)',
-                        borderColor: 'rgb(14, 165, 233)',
+                        label: 'Rented zones',
+                        data: deepPricingData.map((r) => r.rentedZoneCount),
+                        backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                        borderColor: 'rgb(5, 150, 105)',
                         borderWidth: 1,
-                        yAxisID: 'y',
+                        stack: 'zones',
                       },
                       {
-                        type: 'line',
-                        label: 'Suggested rent (VND/mo)',
-                        data: deepPricingData.map((r) => r.suggestedMonthlyPrice),
-                        borderColor: '#9333ea',
-                        backgroundColor: 'rgba(147, 51, 234, 0.15)',
-                        tension: 0.25,
-                        yAxisID: 'y1',
-                        pointRadius: 4,
+                        label: 'Remaining to total',
+                        data: deepPricingData.map((r) => Math.max(0, r.totalZoneCount - r.rentedZoneCount)),
+                        backgroundColor: 'rgba(148, 163, 184, 0.45)',
+                        borderColor: 'rgb(100, 116, 139)',
+                        borderWidth: 1,
+                        stack: 'zones',
                       },
                     ],
                   }}
@@ -1791,124 +1822,39 @@ export default function ManagerReportsPage() {
                           title: (items) => {
                             const idx = items[0]?.dataIndex ?? 0;
                             const row = deepPricingData[idx];
-                            return row?.zoneCode ?? '';
+                            return row?.warehouseName ?? '';
                           },
                           afterBody: (items) => {
                             const idx = items[0]?.dataIndex ?? 0;
                             const row = deepPricingData[idx];
-                            return [`Warehouse: ${row?.warehouseName || 'Unknown warehouse'}`];
+                            return [
+                              `Rented/Total: ${row?.rentedZoneCount ?? 0}/${row?.totalZoneCount ?? 0} zones`,
+                            ];
                           },
                         },
                       },
                     },
                     scales: {
                       x: {
-                        title: { display: true, text: 'Zone code' },
+                        title: { display: true, text: 'Warehouse' },
+                        ticks: { autoSkip: false, maxRotation: 35, minRotation: 0 },
+                        stacked: true,
                       },
                       y: {
-                        type: 'linear',
-                        position: 'left',
                         min: 0,
-                        max: 100,
-                        title: { display: true, text: 'Fill %' },
-                      },
-                      y1: {
-                        type: 'linear',
-                        position: 'right',
-                        grid: { drawOnChartArea: false },
-                        title: { display: true, text: 'VND / month' },
-                        ticks: {
-                          callback: (v) => (typeof v === 'number' ? `${(v / 1000).toFixed(0)}k` : v),
-                        },
+                        ticks: { precision: 0 },
+                        title: { display: true, text: 'Zones' },
+                        stacked: true,
                       },
                     },
                   }}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
-                  No zones or shelf data for this range.
+                  No zone rental data for this range.
                 </div>
               )}
             </div>
-            {deepPricingData && deepPricingData.length > 0 && !deepPricingLoading && (
-              <div className="mt-6 space-y-4">
-                <p className="text-xs font-black uppercase tracking-widest text-slate-500">Detail breakdown</p>
-                <div className="max-w-md">
-                  <Select
-                    label="Warehouse"
-                    options={zonePricingWarehouseSelectOptions}
-                    value={zonePricingWarehouseFilter}
-                    onChange={(e) => setZonePricingWarehouseFilter(e.target.value)}
-                    className="bg-white"
-                  />
-                </div>
-                {zonePricingFilteredRows.length === 0 ? (
-                  <p className="text-sm text-slate-500">No rows for this warehouse filter.</p>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                      <table className="w-full min-w-[960px] text-left text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500">
-                            <th className="w-12 px-3 py-2 text-center">#</th>
-                            <th className="px-3 py-2">Zone</th>
-                            <th className="px-3 py-2">Warehouse</th>
-                            <th className="px-3 py-2 text-right">Fill %</th>
-                            <th className="px-3 py-2 text-right">Shelves rented / total</th>
-                            <th className="px-3 py-2 text-right">Avg rent in range</th>
-                            <th className="px-3 py-2 text-right">Suggested rent / mo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {zonePricingPagedRows.map((row, i) => {
-                            const rowNum =
-                              (safeZonePricingDetailPage - 1) * ZONE_PRICING_TABLE_PAGE_SIZE + i + 1;
-                            return (
-                              <tr key={`${row.zoneId}-${row.zoneCode}-${i}`} className="border-b border-slate-100">
-                                <td className="px-3 py-2 text-center tabular-nums text-slate-500 font-semibold">
-                                  {rowNum}
-                                </td>
-                                <td className="px-3 py-2 font-mono font-semibold text-slate-900">{row.zoneCode}</td>
-                                <td className="px-3 py-2 text-slate-800">{row.warehouseName || '—'}</td>
-                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-                                  {Math.round(row.occupancyPercent)}%
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                                  {row.shelfRented}
-                                  <span className="text-slate-400"> / </span>
-                                  {row.shelfTotal}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-                                  {formatZonePricingVnd(row.avgMonthlyRentInRange)}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums text-slate-800">
-                                  {formatZonePricingVnd(row.suggestedMonthlyPrice)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
-                      <p className="text-xs text-slate-500">
-                        Showing {(safeZonePricingDetailPage - 1) * ZONE_PRICING_TABLE_PAGE_SIZE + 1}–
-                        {Math.min(
-                          safeZonePricingDetailPage * ZONE_PRICING_TABLE_PAGE_SIZE,
-                          zonePricingFilteredRows.length,
-                        )}{' '}
-                        of {zonePricingFilteredRows.length}
-                      </p>
-                      <Pagination
-                        currentPage={safeZonePricingDetailPage}
-                        totalPages={zonePricingDetailTotalPages}
-                        onPageChange={setZonePricingTablePage}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
             {insightsByKey.manager_deep_zone_pricing && (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm shadow-sm">
                 <div className="mb-2 flex items-center justify-between gap-3">
@@ -1942,7 +1888,7 @@ export default function ManagerReportsPage() {
                       topProducts: deepTopStockData,
                       totalQuantity: topStockSummary.totalQuantity,
                     },
-                    { startDate: deepSnapshotDate, endDate: deepSnapshotDate },
+                    { startDate: globalStart, endDate: globalEnd },
                   )
                 }
               >
@@ -2057,27 +2003,13 @@ export default function ManagerReportsPage() {
                   handleInsightRequest(
                     'manager_deep_penalty_damage',
                     deepPenaltyData,
-                    { startDate: deepPenaltyStart, endDate: deepPenaltyEnd },
+                    { startDate: globalStart, endDate: globalEnd },
                   )
                 }
               >
                 Insight
               </Button>
             </div>
-            <ChartDateFilterBar
-              enableToggle
-              startDate={deepPenaltyStart}
-              endDate={deepPenaltyEnd}
-              activePreset={deepPenaltyPreset}
-              onStartChange={setDeepPenaltyStart}
-              onEndChange={setDeepPenaltyEnd}
-              onClearPreset={() => setDeepPenaltyPreset(null)}
-              onApplyPreset={(r, preset) => {
-                setDeepPenaltyStart(r.start);
-                setDeepPenaltyEnd(r.end);
-                setDeepPenaltyPreset(preset);
-              }}
-            />
             <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Customers</p>

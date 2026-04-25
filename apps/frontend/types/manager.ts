@@ -253,15 +253,10 @@ export interface ExpiryStackedReport {
 }
 
 export interface ZonePricingComboRow {
-  zoneCode: string;
-  zoneId: string;
   warehouseId: string;
   warehouseName: string;
-  occupancyPercent: number;
-  avgMonthlyRentInRange: number;
-  suggestedMonthlyPrice: number;
-  shelfTotal: number;
-  shelfRented: number;
+  rentedZoneCount: number;
+  totalZoneCount: number;
 }
 
 export interface PenaltyTopCustomerRow {

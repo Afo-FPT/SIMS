@@ -23,6 +23,8 @@ export async function getManagerReportController(
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
     const granularity = ((req.query.granularity as string) || "day") === "week" ? "week" : "day";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -43,7 +45,7 @@ export async function getManagerReportController(
       });
     }
 
-    const report = await getManagerReport(startDate, endDate, granularity);
+    const report = await getManagerReport(startDate, endDate, granularity, warehouseId, zoneId);
     res.json({ data: report });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -61,6 +63,8 @@ export async function getTopOutboundProductsController(
   try {
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -81,7 +85,7 @@ export async function getTopOutboundProductsController(
       });
     }
 
-    const data = await getTopOutboundProducts(startDate, endDate);
+    const data = await getTopOutboundProducts(startDate, endDate, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -96,6 +100,8 @@ export async function getApprovalByManagerController(req: Request, res: Response
   try {
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -116,7 +122,7 @@ export async function getApprovalByManagerController(req: Request, res: Response
       });
     }
 
-    const data = await getApprovalRateByManager(startDate, endDate);
+    const data = await getApprovalRateByManager(startDate, endDate, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -133,6 +139,8 @@ export async function getProcessingTimeController(req: Request, res: Response) {
     const endDate = (req.query.endDate as string) || "";
     const granularity =
       ((req.query.granularity as string) || "week") === "month" ? "month" : "week";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -153,7 +161,7 @@ export async function getProcessingTimeController(req: Request, res: Response) {
       });
     }
 
-    const data = await getProcessingTimeStats(startDate, endDate, granularity);
+    const data = await getProcessingTimeStats(startDate, endDate, granularity, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -174,6 +182,8 @@ export async function getManagerExpiryStackedController(req: Request, res: Respo
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
     const granularity = parseDeepGranularity(req.query.granularity as string);
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -195,7 +205,7 @@ export async function getManagerExpiryStackedController(req: Request, res: Respo
       return res.status(400).json({ message: "startDate must be before or equal to endDate" });
     }
 
-    const data = await getManagerExpiryStackedReport(startDate, endDate, granularity);
+    const data = await getManagerExpiryStackedReport(startDate, endDate, granularity, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -209,6 +219,8 @@ export async function getManagerZonePricingComboController(req: Request, res: Re
   try {
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -225,7 +237,7 @@ export async function getManagerZonePricingComboController(req: Request, res: Re
       return res.status(400).json({ message: "startDate must be before or equal to endDate" });
     }
 
-    const data = await getManagerZonePricingComboData(startDate, endDate);
+    const data = await getManagerZonePricingComboData(startDate, endDate, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -241,6 +253,8 @@ export async function getManagerPenaltyTopCustomersController(req: Request, res:
     const endDate = (req.query.endDate as string) || "";
     const limitRaw = parseInt(String(req.query.limit || "10"), 10);
     const limit = Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, limitRaw)) : 10;
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -257,7 +271,7 @@ export async function getManagerPenaltyTopCustomersController(req: Request, res:
       return res.status(400).json({ message: "startDate must be before or equal to endDate" });
     }
 
-    const data = await getManagerPenaltyTopCustomers(startDate, endDate, limit);
+    const data = await getManagerPenaltyTopCustomers(startDate, endDate, limit, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -272,6 +286,8 @@ export async function getManagerRevenueReportController(req: Request, res: Respo
     const startDate = (req.query.startDate as string) || "";
     const endDate = (req.query.endDate as string) || "";
     const granularity = ((req.query.granularity as string) || "week") === "month" ? "month" : "week";
+    const warehouseId = ((req.query.warehouseId as string) || "").trim() || undefined;
+    const zoneId = ((req.query.zoneId as string) || "").trim() || undefined;
 
     if (!startDate || !endDate) {
       return res.status(400).json({
@@ -288,7 +304,7 @@ export async function getManagerRevenueReportController(req: Request, res: Respo
       return res.status(400).json({ message: "startDate must be before or equal to endDate" });
     }
 
-    const data = await getManagerRevenueReport(startDate, endDate, granularity);
+    const data = await getManagerRevenueReport(startDate, endDate, granularity, warehouseId, zoneId);
     res.json({ data });
   } catch (error: any) {
     res.status(500).json({ message: error.message });

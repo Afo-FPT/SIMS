@@ -12,9 +12,11 @@ import { LoadingSkeleton } from '../../../components/ui/LoadingSkeleton';
 import { ErrorState } from '../../../components/ui/ErrorState';
 import { Button } from '../../../components/ui/Button';
 import { Pagination } from '../../../components/ui/Pagination';
+import { Select } from '../../../components/ui/Select';
 import { ChatMarkdown } from '../../../components/ChatMarkdown';
 import { rollingPresetRange, type QuickPreset } from '../../../lib/report-date-range';
 import { formatTime, formatDayMonth } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 const COLORS = ['#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#6366f1', '#14b8a6'];
 const CYCLE_LIST_PAGE_SIZE = 8;
@@ -43,6 +45,7 @@ export default function StaffReportsPage() {
   const [insightError, setInsightError] = useState<string | null>(null);
   const [cycleSort, setCycleSort] = useState<'risk_first' | 'best_first' | 'latest_first'>('risk_first');
   const [cyclePage, setCyclePage] = useState(1);
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('all');
 
   const aiStartDate = useMemo(() => {
     const d = new Date();
@@ -50,6 +53,33 @@ export default function StaffReportsPage() {
     return toIsoDate(d);
   }, []);
   const aiEndDate = useMemo(() => toIsoDate(new Date()), []);
+  const warehouseOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const r of requests as Array<{ warehouse_id?: string; warehouse_name?: string }>) {
+      const id = (r.warehouse_id || '').trim();
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, r.warehouse_name || id);
+    }
+    for (const c of cycleCounts as Array<{ warehouse_id?: string; warehouse_name?: string }>) {
+      const id = (c.warehouse_id || '').trim();
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, c.warehouse_name || id);
+    }
+    return [
+      { value: 'all', label: 'All warehouses' },
+      ...Array.from(byId.entries())
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([value, label]) => ({ value, label })),
+    ];
+  }, [requests, cycleCounts]);
+  const warehouseFilteredRequests = useMemo(() => {
+    if (selectedWarehouseId === 'all') return requests;
+    return requests.filter((r: any) => String(r.warehouse_id || '') === selectedWarehouseId);
+  }, [requests, selectedWarehouseId]);
+  const warehouseFilteredCycleCounts = useMemo(() => {
+    if (selectedWarehouseId === 'all') return cycleCounts;
+    return cycleCounts.filter((c: any) => String(c.warehouse_id || '') === selectedWarehouseId);
+  }, [cycleCounts, selectedWarehouseId]);
 
   async function handleInsightRequest(chartKey: string, data: unknown) {
     try {
@@ -74,7 +104,6 @@ export default function StaffReportsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function run(isInitial: boolean) {
       try {
@@ -102,33 +131,40 @@ export default function StaffReportsPage() {
     }
 
     void run(true);
-    pollTimer = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void run(false);
-    }, 15000);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void run(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
     };
   }, []);
 
   const historyRequests = useMemo(() => {
     const from = new Date(historyStartDate).getTime();
     const to = new Date(historyEndDate).getTime() + 86399999;
-    return requests.filter((r) => {
+    return warehouseFilteredRequests.filter((r) => {
       const t = new Date(r.updated_at || r.created_at).getTime();
       return t >= from && t <= to;
     });
-  }, [requests, historyStartDate, historyEndDate]);
+  }, [warehouseFilteredRequests, historyStartDate, historyEndDate]);
 
   const historyCycleCounts = useMemo(() => {
     const from = new Date(historyStartDate).getTime();
     const to = new Date(historyEndDate).getTime() + 86399999;
-    return cycleCounts.filter((c) => {
+    return warehouseFilteredCycleCounts.filter((c) => {
       const t = new Date(c.updated_at || c.created_at).getTime();
       return t >= from && t <= to;
     });
-  }, [cycleCounts, historyStartDate, historyEndDate]);
+  }, [warehouseFilteredCycleCounts, historyStartDate, historyEndDate]);
 
   const inOutPerDay = useMemo(() => {
     const fromDate = new Date(historyStartDate);
@@ -187,7 +223,7 @@ export default function StaffReportsPage() {
       return 'Quantity mismatch';
     };
 
-    requests.forEach((r) => {
+    warehouseFilteredRequests.forEach((r) => {
       const requestKey = `req:${r.request_id}`;
       const items = r.items || [];
 
@@ -214,7 +250,7 @@ export default function StaffReportsPage() {
     });
 
     // Cycle count issues are request-level mismatches when any item has discrepancy.
-    cycleCounts.forEach((c) => {
+    warehouseFilteredCycleCounts.forEach((c) => {
       const hasDiscrepancy = (c.items || []).some((it: any) => Number(it.discrepancy || 0) !== 0);
       if (hasDiscrepancy) mismatchRequestIds.add(`cycle:${c.cycle_count_id}`);
     });
@@ -224,10 +260,10 @@ export default function StaffReportsPage() {
       { name: 'Quantity mismatch', value: mismatchRequestIds.size },
       { name: 'Location/flow issue', value: locationRequestIds.size },
     ];
-  }, [requests, cycleCounts]);
+  }, [warehouseFilteredRequests, warehouseFilteredCycleCounts]);
 
   const realtimeCycleAccuracy = useMemo(() => {
-    return cycleCounts.map((c) => {
+    return warehouseFilteredCycleCounts.map((c) => {
       const system = (c.items || []).reduce((s: number, i: any) => s + (i.system_quantity || 0), 0);
       const actual = (c.items || []).reduce((s: number, i: any) => s + (i.counted_quantity || 0), 0);
       const accuracy = system === 0 ? 100 : Math.max(0, Math.round(100 - (Math.abs(system - actual) / system) * 100));
@@ -236,34 +272,34 @@ export default function StaffReportsPage() {
         accuracy,
       };
     });
-  }, [cycleCounts]);
+  }, [warehouseFilteredCycleCounts]);
 
   const realtimeTaskTypeDistribution = useMemo(() => {
-    const inbound = requests.filter((r) => r.request_type === 'IN').length;
-    const outbound = requests.filter((r) => r.request_type === 'OUT').length;
-    const cycleCount = cycleCounts.length;
+    const inbound = warehouseFilteredRequests.filter((r) => r.request_type === 'IN').length;
+    const outbound = warehouseFilteredRequests.filter((r) => r.request_type === 'OUT').length;
+    const cycleCount = warehouseFilteredCycleCounts.length;
     return [
       { name: 'Inbound tasks', value: inbound },
       { name: 'Outbound tasks', value: outbound },
       { name: 'Cycle count tasks', value: cycleCount },
     ];
-  }, [requests, cycleCounts]);
+  }, [warehouseFilteredRequests, warehouseFilteredCycleCounts]);
 
   const realtimeWorkloadByStatus = useMemo(() => {
-    const requestPending = requests.filter((r) => r.status === 'PENDING').length;
-    const requestInProgress = requests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
-    const requestCompleted = requests.filter((r) => r.status === 'COMPLETED').length;
+    const requestPending = warehouseFilteredRequests.filter((r) => r.status === 'PENDING').length;
+    const requestInProgress = warehouseFilteredRequests.filter((r) => r.status === 'APPROVED' || r.status === 'DONE_BY_STAFF').length;
+    const requestCompleted = warehouseFilteredRequests.filter((r) => r.status === 'COMPLETED').length;
 
-    const cyclePending = cycleCounts.filter((c) => c.status === 'PENDING').length;
-    const cycleInProgress = cycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
-    const cycleCompleted = cycleCounts.filter((c) => c.status === 'CONFIRMED').length;
+    const cyclePending = warehouseFilteredCycleCounts.filter((c) => c.status === 'PENDING').length;
+    const cycleInProgress = warehouseFilteredCycleCounts.filter((c) => c.status === 'APPROVED' || c.status === 'STAFF_SUBMITTED').length;
+    const cycleCompleted = warehouseFilteredCycleCounts.filter((c) => c.status === 'CONFIRMED').length;
 
     return [
       { status: 'Pending', requests: requestPending, cycleCounts: cyclePending },
       { status: 'In progress', requests: requestInProgress, cycleCounts: cycleInProgress },
       { status: 'Completed', requests: requestCompleted, cycleCounts: cycleCompleted },
     ];
-  }, [requests, cycleCounts]);
+  }, [warehouseFilteredRequests, warehouseFilteredCycleCounts]);
 
   const historyKpis = useMemo(() => {
     const inboundOrders = historyRequests.filter((r) => r.request_type === 'IN').length;
@@ -338,6 +374,15 @@ export default function StaffReportsPage() {
       <div>
         <h1 className="text-3xl font-black text-slate-900 tracking-tight">Staff Reports</h1>
         <p className="mt-1 text-xs text-slate-500">Last updated: {lastUpdated ?? '--:--:--'}</p>
+      </div>
+      <div className="max-w-sm">
+        <Select
+          label="Warehouse"
+          options={warehouseOptions}
+          value={selectedWarehouseId}
+          onChange={(e) => setSelectedWarehouseId(e.target.value)}
+          className="bg-white"
+        />
       </div>
 
       {insightError && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{insightError}</div>}

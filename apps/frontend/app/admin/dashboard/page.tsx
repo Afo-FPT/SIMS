@@ -10,6 +10,7 @@ import { ErrorState } from '../../../components/ui/ErrorState';
 import { Badge } from '../../../components/ui/Badge';
 import { Table, TableHead, TableHeader, TableBody, TableRow, TableCell } from '../../../components/ui/Table';
 import { formatTime, formatDateTime } from '../../../lib/date-format';
+import { getNotificationSocket } from '../../../lib/notifications.socket';
 
 ensureChartSetup();
 
@@ -23,7 +24,6 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     async function run(isInitialLoad: boolean) {
       try {
@@ -53,15 +53,22 @@ export default function AdminDashboard() {
     }
 
     void run(true);
-    pollTimer = setInterval(() => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void run(false);
       }
-    }, 15000);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    const socket = getNotificationSocket();
+    const onRealtimeChanged = () => {
+      if (document.visibilityState === 'visible') void run(false);
+    };
+    socket?.on('notification:new', onRealtimeChanged);
 
     return () => {
       cancelled = true;
-      if (pollTimer) clearInterval(pollTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      socket?.off('notification:new', onRealtimeChanged);
     };
   }, []);
 

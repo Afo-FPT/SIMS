@@ -6,7 +6,6 @@ import CycleCountItem from "../models/CycleCountItem";
 import Contract from "../models/Contract";
 import Zone from "../models/Zone";
 import User from "../models/User";
-import { suggestZoneMonthlyPrices, type ZonePricingInputRow } from "./pricing-suggestion.service";
 import InboundApproval from "../models/InboundApproval";
 import OutboundApproval from "../models/OutboundApproval";
 import Payment from "../models/Payment";
@@ -132,26 +131,93 @@ export interface ManagerReportResponse {
 
 export type TrendGranularity = "day" | "week";
 
+interface WarehouseReportFilter {
+  warehouseObjectId: Types.ObjectId | null;
+  zoneObjectId: Types.ObjectId | null;
+  zoneRequested: boolean;
+  contractIds: Types.ObjectId[] | null;
+}
+
+async function resolveWarehouseFilter(warehouseId?: string, zoneId?: string): Promise<WarehouseReportFilter> {
+  const id = (warehouseId || "").trim();
+  const zid = (zoneId || "").trim();
+  const zoneRequested = Boolean(zid);
+  if (!id && !zid) return { warehouseObjectId: null, zoneObjectId: null, zoneRequested: false, contractIds: null };
+  if (id && !Types.ObjectId.isValid(id)) {
+    return { warehouseObjectId: null, zoneObjectId: null, zoneRequested, contractIds: [] };
+  }
+  if (zid && !Types.ObjectId.isValid(zid)) {
+    return { warehouseObjectId: id ? new Types.ObjectId(id) : null, zoneObjectId: null, zoneRequested: true, contractIds: [] };
+  }
+  const warehouseObjectId = id ? new Types.ObjectId(id) : null;
+  const zoneObjectId = zid ? new Types.ObjectId(zid) : null;
+  if (zoneObjectId) {
+    const zoneQuery: Record<string, unknown> = { _id: zoneObjectId };
+    if (warehouseObjectId) zoneQuery.warehouseId = warehouseObjectId;
+    const zoneExists = await Zone.exists(zoneQuery);
+    if (!zoneExists) {
+      return { warehouseObjectId, zoneObjectId, zoneRequested: true, contractIds: [] };
+    }
+  }
+  const contractQuery: Record<string, unknown> = {};
+  if (warehouseObjectId) contractQuery.warehouseId = warehouseObjectId;
+  if (zoneObjectId) contractQuery["rentedZones.zoneId"] = zoneObjectId;
+  const contractIdsRaw = await Contract.find(contractQuery).distinct("_id");
+  const contractIds = contractIdsRaw
+    .map((x) => new Types.ObjectId(String(x)))
+    .filter((x) => Types.ObjectId.isValid(String(x)));
+  return { warehouseObjectId, zoneObjectId, zoneRequested, contractIds };
+}
+
+function buildRequestFilter(filter: WarehouseReportFilter): Record<string, unknown> {
+  if (filter.zoneObjectId) {
+    return {
+      $or: [{ requestedZoneId: filter.zoneObjectId }, { contractId: { $in: filter.contractIds ?? [] } }]
+    };
+  }
+  if (filter.contractIds !== null) return { contractId: { $in: filter.contractIds } };
+  return {};
+}
+
+function buildPrefixedRequestFilter(
+  filter: WarehouseReportFilter,
+  prefix: string
+): Record<string, unknown> {
+  if (filter.zoneObjectId) {
+    return {
+      $or: [
+        { [`${prefix}.requestedZoneId`]: filter.zoneObjectId },
+        { [`${prefix}.contractId`]: { $in: filter.contractIds ?? [] } }
+      ]
+    };
+  }
+  if (filter.contractIds !== null) return { [`${prefix}.contractId`]: { $in: filter.contractIds } };
+  return {};
+}
+
 /**
  * Get manager report (stats, capacity, inventory, trend, anomalies, expiring contracts & capacity).
  */
 export async function getManagerReport(
   startDate: string,
   endDate: string,
-  granularity: TrendGranularity = "day"
+  granularity: TrendGranularity = "day",
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<ManagerReportResponse> {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
   end.setHours(23, 59, 59, 999);
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
   const [stats, capacityData, inventoryData, trendData, expiringAndCapacity] =
     await Promise.all([
-      getStats(start, end),
-      getCapacityData(),
-      getInventoryByItem(),
-      getTrendData(start, end, granularity),
-      getExpiringContractsAndCapacity()
+      getStats(start, end, filter),
+      getCapacityData(filter),
+      getInventoryByItem(filter),
+      getTrendData(start, end, granularity, filter),
+      getExpiringContractsAndCapacity(filter)
     ]);
 
   const anomalies = detectAnomalies(trendData);
@@ -168,9 +234,13 @@ export async function getManagerReport(
 
 async function getStats(
   start: Date,
-  end: Date
+  end: Date,
+  filter: WarehouseReportFilter
 ): Promise<ManagerReportStats> {
   const completedStatuses = ["COMPLETED", "DONE_BY_STAFF"];
+  const requestMatchBase: Record<string, unknown> = buildRequestFilter(filter);
+  const paidMatchBase: Record<string, unknown> =
+    filter.contractIds !== null ? { contractId: { $in: filter.contractIds } } : {};
 
   const [
     inbound,
@@ -183,20 +253,24 @@ async function getStats(
     servicePaidCount
   ] = await Promise.all([
     StorageRequest.countDocuments({
+      ...requestMatchBase,
       requestType: "IN",
       status: { $in: completedStatuses },
       createdAt: { $gte: start, $lte: end }
     }),
     StorageRequest.countDocuments({
+      ...requestMatchBase,
       requestType: "OUT",
       status: { $in: completedStatuses },
       createdAt: { $gte: start, $lte: end }
     }),
     StorageRequest.countDocuments({
+      ...requestMatchBase,
       status: { $in: completedStatuses },
       createdAt: { $gte: start, $lte: end }
     }),
     StorageRequest.countDocuments({
+      ...requestMatchBase,
       status: { $ne: "REJECTED" },
       createdAt: { $gte: start, $lte: end }
     }),
@@ -204,6 +278,7 @@ async function getStats(
       {
         $match: {
           status: "paid",
+          ...paidMatchBase,
           paidAt: { $gte: start, $lte: end }
         }
       },
@@ -218,6 +293,7 @@ async function getStats(
       {
         $match: {
           status: "paid",
+          ...paidMatchBase,
           paidAt: { $gte: start, $lte: end }
         }
       },
@@ -229,10 +305,12 @@ async function getStats(
       }
     ]),
     Payment.countDocuments({
+      ...paidMatchBase,
       status: "paid",
       paidAt: { $gte: start, $lte: end }
     }),
     RequestCreditPayment.countDocuments({
+      ...paidMatchBase,
       status: "paid",
       paidAt: { $gte: start, $lte: end }
     })
@@ -241,10 +319,38 @@ async function getStats(
   const completion =
     totalInPeriod > 0 ? Math.round((totalCompleted / totalInPeriod) * 100) : 0;
 
-  const discrepancies = await CycleCountItem.countDocuments({
-    discrepancy: { $ne: 0 },
-    createdAt: { $gte: start, $lte: end }
-  });
+  const discrepancies =
+    filter.warehouseObjectId === null && !filter.zoneRequested
+      ? await CycleCountItem.countDocuments({
+          discrepancy: { $ne: 0 },
+          createdAt: { $gte: start, $lte: end }
+        })
+      : (
+          await CycleCountItem.aggregate([
+            {
+              $match: {
+                discrepancy: { $ne: 0 },
+                createdAt: { $gte: start, $lte: end }
+              }
+            },
+            {
+              $lookup: {
+                from: "shelves",
+                localField: "shelfId",
+                foreignField: "_id",
+                as: "shelf"
+              }
+            },
+            { $unwind: "$shelf" },
+            {
+              $match: {
+                ...(filter.warehouseObjectId ? { "shelf.warehouseId": filter.warehouseObjectId } : {}),
+                ...(filter.zoneObjectId ? { "shelf.zoneId": filter.zoneObjectId } : {})
+              }
+            },
+            { $count: "n" }
+          ])
+        )[0]?.n ?? 0;
 
   const contractRevenue = Number(contractRevenueAgg?.[0]?.total ?? 0);
   const serviceRevenue = Number(serviceRevenueAgg?.[0]?.total ?? 0);
@@ -263,11 +369,14 @@ async function getStats(
   };
 }
 
-async function getCapacityData(): Promise<CapacitySlice[]> {
+async function getCapacityData(filter: WarehouseReportFilter): Promise<CapacitySlice[]> {
+  const shelfMatch: Record<string, unknown> = {};
+  if (filter.warehouseObjectId) shelfMatch.warehouseId = filter.warehouseObjectId;
+  if (filter.zoneObjectId) shelfMatch.zoneId = filter.zoneObjectId;
   const [rented, available, maintenance] = await Promise.all([
-    Shelf.countDocuments({ status: "RENTED" }),
-    Shelf.countDocuments({ status: "AVAILABLE" }),
-    Shelf.countDocuments({ status: "MAINTENANCE" })
+    Shelf.countDocuments({ ...shelfMatch, status: "RENTED" }),
+    Shelf.countDocuments({ ...shelfMatch, status: "AVAILABLE" }),
+    Shelf.countDocuments({ ...shelfMatch, status: "MAINTENANCE" })
   ]);
 
   const total = rented + available + maintenance;
@@ -287,13 +396,36 @@ async function getCapacityData(): Promise<CapacitySlice[]> {
   ];
 }
 
-async function getInventoryByItem(): Promise<StockByCategory[]> {
-  const aggregated = await StoredItem.aggregate([
-    { $group: { _id: "$itemName", qty: { $sum: "$quantity" } } },
-    { $sort: { qty: -1 } },
-    { $limit: 15 },
-    { $project: { name: "$_id", qty: 1, _id: 0 } }
-  ]);
+async function getInventoryByItem(filter: WarehouseReportFilter): Promise<StockByCategory[]> {
+  const aggregated =
+    filter.warehouseObjectId === null && !filter.zoneRequested
+      ? await StoredItem.aggregate([
+          { $group: { _id: "$itemName", qty: { $sum: "$quantity" } } },
+          { $sort: { qty: -1 } },
+          { $limit: 15 },
+          { $project: { name: "$_id", qty: 1, _id: 0 } }
+        ])
+      : await StoredItem.aggregate([
+          {
+            $lookup: {
+              from: "shelves",
+              localField: "shelfId",
+              foreignField: "_id",
+              as: "shelf"
+            }
+          },
+          { $unwind: "$shelf" },
+          {
+            $match: {
+              ...(filter.warehouseObjectId ? { "shelf.warehouseId": filter.warehouseObjectId } : {}),
+              ...(filter.zoneObjectId ? { "shelf.zoneId": filter.zoneObjectId } : {})
+            }
+          },
+          { $group: { _id: "$itemName", qty: { $sum: "$quantity" } } },
+          { $sort: { qty: -1 } },
+          { $limit: 15 },
+          { $project: { name: "$_id", qty: 1, _id: 0 } }
+        ]);
 
   return aggregated.map((r: { name: string; qty: number }) => ({
     name: r.name || "Unknown",
@@ -304,11 +436,13 @@ async function getInventoryByItem(): Promise<StockByCategory[]> {
 async function getTrendData(
   start: Date,
   end: Date,
-  granularity: TrendGranularity
+  granularity: TrendGranularity,
+  filter: WarehouseReportFilter
 ): Promise<TrendDataPoint[]> {
-  const match = {
+  const match: Record<string, unknown> = {
     status: { $in: ["COMPLETED", "DONE_BY_STAFF"] as const },
-    createdAt: { $gte: start, $lte: end }
+    createdAt: { $gte: start, $lte: end },
+    ...buildRequestFilter(filter)
   };
 
   if (granularity === "day") {
@@ -364,7 +498,7 @@ async function getTrendData(
   return weekGroups as TrendDataPoint[];
 }
 
-async function getExpiringContractsAndCapacity(): Promise<ExpiringAndCapacity> {
+async function getExpiringContractsAndCapacity(filter: WarehouseReportFilter): Promise<ExpiringAndCapacity> {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const in30 = new Date(now);
@@ -374,7 +508,10 @@ async function getExpiringContractsAndCapacity(): Promise<ExpiringAndCapacity> {
   const in90 = new Date(now);
   in90.setDate(in90.getDate() + 90);
 
-  const activeContracts = await Contract.find({ status: "active" })
+  const activeContractMatch: Record<string, unknown> = { status: "active" };
+  if (filter.warehouseObjectId) activeContractMatch.warehouseId = filter.warehouseObjectId;
+  if (filter.zoneObjectId) activeContractMatch["rentedZones.zoneId"] = filter.zoneObjectId;
+  const activeContracts = await Contract.find(activeContractMatch)
     .populate<{ customerId: { name: string } }>("customerId", "name")
     .lean();
 
@@ -430,8 +567,27 @@ async function getExpiringContractsAndCapacity(): Promise<ExpiringAndCapacity> {
     .sort((a, b) => a.endDate.localeCompare(b.endDate));
 
   const [totalQuantity, totalCapacity] = await Promise.all([
-    StoredItem.aggregate([{ $group: { _id: null, sum: { $sum: "$quantity" } } }]),
-    Shelf.aggregate([{ $group: { _id: null, sum: { $sum: "$maxCapacity" } } }])
+    filter.warehouseObjectId === null && !filter.zoneRequested
+      ? StoredItem.aggregate([{ $group: { _id: null, sum: { $sum: "$quantity" } } }])
+      : StoredItem.aggregate([
+          {
+            $lookup: {
+              from: "shelves",
+              localField: "shelfId",
+              foreignField: "_id",
+              as: "shelf"
+            }
+          },
+          { $unwind: "$shelf" },
+          { $match: { "shelf.warehouseId": filter.warehouseObjectId } },
+          ...(filter.zoneObjectId ? [{ $match: { "shelf.zoneId": filter.zoneObjectId } }] : []),
+          { $group: { _id: null, sum: { $sum: "$quantity" } } }
+        ]),
+    Shelf.aggregate([
+      ...(filter.warehouseObjectId ? [{ $match: { warehouseId: filter.warehouseObjectId } }] : []),
+      ...(filter.zoneObjectId ? [{ $match: { zoneId: filter.zoneObjectId } }] : []),
+      { $group: { _id: null, sum: { $sum: "$maxCapacity" } } }
+    ])
   ]);
   const used = totalQuantity[0]?.sum ?? 0;
   const capacity = totalCapacity[0]?.sum ?? 1;
@@ -526,13 +682,17 @@ function detectAnomalies(trendData: TrendDataPoint[]): TrendAnomaly[] {
  */
 export async function getTopOutboundProducts(
   startDate: string,
-  endDate: string
+  endDate: string,
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<TopOutboundProductItem[]> {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
   const end = new Date(endDate);
   end.setHours(23, 59, 59, 999);
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
+  const requestWarehouseMatch = buildPrefixedRequestFilter(filter, "request");
   const aggregated = await StorageRequestDetail.aggregate([
     {
       $lookup: {
@@ -547,7 +707,8 @@ export async function getTopOutboundProducts(
       $match: {
         "request.requestType": "OUT",
         "request.status": { $in: ["DONE_BY_STAFF", "COMPLETED"] },
-        "request.updatedAt": { $gte: start, $lte: end }
+        "request.updatedAt": { $gte: start, $lte: end },
+        ...requestWarehouseMatch
       }
     },
     {
@@ -591,7 +752,9 @@ export async function getTopOutboundProducts(
  */
 export async function getApprovalRateByManager(
   startDate: string,
-  endDate: string
+  endDate: string,
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<ApprovalByManagerItem[]> {
   const start = new Date(startDate);
   start.setHours(0, 0, 0, 0);
@@ -600,9 +763,23 @@ export async function getApprovalRateByManager(
 
   const dateFilter = { approvedAt: { $gte: start, $lte: end } };
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
+  const requestMatch = buildPrefixedRequestFilter(filter, "req");
+  const requestFilter = Object.keys(requestMatch).length > 0 ? [{ $match: requestMatch }] : [];
+
   const [inboundAgg, outboundAgg] = await Promise.all([
     InboundApproval.aggregate([
       { $match: dateFilter },
+      {
+        $lookup: {
+          from: "storagerequests",
+          localField: "inboundRequestId",
+          foreignField: "_id",
+          as: "req"
+        }
+      },
+      { $unwind: "$req" },
+      ...requestFilter,
       {
         $group: {
           _id: "$managerId",
@@ -613,6 +790,16 @@ export async function getApprovalRateByManager(
     ]),
     OutboundApproval.aggregate([
       { $match: dateFilter },
+      {
+        $lookup: {
+          from: "storagerequests",
+          localField: "outboundRequestId",
+          foreignField: "_id",
+          as: "req"
+        }
+      },
+      { $unwind: "$req" },
+      ...requestFilter,
       {
         $group: {
           _id: "$managerId",
@@ -701,7 +888,9 @@ function percentile(sortedArr: number[], p: number): number {
 export async function getProcessingTimeStats(
   startDate: string,
   endDate: string,
-  granularity: "week" | "month" = "week"
+  granularity: "week" | "month" = "week",
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<{
   trendData: ProcessingTimeTrendPoint[];
   boxPlotData: ProcessingTimeBoxPlotItem[];
@@ -711,8 +900,10 @@ export async function getProcessingTimeStats(
   const end = new Date(endDate);
   end.setHours(23, 59, 59, 999);
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
   const requests = await StorageRequest.find({
     status: { $in: ["APPROVED", "REJECTED"] },
+    ...buildRequestFilter(filter),
     approvedAt: { $exists: true, $ne: null, $gte: start, $lte: end }
   })
     .select("requestType createdAt approvedAt")
@@ -858,15 +1049,10 @@ export interface ExpiryStackedReport {
 }
 
 export interface ZonePricingComboRow {
-  zoneCode: string;
-  zoneId: string;
   warehouseId: string;
   warehouseName: string;
-  occupancyPercent: number;
-  avgMonthlyRentInRange: number;
-  suggestedMonthlyPrice: number;
-  shelfTotal: number;
-  shelfRented: number;
+  rentedZoneCount: number;
+  totalZoneCount: number;
 }
 
 export interface PenaltyTopCustomerRow {
@@ -1008,10 +1194,15 @@ function sortExpiryZoneLeaseAlerts(a: ExpiryZoneLeaseAlertRow, b: ExpiryZoneLeas
 export async function getManagerExpiryStackedReport(
   startDate: string,
   endDate: string,
-  granularity: ManagerDeepReportGranularity
+  granularity: ManagerDeepReportGranularity,
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<ExpiryStackedReport> {
   const bucketsMeta = enumerateExpiryBuckets(startDate, endDate, granularity);
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
   const contracts = await Contract.find({
+    ...(filter.warehouseObjectId ? { warehouseId: filter.warehouseObjectId } : {}),
+    ...(filter.zoneObjectId ? { "rentedZones.zoneId": filter.zoneObjectId } : {}),
     rentedZones: { $exists: true, $not: { $size: 0 } }
   })
     .populate("customerId", "name")
@@ -1164,109 +1355,95 @@ export async function getManagerExpiryStackedReport(
   return { granularity, buckets };
 }
 
-/**
- * Zone occupancy (current shelf snapshot) + avg zone rent from contract lines overlapping date range + Gemini suggested price.
- */
+/** Number of rented zones grouped by warehouse (in selected range). */
 export async function getManagerZonePricingComboData(
   startDate: string,
-  endDate: string
+  endDate: string,
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<ZonePricingComboRow[]> {
   const start = parseYMDLocal(startDate);
   start.setHours(0, 0, 0, 0);
   const end = parseYMDLocal(endDate);
   end.setHours(23, 59, 59, 999);
 
-  const zones = await Zone.find({ status: "ACTIVE" })
-    .select("_id zoneCode warehouseId")
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
+  const zones = await Zone.find({
+    status: "ACTIVE",
+    ...(filter.warehouseObjectId ? { warehouseId: filter.warehouseObjectId } : {}),
+    ...(filter.zoneObjectId ? { _id: filter.zoneObjectId } : {})
+  })
+    .select("_id warehouseId")
     .populate("warehouseId", "name")
     .lean();
+  if (zones.length === 0) return [];
 
-  const shelfAgg = await Shelf.aggregate([
-    {
-      $group: {
-        _id: "$zoneId",
-        total: { $sum: 1 },
-        rented: { $sum: { $cond: [{ $eq: ["$status", "RENTED"] }, 1, 0] } }
-      }
-    }
-  ]);
-
-  const shelfMap = new Map(
-    shelfAgg.map((x: { _id: Types.ObjectId; total: number; rented: number }) => [
-      x._id.toString(),
-      { total: x.total, rented: x.rented }
-    ])
-  );
+  const zoneIdSet = new Set<string>(zones.map((z) => String(z._id)));
+  const warehouseByZoneId = new Map<string, { warehouseId: string; warehouseName: string }>();
+  const totalZonesByWarehouse = new Map<string, number>();
+  for (const z of zones) {
+    const w = z.warehouseId as Types.ObjectId | { _id?: Types.ObjectId; name?: string } | null;
+    const warehouseIdText =
+      w && typeof w === "object" && "_id" in w && (w as { _id?: Types.ObjectId })._id
+        ? String((w as { _id?: Types.ObjectId })._id)
+        : typeof w === "object" && w !== null && "_id" in w
+          ? String((w as { _id?: Types.ObjectId })._id || "")
+          : String(w || "");
+    const warehouseNameText =
+      w && typeof w === "object" && "name" in w ? String((w as { name?: string }).name || "—") : "—";
+    warehouseByZoneId.set(String(z._id), { warehouseId: warehouseIdText, warehouseName: warehouseNameText });
+    totalZonesByWarehouse.set(warehouseIdText, (totalZonesByWarehouse.get(warehouseIdText) || 0) + 1);
+  }
 
   const contracts = await Contract.find({
     status: { $in: ["active", "expired", "terminated", "pending_payment", "scheduled"] },
+    ...(filter.warehouseObjectId ? { warehouseId: filter.warehouseObjectId } : {}),
+    ...(filter.zoneObjectId ? { "rentedZones.zoneId": filter.zoneObjectId } : {}),
     rentedZones: { $exists: true, $not: { $size: 0 } }
   })
     .select("rentedZones")
     .lean();
 
-  const rentSumByZone = new Map<string, { sum: number; n: number }>();
+  const rentedZonesByWarehouse = new Map<string, Set<string>>();
   for (const c of contracts) {
     for (const z of c.rentedZones || []) {
       const zs = new Date(z.startDate).getTime();
       const ze = new Date(z.endDate).getTime();
       if (ze < start.getTime() || zs > end.getTime()) continue;
       const id = (z.zoneId as Types.ObjectId).toString();
-      const cur = rentSumByZone.get(id) || { sum: 0, n: 0 };
-      cur.sum += z.price;
-      cur.n += 1;
-      rentSumByZone.set(id, cur);
+      if (!zoneIdSet.has(id)) continue;
+      const warehouseInfo = warehouseByZoneId.get(id);
+      if (!warehouseInfo) continue;
+      const set = rentedZonesByWarehouse.get(warehouseInfo.warehouseId) || new Set<string>();
+      set.add(id);
+      rentedZonesByWarehouse.set(warehouseInfo.warehouseId, set);
     }
   }
 
-  function warehouseFields(z: {
-    warehouseId?: Types.ObjectId | { _id?: Types.ObjectId; name?: string } | null;
-  }): { warehouseId: string; warehouseName: string } {
-    const w = z.warehouseId;
-    if (w && typeof w === "object" && w !== null && "name" in w) {
-      const wid = (w as { _id?: Types.ObjectId })._id;
-      return {
-        warehouseId: wid ? String(wid) : "",
-        warehouseName: String((w as { name?: string }).name || "—")
-      };
+  const byWarehouse = new Map<string, { warehouseName: string; rentedZoneCount: number; totalZoneCount: number }>();
+  for (const [zoneIdKey, warehouseInfo] of warehouseByZoneId.entries()) {
+    const wid = warehouseInfo.warehouseId;
+    if (!byWarehouse.has(wid)) {
+      byWarehouse.set(wid, {
+        warehouseName: warehouseInfo.warehouseName,
+        rentedZoneCount: 0,
+        totalZoneCount: totalZonesByWarehouse.get(wid) || 0
+      });
     }
-    return { warehouseId: "", warehouseName: "—" };
+    const bucket = byWarehouse.get(wid)!;
+    if (rentedZonesByWarehouse.get(wid)?.has(zoneIdKey)) {
+      bucket.rentedZoneCount += 1;
+    }
   }
 
-  const rows: ZonePricingInputRow[] = zones.map((z) => {
-    const id = z._id.toString();
-    const sh = shelfMap.get(id) || { total: 0, rented: 0 };
-    const total = sh.total || 0;
-    const rented = sh.rented || 0;
-    const occ = total > 0 ? Math.round((rented / total) * 1000) / 10 : 0;
-    const rs = rentSumByZone.get(id);
-    const avg = rs && rs.n > 0 ? Math.round(rs.sum / rs.n) : 0;
-    return { zoneCode: z.zoneCode, occupancyPercent: occ, avgMonthlyRent: avg };
-  });
-
-  const suggested = await suggestZoneMonthlyPrices(rows);
-
-  return zones.map((z, i) => {
-    const id = z._id.toString();
-    const sh = shelfMap.get(id) || { total: 0, rented: 0 };
-    const total = sh.total || 0;
-    const rented = sh.rented || 0;
-    const occ = total > 0 ? Math.round((rented / total) * 1000) / 10 : 0;
-    const rs = rentSumByZone.get(id);
-    const avg = rs && rs.n > 0 ? Math.round(rs.sum / rs.n) : 0;
-    const wh = warehouseFields(z);
-    return {
-      zoneCode: z.zoneCode,
-      zoneId: id,
-      warehouseId: wh.warehouseId,
-      warehouseName: wh.warehouseName,
-      occupancyPercent: occ,
-      avgMonthlyRentInRange: avg,
-      suggestedMonthlyPrice: suggested[i] ?? avg,
-      shelfTotal: total,
-      shelfRented: rented
-    };
-  });
+  return Array.from(byWarehouse.entries())
+    .map(([warehouseIdKey, row]) => ({
+      warehouseId: warehouseIdKey,
+      warehouseName: row.warehouseName,
+      rentedZoneCount: row.rentedZoneCount,
+      totalZoneCount: row.totalZoneCount
+    }))
+    .sort((a, b) => b.rentedZoneCount - a.rentedZoneCount || a.warehouseName.localeCompare(b.warehouseName));
 }
 
 /**
@@ -1275,13 +1452,17 @@ export async function getManagerZonePricingComboData(
 export async function getManagerPenaltyTopCustomers(
   startDate: string,
   endDate: string,
-  limit = 10
+  limit = 10,
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<PenaltyTopCustomerRow[]> {
   const start = parseYMDLocal(startDate);
   start.setHours(0, 0, 0, 0);
   const end = parseYMDLocal(endDate);
   end.setHours(23, 59, 59, 999);
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
+  const contractFilter = buildPrefixedRequestFilter(filter, "req");
   const agg = await StorageRequestDetail.aggregate([
     {
       $lookup: {
@@ -1295,6 +1476,7 @@ export async function getManagerPenaltyTopCustomers(
     {
       $match: {
         "req.createdAt": { $gte: start, $lte: end },
+        ...contractFilter,
         damageQuantity: { $gt: 0 }
       }
     },
@@ -1337,6 +1519,7 @@ export async function getManagerPenaltyTopCustomers(
     {
       $match: {
         "req.createdAt": { $gte: start, $lte: end },
+        ...contractFilter,
         "req.customerId": { $in: ids },
         damageQuantity: { $gt: 0 }
       }
@@ -1387,7 +1570,9 @@ export async function getManagerPenaltyTopCustomers(
 export async function getManagerRevenueReport(
   startDate: string,
   endDate: string,
-  granularity: "week" | "month" = "week"
+  granularity: "week" | "month" = "week",
+  warehouseId?: string,
+  zoneId?: string
 ): Promise<ManagerRevenueReport> {
   const start = parseYMDLocal(startDate);
   start.setHours(0, 0, 0, 0);
@@ -1416,11 +1601,14 @@ export async function getManagerRevenueReport(
           ]
         };
 
+  const filter = await resolveWarehouseFilter(warehouseId, zoneId);
+  const paidContractFilter = filter.contractIds !== null ? { contractId: { $in: filter.contractIds } } : {};
   const [contractAgg, serviceAgg] = await Promise.all([
     Payment.aggregate([
       {
         $match: {
           status: "paid",
+          ...paidContractFilter,
           paidAt: { $gte: start, $lte: end }
         }
       },
@@ -1437,6 +1625,7 @@ export async function getManagerRevenueReport(
       {
         $match: {
           status: "paid",
+          ...paidContractFilter,
           paidAt: { $gte: start, $lte: end }
         }
       },

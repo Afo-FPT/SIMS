@@ -21,10 +21,14 @@ export type ReportGranularity = 'day' | 'week';
 export async function getManagerReport(
   startDate: string,
   endDate: string,
-  granularity: ReportGranularity = 'day'
+  granularity: ReportGranularity = 'day',
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<ManagerReportResponse> {
   const params = new URLSearchParams({ startDate, endDate });
   if (granularity === 'week') params.set('granularity', 'week');
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<ManagerReportResponse>(`/reports?${params.toString()}`);
 }
 
@@ -46,9 +50,13 @@ export async function getApprovalByManager(
  */
 export async function getTopOutboundProducts(
   startDate: string,
-  endDate: string
+  endDate: string,
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<TopOutboundProductItem[]> {
   const params = new URLSearchParams({ startDate, endDate });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<TopOutboundProductItem[]>(`/reports/top-outbound-products?${params.toString()}`);
 }
 
@@ -59,9 +67,13 @@ export async function getTopOutboundProducts(
 export async function getProcessingTime(
   startDate: string,
   endDate: string,
-  granularity: 'week' | 'month' = 'week'
+  granularity: 'week' | 'month' = 'week',
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<{ trendData: ProcessingTimeTrendPoint[]; boxPlotData: ProcessingTimeBoxPlotItem[] }> {
   const params = new URLSearchParams({ startDate, endDate, granularity });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<{ trendData: ProcessingTimeTrendPoint[]; boxPlotData: ProcessingTimeBoxPlotItem[] }>(
     `/reports/processing-time?${params.toString()}`,
   );
@@ -72,8 +84,12 @@ export async function getManagerExpiryStackedReport(
   startDate: string,
   endDate: string,
   granularity: ManagerDeepGranularity,
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<ExpiryStackedReport> {
   const params = new URLSearchParams({ startDate, endDate, granularity });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<ExpiryStackedReport>(`/reports/manager/expiry-stacked?${params.toString()}`);
 }
 
@@ -81,8 +97,12 @@ export async function getManagerExpiryStackedReport(
 export async function getManagerZonePricingCombo(
   startDate: string,
   endDate: string,
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<ZonePricingComboRow[]> {
   const params = new URLSearchParams({ startDate, endDate });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<ZonePricingComboRow[]>(`/reports/manager/zone-pricing-combo?${params.toString()}`);
 }
 
@@ -91,8 +111,12 @@ export async function getManagerPenaltyTopCustomers(
   startDate: string,
   endDate: string,
   limit = 10,
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<PenaltyTopCustomerRow[]> {
   const params = new URLSearchParams({ startDate, endDate, limit: String(limit) });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<PenaltyTopCustomerRow[]>(`/reports/manager/penalty-top-customers?${params.toString()}`);
 }
 
@@ -101,7 +125,11 @@ export async function getManagerRevenueReport(
   startDate: string,
   endDate: string,
   granularity: 'week' | 'month' = 'week',
+  warehouseId?: string,
+  zoneId?: string,
 ): Promise<ManagerRevenueReportResponse> {
   const params = new URLSearchParams({ startDate, endDate, granularity });
+  if (warehouseId) params.set('warehouseId', warehouseId);
+  if (zoneId) params.set('zoneId', zoneId);
   return apiJson<ManagerRevenueReportResponse>(`/reports/manager/revenue?${params.toString()}`);
 }
