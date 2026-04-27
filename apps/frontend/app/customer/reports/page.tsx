@@ -34,6 +34,7 @@ export default function CustomerReportsPage() {
   const [startDate, setStartDate] = useState(init.start);
   const [endDate, setEndDate] = useState(init.end);
   const [activePreset, setActivePreset] = useState<QuickPreset | null>('7d');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('ALL');
   const [storedItems, setStoredItems] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [cycleCounts, setCycleCounts] = useState<any[]>([]);
@@ -112,8 +113,54 @@ export default function CustomerReportsPage() {
     });
   }
 
-  const filteredRequests = useMemo(() => filterRequestsByRange(requests, startDate, endDate), [requests, startDate, endDate]);
-  const discrepancyCycleCounts = useMemo(() => filterCycleCountsByRange(cycleCounts, startDate, endDate), [cycleCounts, startDate, endDate]);
+  const warehouseOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    const rows = [...requests, ...cycleCounts, ...storedItems];
+    rows.forEach((row: any) => {
+      const id = String(
+        row.warehouse_id ??
+          row.warehouseId ??
+          row.warehouse?.id ??
+          row.warehouse?._id ??
+          '',
+      ).trim();
+      if (!id) return;
+      const name = String(
+        row.warehouse_name ??
+          row.warehouseName ??
+          row.warehouse?.name ??
+          id,
+      ).trim();
+      if (!map.has(id)) map.set(id, name || id);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [requests, cycleCounts, storedItems]);
+
+  const selectedWarehouseLabel = useMemo(() => {
+    if (selectedWarehouseId === 'ALL') return 'All warehouses';
+    return warehouseOptions.find((w) => w.id === selectedWarehouseId)?.name ?? selectedWarehouseId;
+  }, [selectedWarehouseId, warehouseOptions]);
+
+  const matchWarehouse = (row: any, warehouseId: string) => {
+    if (warehouseId === 'ALL') return true;
+    const id = String(
+      row.warehouse_id ??
+        row.warehouseId ??
+        row.warehouse?.id ??
+        row.warehouse?._id ??
+        '',
+    ).trim();
+    return id === warehouseId;
+  };
+
+  const filteredRequests = useMemo(
+    () => filterRequestsByRange(requests, startDate, endDate).filter((r) => matchWarehouse(r, selectedWarehouseId)),
+    [requests, startDate, endDate, selectedWarehouseId],
+  );
+  const discrepancyCycleCounts = useMemo(
+    () => filterCycleCountsByRange(cycleCounts, startDate, endDate).filter((c) => matchWarehouse(c, selectedWarehouseId)),
+    [cycleCounts, startDate, endDate, selectedWarehouseId],
+  );
 
   const ioTrend = useMemo(() => {
     const map = new Map<string, { key: string; periodLabel: string; inbound: number; outbound: number }>();
@@ -207,7 +254,7 @@ export default function CustomerReportsPage() {
       },
       plugins: {
         title: { display: true, text: 'Distribution overview', color: '#0f172a', font: { size: 13, weight: 'bold' as const } },
-        subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: requests`, color: '#64748b' },
+        subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • ${selectedWarehouseLabel} • Unit: requests`, color: '#64748b' },
         legend: { position: 'bottom' as const },
         tooltip: {
           callbacks: {
@@ -216,7 +263,7 @@ export default function CustomerReportsPage() {
         },
       },
     }),
-    [startDate, endDate],
+    [startDate, endDate, selectedWarehouseLabel],
   );
 
   const ioSummary = useMemo(() => {
@@ -298,6 +345,24 @@ export default function CustomerReportsPage() {
                 setActivePreset(preset);
               }}
             />
+            <div className="mt-3 flex items-center gap-3">
+              <label htmlFor="customer-report-warehouse" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Warehouse
+              </label>
+              <select
+                id="customer-report-warehouse"
+                value={selectedWarehouseId}
+                onChange={(e) => setSelectedWarehouseId(e.target.value)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              >
+                <option value="ALL">All warehouses</option>
+                {warehouseOptions.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -335,7 +400,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'Inbound/outbound comparison', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • ${selectedWarehouseLabel} • Unit: quantity`, color: '#64748b' },
                     legend: { position: 'bottom' },
                     tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                   },
@@ -396,7 +461,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'System vs actual by cycle', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • ${selectedWarehouseLabel} • Unit: quantity`, color: '#64748b' },
                     legend: { position: 'bottom' },
                   },
                   scales: {
@@ -487,7 +552,7 @@ export default function CustomerReportsPage() {
                   maintainAspectRatio: false,
                   plugins: {
                     title: { display: true, text: 'Request status count', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: requests`, color: '#64748b' },
+                    subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • ${selectedWarehouseLabel} • Unit: requests`, color: '#64748b' },
                     legend: { position: 'bottom' },
                     tooltip: { callbacks: { label: (ctx: any) => `${ctx.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                   },
@@ -555,7 +620,7 @@ export default function CustomerReportsPage() {
                 maintainAspectRatio: false,
                 plugins: {
                   title: { display: true, text: 'Top moved products', color: '#0f172a', font: { size: 13, weight: 'bold' } },
-                  subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • Unit: quantity`, color: '#64748b' },
+                  subtitle: { display: true, text: `Range: ${startDate} -> ${endDate} • ${selectedWarehouseLabel} • Unit: quantity`, color: '#64748b' },
                   legend: { position: 'bottom' },
                   tooltip: { callbacks: { label: (ctx: any) => `${ctx.dataset.label}: ${(ctx.raw ?? 0).toLocaleString('en-US')}` } },
                 },
